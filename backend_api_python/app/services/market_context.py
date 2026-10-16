@@ -6,7 +6,7 @@ from typing import Any, Mapping
 from app.config.data_sources import CryptoPublicConfig
 
 
-CRYPTO_MARKET_TYPES = frozenset({"spot", "swap"})
+CRYPTO_MARKET_TYPES = frozenset({"swap"})
 SUPPORTED_CRYPTO_EXCHANGE_IDS = frozenset({"binance", "bitget", "bybit", "okx", "gate", "htx"})
 
 
