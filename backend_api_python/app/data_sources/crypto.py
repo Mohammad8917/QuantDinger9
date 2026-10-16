@@ -18,7 +18,7 @@ from app.config import CryptoPublicConfig, APIKeys
 
 logger = get_logger(__name__)
 
-# Live-trading scoped instances: one public client per (exchange, spot|swap).
+# Live-trading scoped instances: one public client per (exchange, futures/swap).
 _SCOPED_INSTANCES: Dict[str, "CryptoDataSource"] = {}
 _PUBLIC_MARKET_INSTANCES: Dict[str, "CryptoDataSource"] = {}
 _INVALID_SYMBOL_UNTIL: Dict[str, float] = {}
@@ -65,7 +65,7 @@ def resolve_crypto_venue(
     trading_config: Optional[Dict[str, Any]] = None,
     market_type: Optional[str] = None,
 ) -> Tuple[str, str]:
-    """Resolve (exchange_id, spot|swap) for public crypto OHLCV/ticker."""
+    """Resolve (exchange_id, swap) for public crypto OHLCV/ticker."""
     cfg = exchange_config or {}
     tc = trading_config or {}
     ex = (
@@ -171,7 +171,7 @@ class CryptoDataSource(BaseDataSource):
     ) -> "CryptoDataSource":
         """Return an uncredentialed source that may fail over across public venues.
 
-        Backtests still need the requested product type (spot versus perpetual),
+        Research and backtests use the futures/perpetual product only,
         but must not become unavailable merely because the default public venue is
         blocked or temporarily down.  Live-trading callers continue to use
         :meth:`for_exchange`, which intentionally never crosses venues.
