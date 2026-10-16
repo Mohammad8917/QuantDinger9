@@ -1,6 +1,6 @@
 import pytest
 
-from app.data_sources.native_crypto import normalize_market_type as normalize_native_market_type
+from app.data_sources.native_crypto import create_native_crypto_client, normalize_market_type as normalize_native_market_type
 from app.services.market_context import normalize_market_type as normalize_context_market_type
 from app.services.strategy_v2.live_execution import LiveOrderRequest, StrategyV2OrderGateway
 
@@ -23,6 +23,7 @@ def _order_request(market_type: str) -> LiveOrderRequest:
 def test_crypto_data_source_defaults_to_futures():
     assert normalize_native_market_type(None) == "swap"
     assert normalize_context_market_type(None, market="Crypto") == "swap"
+    assert create_native_crypto_client("binance").market_type == "swap"
 
 
 @pytest.mark.parametrize("market_type", ["spot", " Spot ", "SPOT"])
