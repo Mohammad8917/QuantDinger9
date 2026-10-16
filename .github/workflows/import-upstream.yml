@@ -1,0 +1,40 @@
+name: Import upstream QuantDinger
+
+on:
+  push:
+    paths:
+      - ".github/workflows/import-upstream.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: upstream-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout destination
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Copy complete upstream repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/OpenByteInc/QuantDinger.git /tmp/quantdinger-upstream
+          rsync -a --exclude='.git/' /tmp/quantdinger-upstream/ ./
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No upstream changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: import complete upstream QuantDinger repository"
+          git push origin HEAD:main
