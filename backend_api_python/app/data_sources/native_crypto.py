@@ -67,10 +67,12 @@ def normalize_exchange_id(exchange_id: str) -> str:
 
 
 def normalize_market_type(market_type: str) -> str:
-    value = str(market_type or "spot").strip().lower()
+    value = str(market_type or "swap").strip().lower()
     if value in {"future", "futures", "perp", "perpetual", "linear"}:
         value = "swap"
-    if value not in {"spot", "swap"}:
+    if value == "spot":
+        raise ValueError("Spot market is disabled; only crypto futures (swap) are supported")
+    if value != "swap":
         raise ValueError(f"Unsupported crypto market type: {value}")
     return value
 
@@ -139,7 +141,7 @@ class NativeCryptoPublicClient:
     def __init__(
         self,
         exchange_id: str,
-        market_type: str = "spot",
+        market_type: str = "swap",
         *,
         timeout_ms: int = 10000,
         proxy: str = "",
