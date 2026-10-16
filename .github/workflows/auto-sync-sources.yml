@@ -2,11 +2,11 @@ name: Scheduled Source Sync
 
 on:
   schedule:
-    # Azerbaijan time (UTC+4): 08:00, 12:00, 18:00 and 00:00.
-    - cron: "0 4 * * *"
-    - cron: "0 8 * * *"
-    - cron: "0 14 * * *"
-    - cron: "0 20 * * *"
+    # Azerbaijan time (UTC+4): 08:17, 12:17, 18:17 and 00:17.
+    - cron: "17 4 * * *"
+    - cron: "17 8 * * *"
+    - cron: "17 14 * * *"
+    - cron: "17 20 * * *"
   workflow_dispatch:
 
 permissions:
