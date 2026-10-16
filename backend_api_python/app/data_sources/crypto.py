@@ -218,7 +218,7 @@ class CryptoDataSource(BaseDataSource):
         failure = classify_market_data_failure(
             error,
             exchange_id=getattr(self, "_scoped_exchange_id", "") or getattr(self.exchange, "id", ""),
-            market_type=getattr(self, "_scoped_market_type", "") or "spot",
+            market_type=getattr(self, "_scoped_market_type", "") or "swap",
             symbol=symbol,
             timeframe=timeframe,
         )
@@ -249,7 +249,7 @@ class CryptoDataSource(BaseDataSource):
         normalized = self._normalize_symbol_for_exchange(symbol)
         if not normalized:
             return symbol
-        mt = getattr(self, "_scoped_market_type", "") or "spot"
+        mt = getattr(self, "_scoped_market_type", "") or "swap"
         if mt != "swap":
             return normalized
         if ":" in normalized:
@@ -262,7 +262,7 @@ class CryptoDataSource(BaseDataSource):
 
     def _invalid_symbol_key(self, symbol_pair: str) -> str:
         exchange_id = getattr(self.exchange, 'id', '').lower()
-        mt = getattr(self, "_scoped_market_type", "") or "spot"
+        mt = getattr(self, "_scoped_market_type", "") or "swap"
         return f"{exchange_id}:{mt}:{str(symbol_pair or '').upper()}"
 
     def _is_invalid_symbol_cached(self, symbol_pair: str) -> bool:
@@ -414,7 +414,7 @@ class CryptoDataSource(BaseDataSource):
             getattr(self.exchange, "id", "") or ""
         ).strip().lower()
         fallback_market_type = str(
-            getattr(self, "_scoped_market_type", "") or "spot"
+            getattr(self, "_scoped_market_type", "") or "swap"
         ).strip().lower()
         if (
             bool(getattr(self, "_allow_public_fallback", False))
@@ -513,7 +513,7 @@ class CryptoDataSource(BaseDataSource):
             getattr(self.exchange, "id", "") or ""
         ).strip().lower()
         fallback_market_type = str(
-            getattr(self, "_scoped_market_type", "") or "spot"
+            getattr(self, "_scoped_market_type", "") or "swap"
         ).strip().lower()
         if (
             bool(getattr(self, "_allow_public_fallback", False))
@@ -692,7 +692,7 @@ class CryptoDataSource(BaseDataSource):
         if not klines and bool(getattr(self, "_allow_public_fallback", False)):
             current_exchange = str(getattr(self.exchange, "id", "") or "").strip().lower()
             fallback_market_type = str(
-                getattr(self, "_scoped_market_type", "") or "spot"
+                getattr(self, "_scoped_market_type", "") or "swap"
             ).strip().lower()
             for exchange_id in PUBLIC_KLINE_FALLBACK_IDS:
                 if exchange_id == current_exchange:
