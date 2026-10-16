@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from app.services.strategy_runtime.order_intents import OrderIntentService
@@ -382,6 +382,13 @@ class StrategyV2OrderGateway:
 
     @staticmethod
     def _validate(request: LiveOrderRequest) -> LiveOrderRequest:
+        market_type = str(request.market_type or "").strip().lower()
+        if market_type in {"future", "futures", "perp", "perpetual", "linear"}:
+            market_type = "swap"
+        if market_type != "swap":
+            raise ValueError("strategyV2.futuresOnlyMarketRequired")
+        if request.market_type != market_type:
+            request = replace(request, market_type=market_type)
         if request.strategy_id <= 0 or request.user_id <= 0:
             raise ValueError("strategyV2.invalidRuntimeIdentity")
         if request.strategy_run_id <= 0:
@@ -404,8 +411,6 @@ class StrategyV2OrderGateway:
             raise ValueError("strategyV2.invalidOrderSize")
         if request.execution_mode not in {"signal", "live"}:
             raise ValueError("strategyV2.invalidExecutionMode")
-        if request.market_type == "spot" and "short" in request.action:
-            raise ValueError("strategyV2.spotShortUnsupported")
         if request.order_type not in {"market", "limit"}:
             raise ValueError("strategyV2.orderTypeUnsupported")
         if request.execution_algo not in {"market", "limit", "maker_then_market"}:

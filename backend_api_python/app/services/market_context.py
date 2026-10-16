@@ -6,7 +6,7 @@ from typing import Any, Mapping
 from app.config.data_sources import CryptoPublicConfig
 
 
-CRYPTO_MARKET_TYPES = frozenset({"spot", "swap"})
+CRYPTO_MARKET_TYPES = frozenset({"swap"})
 SUPPORTED_CRYPTO_EXCHANGE_IDS = frozenset({"binance", "bitget", "bybit", "okx", "gate", "htx"})
 
 
@@ -28,11 +28,17 @@ def default_crypto_exchange_id() -> str:
 
 def normalize_market_type(value: Any, *, market: str = "") -> str:
     market_type = str(value or "").strip().lower()
-    if market_type in {"future", "futures", "perp", "perpetual"}:
+    if market_type in {"future", "futures", "perp", "perpetual", "linear"}:
         market_type = "swap"
     if str(market or "").strip() != "Crypto":
         return "spot"
-    return market_type if market_type in CRYPTO_MARKET_TYPES else "spot"
+    if not market_type:
+        return "swap"
+    if market_type == "spot":
+        raise ValueError("Spot market is disabled; Crypto market context must use futures (swap)")
+    if market_type != "swap":
+        raise ValueError(f"Unsupported crypto market type: {market_type}")
+    return market_type
 
 
 def canonical_crypto_symbol(value: Any) -> str:
@@ -47,7 +53,7 @@ class MarketContext:
     market: str
     symbol: str
     exchange_id: str = ""
-    market_type: str = "spot"
+    market_type: str = "swap"
     instrument_id: str = ""
     settle_currency: str = ""
     timeframe: str = ""

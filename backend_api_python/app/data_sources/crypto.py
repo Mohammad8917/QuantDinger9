@@ -18,7 +18,7 @@ from app.config import CryptoPublicConfig, APIKeys
 
 logger = get_logger(__name__)
 
-# Live-trading scoped instances: one public client per (exchange, spot|swap).
+# Live-trading scoped instances: one public client per (exchange, futures/swap).
 _SCOPED_INSTANCES: Dict[str, "CryptoDataSource"] = {}
 _PUBLIC_MARKET_INSTANCES: Dict[str, "CryptoDataSource"] = {}
 _INVALID_SYMBOL_UNTIL: Dict[str, float] = {}
@@ -56,7 +56,7 @@ def resolve_native_public_exchange(exchange_id: str, market_type: str) -> Tuple[
     e = (exchange_id or "").strip().lower()
     if not e:
         e = (CryptoPublicConfig.DEFAULT_EXCHANGE or "binance").strip().lower()
-    return normalize_exchange_id(e), normalize_market_type(market_type or "spot")
+    return normalize_exchange_id(e), normalize_market_type(market_type or "swap")
 
 
 def resolve_crypto_venue(
@@ -65,7 +65,7 @@ def resolve_crypto_venue(
     trading_config: Optional[Dict[str, Any]] = None,
     market_type: Optional[str] = None,
 ) -> Tuple[str, str]:
-    """Resolve (exchange_id, spot|swap) for public crypto OHLCV/ticker."""
+    """Resolve (exchange_id, swap) for public crypto OHLCV/ticker."""
     cfg = exchange_config or {}
     tc = trading_config or {}
     ex = (
@@ -85,11 +85,7 @@ def resolve_crypto_venue(
     if ex not in PUBLIC_KLINE_EXCHANGE_IDS:
         ex = "binance"
 
-    mt = str(market_type or tc.get("market_type") or "spot").strip().lower()
-    if mt in ("futures", "future", "perp", "perpetual"):
-        mt = "swap"
-    if mt not in ("spot", "swap"):
-        mt = "spot"
+    mt = normalize_market_type(market_type or tc.get("market_type") or "swap")
     return ex, mt
 
 
@@ -128,7 +124,7 @@ class CryptoDataSource(BaseDataSource):
         # A live-venue scoped source must always remain on its requested venue.
         self._allow_public_fallback = True
         self._scoped_exchange_id = ""
-        self._scoped_market_type = "spot"
+        self._scoped_market_type = "swap"
         self._preferred_public_exchange_id = ""
         self._markets_load_lock = threading.Lock()
         self._failure_local = threading.local()
@@ -141,7 +137,7 @@ class CryptoDataSource(BaseDataSource):
             default_ex = "htx"
         if default_ex not in PUBLIC_KLINE_EXCHANGE_IDS:
             default_ex = "okx"
-        self._init_native_exchange(default_ex, "spot")
+        self._init_native_exchange(default_ex, "swap")
 
     @classmethod
     def for_exchange(cls, exchange_id: str, market_type: str = "swap") -> "CryptoDataSource":
@@ -170,21 +166,17 @@ class CryptoDataSource(BaseDataSource):
     @classmethod
     def for_public_market(
         cls,
-        market_type: str = "spot",
+        market_type: str = "swap",
         preferred_exchange_id: str = "",
     ) -> "CryptoDataSource":
         """Return an uncredentialed source that may fail over across public venues.
 
-        Backtests still need the requested product type (spot versus perpetual),
+        Research and backtests use the futures/perpetual product only,
         but must not become unavailable merely because the default public venue is
         blocked or temporarily down.  Live-trading callers continue to use
         :meth:`for_exchange`, which intentionally never crosses venues.
         """
-        mt = (market_type or "spot").strip().lower()
-        if mt in ("futures", "future", "perp", "perpetual"):
-            mt = "swap"
-        if mt not in ("spot", "swap"):
-            mt = "spot"
+        mt = normalize_market_type(market_type or "swap")
         exchange_id = (
             preferred_exchange_id
             or os.getenv("CRYPTO_PUBLIC_KLINE_PRIMARY")
@@ -226,7 +218,7 @@ class CryptoDataSource(BaseDataSource):
         failure = classify_market_data_failure(
             error,
             exchange_id=getattr(self, "_scoped_exchange_id", "") or getattr(self.exchange, "id", ""),
-            market_type=getattr(self, "_scoped_market_type", "") or "spot",
+            market_type=getattr(self, "_scoped_market_type", "") or "swap",
             symbol=symbol,
             timeframe=timeframe,
         )
@@ -257,7 +249,7 @@ class CryptoDataSource(BaseDataSource):
         normalized = self._normalize_symbol_for_exchange(symbol)
         if not normalized:
             return symbol
-        mt = getattr(self, "_scoped_market_type", "") or "spot"
+        mt = getattr(self, "_scoped_market_type", "") or "swap"
         if mt != "swap":
             return normalized
         if ":" in normalized:
@@ -270,7 +262,7 @@ class CryptoDataSource(BaseDataSource):
 
     def _invalid_symbol_key(self, symbol_pair: str) -> str:
         exchange_id = getattr(self.exchange, 'id', '').lower()
-        mt = getattr(self, "_scoped_market_type", "") or "spot"
+        mt = getattr(self, "_scoped_market_type", "") or "swap"
         return f"{exchange_id}:{mt}:{str(symbol_pair or '').upper()}"
 
     def _is_invalid_symbol_cached(self, symbol_pair: str) -> bool:
@@ -422,7 +414,7 @@ class CryptoDataSource(BaseDataSource):
             getattr(self.exchange, "id", "") or ""
         ).strip().lower()
         fallback_market_type = str(
-            getattr(self, "_scoped_market_type", "") or "spot"
+            getattr(self, "_scoped_market_type", "") or "swap"
         ).strip().lower()
         if (
             bool(getattr(self, "_allow_public_fallback", False))
@@ -521,7 +513,7 @@ class CryptoDataSource(BaseDataSource):
             getattr(self.exchange, "id", "") or ""
         ).strip().lower()
         fallback_market_type = str(
-            getattr(self, "_scoped_market_type", "") or "spot"
+            getattr(self, "_scoped_market_type", "") or "swap"
         ).strip().lower()
         if (
             bool(getattr(self, "_allow_public_fallback", False))
@@ -700,7 +692,7 @@ class CryptoDataSource(BaseDataSource):
         if not klines and bool(getattr(self, "_allow_public_fallback", False)):
             current_exchange = str(getattr(self.exchange, "id", "") or "").strip().lower()
             fallback_market_type = str(
-                getattr(self, "_scoped_market_type", "") or "spot"
+                getattr(self, "_scoped_market_type", "") or "swap"
             ).strip().lower()
             for exchange_id in PUBLIC_KLINE_FALLBACK_IDS:
                 if exchange_id == current_exchange:
