@@ -56,7 +56,7 @@ def resolve_native_public_exchange(exchange_id: str, market_type: str) -> Tuple[
     e = (exchange_id or "").strip().lower()
     if not e:
         e = (CryptoPublicConfig.DEFAULT_EXCHANGE or "binance").strip().lower()
-    return normalize_exchange_id(e), normalize_market_type(market_type or "spot")
+    return normalize_exchange_id(e), normalize_market_type(market_type or "swap")
 
 
 def resolve_crypto_venue(
@@ -85,11 +85,7 @@ def resolve_crypto_venue(
     if ex not in PUBLIC_KLINE_EXCHANGE_IDS:
         ex = "binance"
 
-    mt = str(market_type or tc.get("market_type") or "spot").strip().lower()
-    if mt in ("futures", "future", "perp", "perpetual"):
-        mt = "swap"
-    if mt not in ("spot", "swap"):
-        mt = "spot"
+    mt = normalize_market_type(market_type or tc.get("market_type") or "swap")
     return ex, mt
 
 
@@ -128,7 +124,7 @@ class CryptoDataSource(BaseDataSource):
         # A live-venue scoped source must always remain on its requested venue.
         self._allow_public_fallback = True
         self._scoped_exchange_id = ""
-        self._scoped_market_type = "spot"
+        self._scoped_market_type = "swap"
         self._preferred_public_exchange_id = ""
         self._markets_load_lock = threading.Lock()
         self._failure_local = threading.local()
@@ -141,7 +137,7 @@ class CryptoDataSource(BaseDataSource):
             default_ex = "htx"
         if default_ex not in PUBLIC_KLINE_EXCHANGE_IDS:
             default_ex = "okx"
-        self._init_native_exchange(default_ex, "spot")
+        self._init_native_exchange(default_ex, "swap")
 
     @classmethod
     def for_exchange(cls, exchange_id: str, market_type: str = "swap") -> "CryptoDataSource":
@@ -170,7 +166,7 @@ class CryptoDataSource(BaseDataSource):
     @classmethod
     def for_public_market(
         cls,
-        market_type: str = "spot",
+        market_type: str = "swap",
         preferred_exchange_id: str = "",
     ) -> "CryptoDataSource":
         """Return an uncredentialed source that may fail over across public venues.
@@ -180,11 +176,7 @@ class CryptoDataSource(BaseDataSource):
         blocked or temporarily down.  Live-trading callers continue to use
         :meth:`for_exchange`, which intentionally never crosses venues.
         """
-        mt = (market_type or "spot").strip().lower()
-        if mt in ("futures", "future", "perp", "perpetual"):
-            mt = "swap"
-        if mt not in ("spot", "swap"):
-            mt = "spot"
+        mt = normalize_market_type(market_type or "swap")
         exchange_id = (
             preferred_exchange_id
             or os.getenv("CRYPTO_PUBLIC_KLINE_PRIMARY")
