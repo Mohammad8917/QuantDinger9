@@ -176,7 +176,14 @@ jobs:
             tests/integration/test_execution_projection_atomic.py \
             tests/integration/test_grid_fill_accounting.py -q
 
-      - name: Set up Node.js and pnpm
+      - name: Set up pnpm
+        if: steps.changes.outputs.changed == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+          run_install: false
+
+      - name: Set up Node.js
         if: steps.changes.outputs.changed == 'true'
         uses: actions/setup-node@v4
         with:
@@ -184,14 +191,14 @@ jobs:
           cache: pnpm
           cache-dependency-path: QuantDinger-Vue/pnpm-lock.yaml
 
-      - name: Build Frontend from the mirrored source
+      - name: Test and build Frontend from the mirrored source
         if: steps.changes.outputs.changed == 'true'
         working-directory: QuantDinger-Vue
         shell: bash
         run: |
           set -euo pipefail
-          corepack enable
           pnpm install --frozen-lockfile
+          pnpm run test:unit
           pnpm run build
 
       - name: Commit and push only after all validations pass
