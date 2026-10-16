@@ -612,7 +612,7 @@ class NativeCryptoPublicClient:
 
 def create_native_crypto_client(
     exchange_id: str,
-    market_type: str = "spot",
+    market_type: str = "swap",
     *,
     timeout_ms: int = 10000,
     proxy: str = "",
