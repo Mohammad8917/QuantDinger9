@@ -1,6 +1,11 @@
 name: Scheduled Source Sync
 
 on:
+  # Run once when this workflow is changed, so a newly installed or reactivated
+  # schedule is exercised immediately instead of waiting for the next cron slot.
+  push:
+    paths:
+      - '.github/workflows/auto-sync-sources.yml'
   schedule:
     # Azerbaijan time (UTC+4): 08:17, 12:17, 18:17 and 00:17.
     - cron: "17 4 * * *"
