@@ -16,8 +16,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 SKIP_PATHS = {
     "backend_api_python/tests/test_market_symbol_seed_integrity.py",
-    # This validator contains literal examples of the corruption markers it detects.
-    "scripts/check_mojibake.py",
 }
 
 SKIP_SUFFIXES = {
@@ -35,58 +33,22 @@ SKIP_SUFFIXES = {
 }
 
 MOJIBAKE_MARKERS = {
-    # Multi-character signatures of common UTF-8/legacy-code-page corruption.
-    # Isolated characters such as "Â", "Ã", or arbitrary CJK characters can
-    # be valid French, Vietnamese, or Chinese text and must not fail this check.
-    "\\u040e\\u0404": "UTF-8 punctuation decoded through the wrong legacy code page",
-    "\\u0432\\u2013": "UTF-8 symbol decoded through the wrong legacy code page",
-    "锟斤拷": "Common replacement sequence produced by GBK decoding failures",
-    "烫烫烫": "Common uninitialized-memory marker in Chinese Windows environments",
-    "ï¿½": "UTF-8 replacement-character bytes decoded as Latin-1",
-    "Ã©": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã¨": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ãª": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã ": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã¢": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã¤": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã¥": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã§": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã®": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã¯": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã´": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã¶": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã¹": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã»": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã¼": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã±": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã¡": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã­": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã³": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ãº": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã£": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ãµ": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã‰": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ãˆ": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "ÃŠ": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ãœ": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã„": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Ã–": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "ÃŸ": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Â©": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Â®": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Â°": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Â±": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Â·": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Â ": "Likely UTF-8 non-breaking space decoded as Windows-1252/Latin-1",
-    "Â£": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "Â€": "Likely UTF-8 decoded as Windows-1252/Latin-1",
-    "â€™": "UTF-8 apostrophe decoded through Windows-1252",
-    "â€œ": "UTF-8 opening quotation mark decoded through Windows-1252",
-    "â€": "UTF-8 punctuation decoded through Windows-1252",
-    "â€“": "UTF-8 en dash decoded through Windows-1252",
-    "â€”": "UTF-8 em dash decoded through Windows-1252",
-    "â€¦": "UTF-8 ellipsis decoded through Windows-1252",
-    "\uFFFD": "Unicode replacement character",
+    "\u040e\u0404": "UTF-8 punctuation decoded through the wrong legacy code page",
+    "\u0432\u2013": "UTF-8 symbol decoded through the wrong legacy code page",
+    "\u9225": "UTF-8 punctuation decoded as GBK/CP936, e.g. em dash or curly quote",
+    "\u922b": "UTF-8 arrow decoded as GBK/CP936",
+    "\u9239": "UTF-8 box-drawing character decoded as GBK/CP936",
+    "\u923b": "UTF-8 symbol decoded as GBK/CP936",
+    "\u951f": "UTF-8 decoded through the wrong Chinese code page",
+    "\u95b0": "Chinese text decoded through the wrong UTF-8/GBK path",
+    "\u93c8": "Chinese text decoded through the wrong UTF-8/GBK path",
+    "\u675e": "Chinese text decoded through the wrong UTF-8/GBK path",
+    "\u947e": "Chinese text decoded through the wrong UTF-8/GBK path",
+    "\u5a13": "Chinese text decoded through the wrong UTF-8/GBK path",
+    "\ufffd": "Unicode replacement character",
+    "\u00ef\u00bf\u00bd": "UTF-8 bytes for replacement character decoded as Latin-1",
+    "\u00c3": "Likely UTF-8 decoded as Windows-1252/Latin-1",
+    "\u00c2": "Likely UTF-8 decoded as Windows-1252/Latin-1",
 }
 
 
@@ -126,12 +88,6 @@ def main() -> int:
             continue
         rel = path.relative_to(REPO_ROOT).as_posix()
         for line_no, line in enumerate(text.splitlines(), start=1):
-            # This test intentionally contains U+FFFD in a regex sentinel.
-            if (
-                rel == "QuantDinger-Vue/tests/unit/i18nExperience.test.mjs"
-                and "assert.doesNotMatch(reviewedText, /[▁�]/u)" in line
-            ):
-                continue
             if has_private_use_char(line):
                 preview = line.strip()
                 if len(preview) > 160:
