@@ -97,10 +97,16 @@ def clean_markdown_target(raw_target: str) -> str:
 
 
 def resolve_local_target(source: Path, raw_target: str) -> Path | None:
-    target = clean_markdown_target(raw_target)
-    # HTML templates (for example Vue/ERB-style <%= ... %> expressions) are
-    # resolved by the frontend build, not as literal filesystem paths.
-    # Ignore only templated targets; continue validating ordinary local links.
+    # Check the raw HTML attribute before clean_markdown_target(): that helper
+    # treats a leading "<...>" as Markdown angle-bracket syntax and would cut
+    # a Vue expression at its first ">", leaving "<%= BASE_URL %" behind.
+    # Vue/ERB template targets are resolved by the frontend build, not as paths.
+    raw = raw_target.strip()
+    if "<%" in raw and "%>" in raw:
+        return None
+
+    target = clean_markdown_target(raw)
+    # Keep this post-cleaning guard as a defensive check.
     if "<%" in target and "%>" in target:
         return None
     if not target or target.startswith(("#", "/", "\\")):
