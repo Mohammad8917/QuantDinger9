@@ -8,6 +8,7 @@ on:
       - '.github/workflows/auto-sync-sources.yml'
       - 'scripts/check_docs.py'
       - '.github/validation/check_docs.py'
+      - '.github/validation/check_mojibake.py'
   schedule:
     # Azerbaijan time (UTC+4): 08:17, 12:17, 18:17 and 00:17.
     - cron: "17 4 * * *"
@@ -150,7 +151,7 @@ jobs:
           set -euo pipefail
           python .github/validation/check_docs.py
           python scripts/check_version.py
-          python scripts/check_mojibake.py
+          python .github/validation/check_mojibake.py
           python -m py_compile backend_api_python/run.py
           python -m compileall -q backend_api_python/app backend_api_python/scripts backend_api_python/tests
           ruff check backend_api_python/app backend_api_python/scripts backend_api_python/tests
