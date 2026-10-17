@@ -86,7 +86,7 @@ MOJIBAKE_MARKERS = {
     "â€“": "UTF-8 en dash decoded through Windows-1252",
     "â€”": "UTF-8 em dash decoded through Windows-1252",
     "â€¦": "UTF-8 ellipsis decoded through Windows-1252",
-    "\\ufffd": "Unicode replacement character",
+    "\uFFFD": "Unicode replacement character",
 }
 
 
