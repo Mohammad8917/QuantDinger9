@@ -18,6 +18,7 @@ SKIP_PATHS = {
     "backend_api_python/tests/test_market_symbol_seed_integrity.py",
     # The validator necessarily contains examples of corruption markers.
     ".github/validation/check_mojibake.py",
+    "scripts/check_mojibake.py",
 }
 
 SKIP_SUFFIXES = {
