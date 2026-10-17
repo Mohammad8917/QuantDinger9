@@ -16,6 +16,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 SKIP_PATHS = {
     "backend_api_python/tests/test_market_symbol_seed_integrity.py",
+    # This validator contains literal examples of the corruption markers it detects.
+    "scripts/check_mojibake.py",
 }
 
 SKIP_SUFFIXES = {
