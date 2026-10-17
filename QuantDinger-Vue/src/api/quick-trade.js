@@ -1,0 +1,83 @@
+import request from '@/utils/request'
+
+/** Place a quick trade order */
+export function placeQuickOrder (data) {
+  return request({
+    url: '/api/quick-trade/place-order',
+    method: 'post',
+    data
+  })
+}
+
+/** Get available balance from exchange */
+export function getQuickTradeBalance (params) {
+  return request({
+    url: '/api/quick-trade/balance',
+    method: 'get',
+    params
+  })
+}
+
+/** Get current position for a symbol */
+export function getQuickTradePosition (params) {
+  return request({
+    url: '/api/quick-trade/position',
+    method: 'get',
+    params
+  })
+}
+
+/** Get quick trade history */
+export function getQuickTradeHistory (params) {
+  return request({
+    url: '/api/quick-trade/history',
+    method: 'get',
+    params
+  })
+}
+
+/** Get Quick Trade AI decision audit rows */
+export function getQuickTradeAiDecisions (params) {
+  return request({
+    url: '/api/quick-trade/ai-decisions',
+    method: 'get',
+    params
+  })
+}
+
+/** Get Event Radar configuration and latest analysis */
+export function getQuickTradeEventRadar (params) {
+  return request({
+    url: '/api/quick-trade/event-radar',
+    method: 'get',
+    params
+  })
+}
+
+/** Run a paid, reference-only Event Radar analysis */
+export function analyzeQuickTradeEventRadar (data) {
+  return request({
+    url: '/api/quick-trade/event-radar/analyze',
+    method: 'post',
+    data,
+    timeout: 60000
+  })
+}
+
+/** Close an existing position */
+export function closeQuickTradePosition (data) {
+  return request({
+    url: '/api/quick-trade/close-position',
+    method: 'post',
+    data
+  })
+}
+
+/** Cancel an active quick trade order */
+export function cancelQuickTradeOrder (data) {
+  return request({
+    url: '/api/quick-trade/cancel-order',
+    method: 'post',
+    data
+  })
+}
