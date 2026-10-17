@@ -98,6 +98,11 @@ def clean_markdown_target(raw_target: str) -> str:
 
 def resolve_local_target(source: Path, raw_target: str) -> Path | None:
     target = clean_markdown_target(raw_target)
+    # HTML templates (for example Vue/ERB-style <%= ... %> expressions) are
+    # resolved by the frontend build, not as literal filesystem paths.
+    # Ignore only templated targets; continue validating ordinary local links.
+    if "<%" in target and "%>" in target:
+        return None
     if not target or target.startswith(("#", "/", "\\")):
         return None
     if WINDOWS_ABSOLUTE_RE.match(target):
