@@ -101,7 +101,8 @@ jobs:
             --exclude='/_sync/' \
             --exclude='/QuantDinger-Vue/' \
             --exclude='/.github/workflows/auto-sync-sources.yml' \
-            --exclude='/scripts/check_docs.py' \
+            --exclude='check_docs.py' \
+            --filter='P check_docs.py' \
             "_sync/backend/" "$GITHUB_WORKSPACE/"
 
       - name: Mirror Frontend into its isolated source directory
