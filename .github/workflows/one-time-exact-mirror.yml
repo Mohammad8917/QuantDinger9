@@ -1,0 +1,54 @@
+name: One-time exact upstream mirror
+
+on:
+  push:
+    paths:
+      - '.github/workflows/one-time-exact-mirror.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-exact-upstream-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout destination
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Checkout backend source
+        uses: actions/checkout@v4
+        with:
+          repository: OpenByteInc/QuantDinger
+          ref: main
+          path: _sync/backend
+          fetch-depth: 1
+      - name: Checkout frontend source
+        uses: actions/checkout@v4
+        with:
+          repository: OpenByteInc/QuantDinger-Vue
+          ref: main
+          path: _sync/frontend
+          fetch-depth: 1
+      - name: Mirror source trees exactly
+        shell: bash
+        run: |
+          set -euo pipefail
+          BACKEND_SHA="$(git -C _sync/backend rev-parse HEAD)"
+          FRONTEND_SHA="$(git -C _sync/frontend rev-parse HEAD)"
+          rsync -a --delete --exclude='/.git/' --exclude='/_sync/' --exclude='/QuantDinger-Vue/' --exclude='/.github/workflows/one-time-exact-mirror.yml' _sync/backend/ ./
+          mkdir -p QuantDinger-Vue
+          rsync -a --delete --exclude='/.git/' _sync/frontend/ QuantDinger-Vue/
+          rm -rf _sync
+          git add -A --force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(sync): mirror upstream source trees exactly" -m "Backend: OpenByteInc/QuantDinger@${BACKEND_SHA}" -m "Frontend: OpenByteInc/QuantDinger-Vue@${FRONTEND_SHA}"
+          git push origin HEAD:main
