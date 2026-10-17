@@ -101,8 +101,8 @@ jobs:
             --exclude='/_sync/' \
             --exclude='/QuantDinger-Vue/' \
             --exclude='/.github/workflows/auto-sync-sources.yml' \
-            --exclude='check_docs.py' \
-            --filter='P check_docs.py' \
+            --exclude='/.github/validation/' \
+            --filter='P /.github/validation/' \
             "_sync/backend/" "$GITHUB_WORKSPACE/"
 
       - name: Mirror Frontend into its isolated source directory
@@ -147,7 +147,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/check_docs.py
+          python .github/validation/check_docs.py
           python scripts/check_version.py
           python scripts/check_mojibake.py
           python -m py_compile backend_api_python/run.py
