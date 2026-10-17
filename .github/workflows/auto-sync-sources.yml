@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   sync-and-validate:
-    name: Sync both upstreams, validate, then commit
+    name: Mirror upstream trees, validate, and report
     runs-on: ubuntu-latest
     timeout-minutes: 90
     services:
@@ -213,8 +213,8 @@ jobs:
           pnpm run test:unit
           pnpm run build
 
-      - name: Commit and push only after all validations pass
-        if: steps.changes.outputs.changed == 'true'
+      - name: Commit and push mirrored upstream trees
+        if: always() && steps.changes.outputs.changed == 'true'
         shell: bash
         env:
           BACKEND_SHA: ${{ steps.revisions.outputs.backend }}
