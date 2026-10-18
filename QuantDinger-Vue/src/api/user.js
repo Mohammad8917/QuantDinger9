@@ -31,18 +31,6 @@ export function exportUsers (params) {
 }
 
 /**
- * Get user detail (admin only)
- * @param {Number} id - User ID
- */
-export function getUserDetail (id) {
-  return request({
-    url: '/api/users/detail',
-    method: 'get',
-    params: { id }
-  })
-}
-
-/**
  * Create new user (admin only)
  * @param {Object} data - { username, password, email, nickname, role }
  */
@@ -202,29 +190,6 @@ export function testNotificationSettings () {
   })
 }
 
-export function getChartTemplates () {
-  return request({
-    url: '/api/users/chart-templates',
-    method: 'get'
-  })
-}
-
-export function saveChartTemplate (data) {
-  return request({
-    url: '/api/users/chart-templates',
-    method: 'post',
-    data
-  })
-}
-
-export function deleteChartTemplate (templateId) {
-  return request({
-    url: '/api/users/chart-templates',
-    method: 'delete',
-    params: { template_id: templateId }
-  })
-}
-
 /**
  * Get current user's login history (password / email code / OAuth)
  * @param {Object} params - { page, page_size }
@@ -284,18 +249,6 @@ export function setUserVip (data) {
     url: '/api/users/set-vip',
     method: 'post',
     data
-  })
-}
-
-/**
- * Get user credits log (admin only)
- * @param {Object} params - { user_id, page, page_size }
- */
-export function getUserCreditsLog (params) {
-  return request({
-    url: '/api/users/credits-log',
-    method: 'get',
-    params
   })
 }
 

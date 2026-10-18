@@ -2,50 +2,34 @@
   <a-modal
     :visible="visible"
     :title="modalTitle"
-    :width="880"
+    :width="960"
     :mask-closable="false"
     :confirm-loading="saving"
-    class="live-strategy-editor"
+    class="live-strategy-editor live-strategy-editor--unified"
     :wrap-class-name="isDarkTheme ? 'live-strategy-editor-wrap theme-dark' : 'live-strategy-editor-wrap'"
     @cancel="close">
-    <a-steps :current="step" size="small" class="editor-steps">
-      <a-step :title="$t('strategyV2.sourceTitle')" />
-      <a-step :title="$t('strategyV2.runtimeTitle')" />
-      <a-step :title="$t('trading-assistant.form.scriptStepSignalLive')" />
-    </a-steps>
-
-    <a-spin :spinning="loading">
-      <section v-show="step === 0" class="editor-section">
-        <a-alert
-          show-icon
-          type="info"
-          :message="$t('trading-assistant.form.scriptSourceTitle')"
-          :description="$t('trading-assistant.form.scriptSourceHint')" />
+    <div class="editor-content-scroll">
+      <a-spin :spinning="loading">
+      <section class="editor-section editor-section--source">
         <a-form layout="vertical" class="editor-form editor-form--source">
-          <a-form-item :label="$t('trading-assistant.form.scriptSource')" required>
-            <a-select
-              v-model="model.scriptSourceId"
-              show-search
-              option-filter-prop="children"
-              :loading="loadingSources"
-              :placeholder="$t('trading-assistant.form.scriptSourcePlaceholder')"
-              @change="loadSourceDetail"
-              @dropdownVisibleChange="onSourceDropdownVisibleChange">
-              <a-select-option v-for="source in sources" :key="String(source.id)" :value="String(source.id)">
-                {{ source.name || source.title || source.strategy_name || `#${source.id}` }}
-              </a-select-option>
-            </a-select>
-          </a-form-item>
-          <div v-if="model.scriptSourceId" class="source-summary">
-            <div class="source-summary__icon"><a-icon type="code" /></div>
-            <div>
-              <div class="source-summary__title">
-                <strong>{{ sourceDetail.name || sourceDetail.title || sourceDetail.strategy_name }}</strong>
-                <a-tag>{{ sourceTypeLabel(sourceDetail) }}</a-tag>
-              </div>
-              <p>{{ sourceDetail.description || sourceMetadata.description || $t('trading-assistant.form.scriptSourceHint') }}</p>
-              <span v-if="parameterDefinitions.length">{{ $t('trading-assistant.editor.paramsTab') }} · {{ parameterDefinitions.length }}</span>
-            </div>
+          <div class="deploy-primary-grid">
+            <a-form-item :label="$t('trading-assistant.form.scriptSource')" required>
+              <a-select
+                v-model="model.scriptSourceId"
+                show-search
+                option-filter-prop="children"
+                :loading="loadingSources"
+                :placeholder="$t('trading-assistant.form.scriptSourcePlaceholder')"
+                @change="loadSourceDetail"
+                @dropdownVisibleChange="onSourceDropdownVisibleChange">
+                <a-select-option v-for="source in sources" :key="String(source.id)" :value="String(source.id)">
+                  {{ source.name || source.title || source.strategy_name || `#${source.id}` }}
+                </a-select-option>
+              </a-select>
+            </a-form-item>
+            <a-form-item :label="$t('trading-assistant.form.strategyName')" required>
+              <a-input v-model.trim="model.name" :disabled="!model.scriptSourceId" :placeholder="$t('trading-assistant.placeholders.inputStrategyName')" />
+            </a-form-item>
           </div>
           <a-alert
             v-if="model.scriptSourceId && sourceContractError"
@@ -54,14 +38,14 @@
             :message="$t('strategyV2.compileFailed')" />
           <div v-if="hasCurrentContract" class="strategy-v2-summary">
             <div class="strategy-v2-summary__head">
-              <span class="strategy-v2-summary__icon"><a-icon :type="canEditSourceRuntime ? 'edit' : 'lock'" /></span>
               <div>
                 <strong>{{ $t('strategyV2.deploymentContractTitle') }}</strong>
-                <p>{{ $t('strategyV2.deploymentContractHint') }}</p>
+                <p>{{ manifestUniverseLabel }} · {{ manifestFrequency }}</p>
               </div>
-              <a-tag class="strategy-v2-summary__lock" :color="canEditSourceRuntime ? 'orange' : undefined">
-                {{ $t(canEditSourceRuntime ? 'strategyV2.sourceEditable' : 'strategyV2.sourceLocked') }}
-              </a-tag>
+              <div class="strategy-v2-summary__meta">
+                <span>{{ $t('strategyV2.strategyType') }} · {{ $t(`strategyV2.${strategyManifest.strategyType === 'portfolio' ? 'portfolio' : 'cta'}`) }}</span>
+                <span>{{ $t('strategyV2.markets') }} · {{ manifestMarkets }}</span>
+              </div>
             </div>
             <div v-if="canEditSourceRuntime" class="strategy-runtime-editor">
               <div v-if="sourceRuntimeContract.hasInstrument" class="strategy-runtime-field strategy-runtime-field--symbol">
@@ -95,7 +79,6 @@
                   <a-radio-group
                     class="strategy-runtime-product"
                     :value="runtimeDraft.market_type"
-                    button-style="solid"
                     @change="setRuntimeDraft('market_type', $event.target.value)">
                     <a-radio-button value="spot">{{ $t('strategyBuilder.spot') }}</a-radio-button>
                     <a-radio-button value="swap">{{ $t('strategyBuilder.swap') }}</a-radio-button>
@@ -116,7 +99,7 @@
                   </a-select>
                 </div>
               </div>
-              <div class="strategy-runtime-editor__footer">
+              <div v-if="runtimeDirty" class="strategy-runtime-editor__footer">
                 <span><a-icon type="info-circle" /> {{ $t('strategyV2.sourceEditHint') }}</span>
                 <a-button size="small" type="primary" :loading="savingSourceRuntime" :disabled="!runtimeDirty" @click="applySourceRuntimeConfig">
                   {{ $t('strategyV2.applySourceRuntime') }}
@@ -127,103 +110,59 @@
               <em>{{ $t('strategyV2.instrument') }}</em>
               <b>{{ manifestUniverseLabel }}</b>
             </div>
-            <div class="strategy-v2-summary__grid">
-              <span><em>{{ $t('strategyV2.strategyType') }}</em><b>{{ $t(`strategyV2.${strategyManifest.strategyType === 'portfolio' ? 'portfolio' : 'cta'}`) }}</b></span>
-              <span><em>{{ $t('strategyV2.markets') }}</em><b>{{ manifestMarkets }}</b></span>
-              <span v-if="!canEditSourceRuntime"><em>{{ $t('strategyV2.product') }}</em><b>{{ manifestProductLabel }}</b></span>
-              <span v-if="!canEditSourceRuntime"><em>{{ $t('strategyV2.timeframe') }}</em><b>{{ manifestFrequency }}</b></span>
-              <span v-if="!canEditSourceRuntime && manifestExchangeLabel"><em>{{ $t('strategyV2.exchange') }}</em><b>{{ manifestExchangeLabel }}</b></span>
-            </div>
-          </div>
-          <div v-if="parameterDefinitions.length" class="parameter-panel parameter-panel--source">
-            <div class="parameter-panel__head">
-              <div>
-                <strong>{{ $t('trading-assistant.editor.paramsTab') }}</strong>
-                <span>{{ $t('trading-assistant.editor.codeParamsDesc') }}</span>
-              </div>
-              <a-tag>{{ parameterDefinitions.length }}</a-tag>
-            </div>
-            <div class="parameter-grid">
-              <a-form-item v-for="param in parameterDefinitions" :key="param.name" :label="parameterLabel(param)">
-                <a-switch
-                  v-if="param.type === 'boolean'"
-                  :checked="Boolean(model.templateParams[param.name])"
-                  @change="value => setParameter(param.name, value)" />
-                <a-input-number
-                  v-else-if="['integer', 'number', 'percent'].includes(param.type)"
-                  :value="model.templateParams[param.name]"
-                  :min="param.min"
-                  :max="param.max"
-                  :step="param.step || (param.type === 'integer' ? 1 : 0.01)"
-                  :precision="param.type === 'integer' ? 0 : undefined"
-                  :formatter="param.type === 'percent' ? formatRatioPercent : undefined"
-                  :parser="param.type === 'percent' ? parseRatioPercent : undefined"
-                  @change="value => setParameter(param.name, value)" />
-                <a-select
-                  v-else-if="parameterOptions(param).length"
-                  :value="model.templateParams[param.name]"
-                  @change="value => setParameter(param.name, value)">
-                  <a-select-option v-for="option in parameterOptions(param)" :key="String(option.value)" :value="option.value">
-                    {{ parameterOptionLabel(param, option) }}
-                  </a-select-option>
-                </a-select>
-                <a-input
-                  v-else
-                  :value="model.templateParams[param.name]"
-                  @input="value => setParameter(param.name, value && value.target ? value.target.value : value)" />
-                <div v-if="parameterDescription(param)" class="parameter-description">{{ parameterDescription(param) }}</div>
-              </a-form-item>
-            </div>
-            <p class="parameter-contract-hint">{{ $t('strategyBuilder.sourceContractHint') }}</p>
+            <a-collapse v-if="parameterDefinitions.length" v-model="expandedSections" :bordered="false" class="deploy-collapse deploy-collapse--parameters">
+              <a-collapse-panel key="parameters">
+                <template #header>
+                  <span class="deploy-collapse__title">
+                    <span>{{ $t('trading-assistant.editor.paramsTab') }}</span>
+                    <a-tag>{{ parameterDefinitions.length }}</a-tag>
+                  </span>
+                </template>
+                <div class="parameter-panel parameter-panel--source">
+                  <div class="parameter-grid">
+                    <a-form-item v-for="param in parameterDefinitions" :key="param.name" :label="parameterLabel(param)">
+                      <a-switch
+                        v-if="param.type === 'boolean'"
+                        :checked="Boolean(model.templateParams[param.name])"
+                        :disabled="isParameterDisabled(param)"
+                        @change="value => setParameter(param.name, value)" />
+                      <a-input-number
+                        v-else-if="['integer', 'number', 'percent'].includes(param.type)"
+                        :value="model.templateParams[param.name]"
+                        :min="param.min"
+                        :max="param.max"
+                        :step="param.step || (param.type === 'integer' ? 1 : 0.01)"
+                        :precision="param.type === 'integer' ? 0 : undefined"
+                        :formatter="param.type === 'percent' ? formatRatioPercent : undefined"
+                        :parser="param.type === 'percent' ? parseRatioPercent : undefined"
+                        @change="value => setParameter(param.name, value)" />
+                      <a-select
+                        v-else-if="parameterOptions(param).length"
+                        :value="model.templateParams[param.name]"
+                        @change="value => setParameter(param.name, value)">
+                        <a-select-option v-for="option in parameterOptions(param)" :key="String(option.value)" :value="option.value">
+                          {{ parameterOptionLabel(param, option) }}
+                        </a-select-option>
+                      </a-select>
+                      <a-input
+                        v-else
+                        :value="model.templateParams[param.name]"
+                        @input="value => setParameter(param.name, value && value.target ? value.target.value : value)" />
+                      <div v-if="parameterDescription(param)" class="parameter-description">{{ parameterDescription(param) }}</div>
+                    </a-form-item>
+                  </div>
+                  <p class="parameter-contract-hint">{{ $t('strategyBuilder.sourceContractHint') }}</p>
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
           </div>
         </a-form>
       </section>
 
-      <section v-show="step === 1" class="editor-section">
-        <a-form layout="vertical" class="editor-form">
-          <a-form-item :label="$t('trading-assistant.form.strategyName')" required>
-            <a-input v-model.trim="model.name" :placeholder="$t('trading-assistant.placeholders.inputStrategyName')" />
-          </a-form-item>
-          <template>
-            <a-alert show-icon type="info" :message="$t('strategyV2.runtimeTitle')" :description="$t('strategyV2.runtimeHint')" />
-            <a-form-item :label="$t(capitalIsMargin ? 'trading-assistant.form.initialMargin' : 'trading-assistant.form.initialCapital')" required>
-              <a-input-number v-model="model.initialCapital" :min="1" :max="1000000000" :precision="2" :step="1000" />
-              <div v-if="capitalCurrency" class="field-hint">
-                {{ $t('strategyV2.capitalCurrencyHint', { currency: capitalCurrency }) }}
-              </div>
-              <div v-if="capitalIsMargin" class="field-hint field-hint--notional">
-                {{ $t('trading-assistant.form.marginNotionalCapacity', {
-                  margin: formattedInitialCapital,
-                  leverage: effectiveLeverage,
-                  notional: formattedNotionalCapacity
-                }) }}
-              </div>
-            </a-form-item>
-            <div v-if="supportsStrategyV2Leverage" class="leverage-panel">
-              <span class="leverage-panel__icon"><a-icon type="dashboard" /></span>
-              <div class="leverage-panel__copy">
-                <strong>{{ $t('strategyCenter.editor.leverageAutoTitle') }}</strong>
-                <span>{{ $t('strategyCenter.editor.leverageAutoHint', { max: Number(strategyManifest.maxLeverage || 1) }) }}</span>
-              </div>
-              <div class="leverage-panel__control">
-                <a-input-number v-model="model.leverage" :min="1" :max="Number(strategyManifest.maxLeverage || 1)" :step="1" :precision="0" />
-                <b>×</b>
-              </div>
-            </div>
-            <a-alert
-              v-else-if="requiresDirectionMode"
-              show-icon
-              type="info"
-              :message="$t('strategyV2.leverageNotAllowed')" />
-          </template>
-        </a-form>
-      </section>
-
-      <section v-show="step === 2" class="editor-section">
+      <section v-if="model.scriptSourceId && hasCurrentContract" class="editor-section editor-section--execution">
         <a-form layout="vertical" class="editor-form editor-form--execution">
           <div class="execution-panel execution-panel--mode">
             <div class="execution-panel__head">
-              <span class="execution-panel__index">1</span>
               <div>
                 <strong>{{ $t('trading-assistant.form.executionMode') }}</strong>
                 <span>{{ $t(model.executionMode === 'live' ? 'strategyV2.liveSourceHint' : 'strategyV2.signalSourceHint') }}</span>
@@ -254,10 +193,88 @@
             </a-radio-group>
           </div>
 
+          <div class="deployment-finance-grid">
+            <a-form-item :label="$t(capitalIsMargin ? 'trading-assistant.form.initialMargin' : 'trading-assistant.form.initialCapital')" required>
+              <a-input-number v-model="model.initialCapital" :min="1" :max="1000000000" :precision="2" :step="1000" />
+              <div v-if="capitalCurrency" class="field-hint">
+                {{ $t('strategyV2.capitalCurrencyHint', { currency: capitalCurrency }) }}
+              </div>
+              <div v-if="capitalIsMargin" class="field-hint field-hint--notional">
+                {{ $t('trading-assistant.form.marginNotionalCapacity', {
+                  margin: formattedInitialCapital,
+                  leverage: effectiveLeverage,
+                  notional: formattedNotionalCapacity
+                }) }}
+              </div>
+            </a-form-item>
+            <div v-if="supportsStrategyV2Leverage" class="leverage-panel">
+              <div class="leverage-panel__copy">
+                <strong>{{ $t('strategyCenter.editor.leverageAutoTitle') }}</strong>
+                <span>{{ $t('strategyCenter.editor.leverageAutoHint', { max: platformMaxLeverage }) }}</span>
+              </div>
+              <div class="leverage-panel__control">
+                <a-input-number v-model="model.leverage" :min="1" :max="platformMaxLeverage" :step="1" :precision="0" />
+                <b>×</b>
+              </div>
+            </div>
+            <a-alert
+              v-else-if="requiresDirectionMode && String(runtimeDraft.market_type || '').toLowerCase() === 'swap'"
+              show-icon
+              type="info"
+              :message="$t('strategyV2.leverageNotAllowed')" />
+          </div>
+
+          <div class="strategy-equity-risk">
+            <div class="strategy-equity-risk__head">
+              <div>
+                <strong>{{ $t('strategyCenter.editor.strategyEquityRiskTitle') }}</strong>
+                <span>{{ $t('strategyCenter.editor.strategyEquityRiskHint') }}</span>
+              </div>
+              <a-tag>{{ $t('strategyCenter.editor.equityRiskAction') }}</a-tag>
+            </div>
+            <div class="strategy-equity-risk__grid">
+              <div class="strategy-equity-risk__row" :class="{ 'is-enabled': model.equityStopLossEnabled }">
+                <a-switch v-model="model.equityStopLossEnabled" size="small" />
+                <div class="strategy-equity-risk__copy">
+                  <strong>{{ $t('strategyCenter.editor.equityStopLoss') }}</strong>
+                  <span>{{ model.equityStopLossEnabled
+                    ? $t('strategyCenter.editor.equityTriggerValue', { value: formattedStopEquity, currency: riskCurrencyLabel })
+                    : $t('strategyCenter.editor.equityStopLossHint') }}</span>
+                </div>
+                <a-input-number
+                  v-model="model.equityStopLossPct"
+                  :disabled="!model.equityStopLossEnabled"
+                  :min="0.01"
+                  :max="1"
+                  :step="0.01"
+                  :precision="2"
+                  :formatter="formatRatioPercent"
+                  :parser="parseRatioPercent" />
+              </div>
+              <div class="strategy-equity-risk__row" :class="{ 'is-enabled': model.equityTakeProfitEnabled }">
+                <a-switch v-model="model.equityTakeProfitEnabled" size="small" />
+                <div class="strategy-equity-risk__copy">
+                  <strong>{{ $t('strategyCenter.editor.equityTakeProfit') }}</strong>
+                  <span>{{ model.equityTakeProfitEnabled
+                    ? $t('strategyCenter.editor.equityTriggerValue', { value: formattedTakeProfitEquity, currency: riskCurrencyLabel })
+                    : $t('strategyCenter.editor.equityTakeProfitHint') }}</span>
+                </div>
+                <a-input-number
+                  v-model="model.equityTakeProfitPct"
+                  :disabled="!model.equityTakeProfitEnabled"
+                  :min="0.01"
+                  :max="10"
+                  :step="0.01"
+                  :precision="2"
+                  :formatter="formatRatioPercent"
+                  :parser="parseRatioPercent" />
+              </div>
+            </div>
+          </div>
+
           <transition name="editor-reveal">
             <div v-if="model.executionMode === 'live'" class="execution-panel execution-panel--live">
               <div class="execution-panel__head">
-                <span class="execution-panel__index">2</span>
                 <div>
                   <strong>{{ $t('trading-assistant.form.savedCredential') }}</strong>
                   <span>{{ $t('trading-assistant.form.executionModeLiveDesc') }}</span>
@@ -267,19 +284,8 @@
                 </a-tag>
               </div>
 
-              <div class="live-risk-card" :class="{ 'is-confirmed': model.disclaimer }">
-                <span class="live-risk-card__icon" aria-hidden="true"><a-icon type="safety-certificate" /></span>
-                <div class="live-risk-card__copy">
-                  <strong>{{ $t('trading-assistant.liveDisclaimer.title') }}</strong>
-                  <p>{{ $t('trading-assistant.liveDisclaimer.content') }}</p>
-                  <a-checkbox v-model="model.disclaimer" class="live-risk-card__check">
-                    {{ $t('trading-assistant.liveDisclaimer.agree') }}
-                  </a-checkbox>
-                </div>
-              </div>
-
               <div class="live-connection-grid">
-                <a-form-item class="live-connection-grid__account" :label="$t('trading-assistant.form.savedCredential')" required>
+                <a-form-item :label="$t('trading-assistant.form.savedCredential')" required>
                   <a-select
                     v-model="model.credentialId"
                     :loading="loadingCredentials"
@@ -295,31 +301,27 @@
                     </a>
                   </div>
                 </a-form-item>
-
-                <div v-if="requiresDirectionMode" class="direction-capability" :class="{ 'direction-capability--legacy': !manifestDirectionMode }">
-                  <div class="direction-capability__label">
-                    <span>{{ $t('strategyCenter.editor.directionMode') }}</span>
-                    <a-tag v-if="manifestDirectionMode" :color="directionModeColor(manifestDirectionMode)">
-                      {{ directionModeLabel(manifestDirectionMode) }}
-                    </a-tag>
-                  </div>
-                  <template v-if="manifestDirectionMode">
-                    <p>{{ $t('strategyCenter.editor.directionModeDetectedHint') }}</p>
-                  </template>
-                  <template v-else>
-                    <a-radio-group v-model="model.directionMode" button-style="solid" class="full-radio-group">
-                      <a-radio-button value="long_only">{{ $t('strategyCenter.editor.directionLongOnly') }}</a-radio-button>
-                      <a-radio-button value="short_only">{{ $t('strategyCenter.editor.directionShortOnly') }}</a-radio-button>
-                      <a-radio-button value="one_way">{{ $t('strategyCenter.editor.directionOneWay') }}</a-radio-button>
-                      <a-radio-button value="both">{{ $t('strategyCenter.editor.directionBoth') }}</a-radio-button>
-                      <a-radio-button value="neutral">{{ $t('strategyCenter.editor.directionNeutral') }}</a-radio-button>
-                    </a-radio-group>
-                    <p class="field-hint--warning">{{ $t('strategyCenter.editor.directionModeLegacyHint') }}</p>
-                  </template>
-                </div>
               </div>
+            </div>
+          </transition>
 
-              <div class="ai-decision-filter-card" :class="{ 'is-disabled': !supportsAiDecisionFilter }">
+          <a-collapse v-model="expandedSections" :bordered="false" class="deploy-collapse deploy-collapse--advanced">
+            <a-collapse-panel key="advanced" :header="$t('trading-assistant.form.advancedSettings')">
+              <div v-if="model.executionMode === 'live' && requiresDirectionFallback" class="advanced-field">
+                <strong>{{ $t('strategyCenter.editor.directionMode') }}</strong>
+                <a-radio-group v-model="model.directionMode" class="full-radio-group">
+                  <a-radio-button value="long_only">{{ $t('strategyCenter.editor.directionLongOnly') }}</a-radio-button>
+                  <a-radio-button value="short_only">{{ $t('strategyCenter.editor.directionShortOnly') }}</a-radio-button>
+                  <a-radio-button value="one_way">{{ $t('strategyCenter.editor.directionOneWay') }}</a-radio-button>
+                  <a-radio-button value="both">{{ $t('strategyCenter.editor.directionBoth') }}</a-radio-button>
+                  <a-radio-button value="neutral">{{ $t('strategyCenter.editor.directionNeutral') }}</a-radio-button>
+                </a-radio-group>
+                <p>{{ $t('strategyCenter.editor.directionModeLegacyHint') }}</p>
+              </div>
+              <div
+                v-if="model.executionMode === 'live'"
+                class="ai-decision-filter-card"
+                :class="{ 'is-disabled': !supportsAiDecisionFilter }">
                 <span class="ai-decision-filter-card__icon"><a-icon type="safety" /></span>
                 <div class="ai-decision-filter-card__copy">
                   <strong>{{ $t('aiDecisionFilter.title') }}</strong>
@@ -331,40 +333,55 @@
                   :disabled="!supportsAiDecisionFilter"
                 />
               </div>
-            </div>
-          </transition>
-
-          <div class="execution-panel execution-panel--notifications">
-            <div class="execution-panel__head">
-              <span class="execution-panel__index">{{ model.executionMode === 'live' ? 3 : 2 }}</span>
-              <div>
-                <strong>{{ $t('trading-assistant.form.notifyChannels') }}</strong>
-                <span>{{ $t('trading-assistant.form.notifyChannelsHint') }}</span>
+              <div class="execution-panel execution-panel--notifications">
+                <div class="execution-panel__head">
+                  <div>
+                    <strong>{{ $t('trading-assistant.form.notifyChannels') }}</strong>
+                    <span>{{ $t('trading-assistant.form.notifyChannelsHint') }}</span>
+                  </div>
+                </div>
+                <a-checkbox-group v-model="model.notifyChannels" class="notification-grid">
+                  <a-checkbox
+                    v-for="channel in notificationChannels"
+                    :key="channel"
+                    :value="channel"
+                    class="notification-card"
+                    :class="{ 'is-selected': model.notifyChannels.includes(channel) }">
+                    <span class="notification-card__content">
+                      <a-icon :type="notificationIcon(channel)" aria-hidden="true" />
+                      <span>{{ $t(`trading-assistant.notify.${channel}`) }}</span>
+                    </span>
+                  </a-checkbox>
+                </a-checkbox-group>
               </div>
-            </div>
-            <a-checkbox-group v-model="model.notifyChannels" class="notification-grid">
-              <a-checkbox
-                v-for="channel in notificationChannels"
-                :key="channel"
-                :value="channel"
-                class="notification-card"
-                :class="{ 'is-selected': model.notifyChannels.includes(channel) }">
-                <span class="notification-card__content">
-                  <a-icon :type="notificationIcon(channel)" aria-hidden="true" />
-                  <span>{{ $t(`trading-assistant.notify.${channel}`) }}</span>
-                </span>
-              </a-checkbox>
-            </a-checkbox-group>
-          </div>
+            </a-collapse-panel>
+          </a-collapse>
         </a-form>
       </section>
-    </a-spin>
+
+      <div v-if="model.scriptSourceId && hasCurrentContract && model.executionMode === 'live'" class="deployment-consent-row">
+        <a-checkbox v-model="model.disclaimer">
+          {{ $t('trading-assistant.liveDisclaimer.agree') }}
+        </a-checkbox>
+        <a-popover
+          trigger="click"
+          placement="topRight"
+          :overlay-class-name="isDarkTheme ? 'deployment-disclaimer-popover deployment-disclaimer-popover--dark' : 'deployment-disclaimer-popover'">
+          <template #title>{{ $t('trading-assistant.liveDisclaimer.title') }}</template>
+          <template #content>
+            <p>{{ $t('trading-assistant.liveDisclaimer.content') }}</p>
+          </template>
+          <a-button type="link" class="deployment-consent-row__link">
+            {{ $t('trading-assistant.liveDisclaimer.view') }}
+          </a-button>
+        </a-popover>
+      </div>
+      </a-spin>
+    </div>
 
     <template #footer>
       <a-button @click="close">{{ $t('trading-assistant.form.cancel') }}</a-button>
-      <a-button v-if="step > 0" @click="step -= 1">{{ $t('trading-assistant.form.prev') }}</a-button>
-      <a-button v-if="step < 2" type="primary" :loading="step === 0 && sourceContractLoading" @click="next">{{ $t('trading-assistant.form.next') }}</a-button>
-      <a-button v-else type="primary" :loading="saving" @click="save">
+      <a-button type="primary" :loading="saving || sourceContractLoading" @click="save">
         {{ $t(isEdit ? 'trading-assistant.form.confirmEdit' : 'trading-assistant.form.confirmCreate') }}
       </a-button>
     </template>
@@ -383,6 +400,7 @@ import {
   getExchangeDisplayName,
   supportsLiveExecutionMode
 } from '@/utils/exchangeCredential'
+
 import {
   applyStrategyRuntimeConfigToCode,
   extractScriptParamsFromCode,
@@ -398,6 +416,7 @@ import {
 } from '@/utils/strategyParameterPresentation'
 import { ratioPercentInputFormatter, ratioPercentInputParser } from '@/utils/numberFormat'
 
+const PLATFORM_MAX_LEVERAGE = 100
 const DEFAULT_CHANNELS = ['browser', 'email']
 const RUNTIME_TIMEFRAMES = ['1m', '5m', '15m', '30m', '1H', '4H', '1D', '1W']
 const DIRECTION_MODE_ALIASES = {
@@ -480,7 +499,7 @@ export default {
   },
   data () {
     return {
-      step: 0,
+      expandedSections: [],
       loading: false,
       saving: false,
       loadingSources: false,
@@ -579,6 +598,12 @@ export default {
     },
     supportsStrategyV2Leverage () {
       if (!this.strategyManifest.leverageAllowed) return false
+      if (
+        this.canEditSourceRuntime &&
+        this.sourceRuntimeContract.hasProduct &&
+        String(this.runtimeDraft.market_category || '') === 'Crypto' &&
+        String(this.runtimeDraft.market_type || '').toLowerCase() !== 'swap'
+      ) return false
       const universe = this.parseObject(this.strategyManifest.universe)
       const instruments = Array.isArray(universe.instruments) ? universe.instruments : []
       return instruments.length > 0 && instruments.every(item => {
@@ -589,9 +614,18 @@ export default {
     capitalIsMargin () {
       return this.supportsStrategyV2Leverage
     },
+    platformMaxLeverage () {
+      return this.supportsStrategyV2Leverage ? PLATFORM_MAX_LEVERAGE : 1
+    },
     capitalCurrency () {
       const universe = this.parseObject(this.strategyManifest.universe)
-      if (universe.reference) return ''
+      if (universe.reference) {
+        return {
+          USStock: 'USD',
+          HKStock: 'HKD',
+          CNStock: 'CNY'
+        }[this.marketCategory] || ''
+      }
       const instruments = Array.isArray(universe.instruments) ? universe.instruments : []
       const currencies = new Set(instruments.map(item => {
         const market = String(item.market || '')
@@ -613,6 +647,19 @@ export default {
     formattedNotionalCapacity () {
       const value = Math.max(0, Number(this.model.initialCapital) || 0) * this.effectiveLeverage
       return value.toLocaleString(undefined, { maximumFractionDigits: 2 })
+    },
+    riskCurrencyLabel () {
+      return this.capitalCurrency || ''
+    },
+    formattedStopEquity () {
+      const capital = Math.max(0, Number(this.model.initialCapital) || 0)
+      const ratio = Math.min(1, Math.max(0, Number(this.model.equityStopLossPct) || 0))
+      return (capital * (1 - ratio)).toLocaleString(undefined, { maximumFractionDigits: 2 })
+    },
+    formattedTakeProfitEquity () {
+      const capital = Math.max(0, Number(this.model.initialCapital) || 0)
+      const ratio = Math.max(0, Number(this.model.equityTakeProfitPct) || 0)
+      return (capital * (1 + ratio)).toLocaleString(undefined, { maximumFractionDigits: 2 })
     },
     supportsLive () {
       return supportsLiveExecutionMode(this.strategyManifest)
@@ -733,6 +780,10 @@ export default {
         initialCapital: Number(config.initial_capital) > 0 ? Number(config.initial_capital) : 1000,
         leverageEnabled: Boolean(config.leverage_enabled),
         leverage: Number(config.leverage) > 0 ? Number(config.leverage) : 1,
+        equityStopLossEnabled: this.mode !== 'edit',
+        equityStopLossPct: 0.3,
+        equityTakeProfitEnabled: false,
+        equityTakeProfitPct: 0.5,
         executionMode: 'live',
         credentialId: undefined,
         directionMode: '',
@@ -753,7 +804,7 @@ export default {
       }
     },
     async initialize () {
-      this.step = 0
+      this.expandedSections = []
       this.model = this.defaultModel()
       this.sourceDetail = {}
       this.compiledManifest = {}
@@ -832,10 +883,21 @@ export default {
           this.model.name = this.sourceDetail.name || this.sourceDetail.title || ''
         }
         if (applyDefaults && !this.isEdit) {
+          const sourceRuntime = this.sourceRuntimeContract.config || {}
+          const sourceStopLoss = Number(sourceRuntime.equity_stop_loss_pct)
+          const sourceTakeProfit = Number(sourceRuntime.equity_take_profit_pct)
           this.model.timeframe = this.manifestFrequency
           this.model.templateParams = this.buildParameterValues(this.sourceParameterValues)
           this.model.leverageEnabled = false
           this.model.leverage = 1
+          if (Number.isFinite(sourceStopLoss)) {
+            this.model.equityStopLossEnabled = sourceStopLoss > 0
+            if (sourceStopLoss > 0) this.model.equityStopLossPct = sourceStopLoss
+          }
+          if (Number.isFinite(sourceTakeProfit)) {
+            this.model.equityTakeProfitEnabled = sourceTakeProfit > 0
+            if (sourceTakeProfit > 0) this.model.equityTakeProfitPct = sourceTakeProfit
+          }
         }
         this.normalizeExecutionFields()
         this.syncRuntimeDraftFromSource()
@@ -852,6 +914,17 @@ export default {
       const strategy = (res && res.data) || res || {}
       this.originalStrategy = strategy
       const config = this.parseObject(strategy.trading_config)
+      const deploymentRisk = this.parseObject(config.deployment_risk)
+      const equityStopLossPct = Number(
+        deploymentRisk.equity_stop_loss_pct !== undefined
+          ? deploymentRisk.equity_stop_loss_pct
+          : config.equity_stop_loss_pct
+      ) || 0
+      const equityTakeProfitPct = Number(
+        deploymentRisk.equity_take_profit_pct !== undefined
+          ? deploymentRisk.equity_take_profit_pct
+          : config.equity_take_profit_pct
+      ) || 0
       this.model = {
         ...this.defaultModel(),
         scriptSourceId: String(config.script_source_id || ''),
@@ -860,6 +933,10 @@ export default {
         initialCapital: Number(config.initial_capital || strategy.initial_capital || 10000),
         leverageEnabled: Boolean(config.leverage_enabled),
         leverage: Number(config.leverage || 1),
+        equityStopLossEnabled: equityStopLossPct > 0,
+        equityStopLossPct: equityStopLossPct > 0 ? equityStopLossPct : 0.3,
+        equityTakeProfitEnabled: equityTakeProfitPct > 0,
+        equityTakeProfitPct: equityTakeProfitPct > 0 ? equityTakeProfitPct : 0.5,
         executionMode: strategy.execution_mode === 'live' ? 'live' : 'signal',
         credentialId: config.credential_id || undefined,
         directionMode: normalizeDirectionMode(config.direction_mode || config.position_side),
@@ -881,7 +958,7 @@ export default {
         this.model.leverage = 1
       } else {
         this.model.leverageEnabled = true
-        const maximum = Math.max(1, Number(this.strategyManifest.maxLeverage || 1))
+        const maximum = this.platformMaxLeverage
         this.model.leverage = Math.min(maximum, Math.max(1, Number(this.model.leverage) || 1))
       }
       if (!this.supportsLive && this.model.executionMode === 'live') {
@@ -1027,6 +1104,14 @@ export default {
         next.exchange_id = ''
       }
       this.runtimeDraft = next
+      if (
+        field === 'market_type' &&
+        next.market_category === 'Crypto' &&
+        next.market_type === 'spot' &&
+        Object.prototype.hasOwnProperty.call(this.model.templateParams, 'allow_short')
+      ) {
+        this.$set(this.model.templateParams, 'allow_short', false)
+      }
       this.ensureCurrentRuntimeSymbolOption()
     },
     async applySourceRuntimeConfig (options = {}) {
@@ -1089,18 +1174,6 @@ export default {
       if (!match) return ''
       return Number(match[1]) < 0 ? 'short_only' : 'long_only'
     },
-    directionModeLabel (mode) {
-      return this.$t(`strategyCenter.editor.directionMode.${normalizeDirectionMode(mode) || 'unknown'}`)
-    },
-    directionModeColor (mode) {
-      return {
-        long_only: 'green',
-        short_only: 'red',
-        one_way: 'orange',
-        both: 'blue',
-        neutral: 'purple'
-      }[normalizeDirectionMode(mode)] || 'default'
-    },
     exchangeName (exchangeId) {
       return getExchangeDisplayName(exchangeId)
     },
@@ -1157,33 +1230,39 @@ export default {
     setParameter (name, value) {
       this.$set(this.model.templateParams, name, value)
     },
-    async next () {
-      if (this.step === 0 && !this.model.scriptSourceId) {
+    isParameterDisabled (param) {
+      return Boolean(
+        param &&
+        param.name === 'allow_short' &&
+        String(this.runtimeDraft.market_category || '') === 'Crypto' &&
+        String(this.runtimeDraft.market_type || '').toLowerCase() === 'spot'
+      )
+    },
+    async validateDeployment () {
+      if (!this.model.scriptSourceId) {
         this.$message.warning(this.$t('trading-assistant.form.scriptSourceRequired'))
-        return
+        return false
       }
-      if (this.step === 0 && this.runtimeDirty) {
+      if (this.runtimeDirty) {
         const applied = await this.applySourceRuntimeConfig({ silentSuccess: true })
-        if (!applied) return
+        if (!applied) return false
       }
-      if (this.step === 0 && !this.hasCurrentContract) {
+      if (!this.hasCurrentContract) {
         await this.loadSourceContract(this.model.scriptSourceId)
       }
-      if (this.step === 0 && !this.hasCurrentContract) {
+      if (!this.hasCurrentContract) {
         this.$message.warning(this.$t('strategyV2.sourceContractRequired'))
-        return
+        return false
       }
-      if (this.step === 1) {
-        if (!this.model.name) {
-          this.$message.warning(this.$t('trading-assistant.validation.strategyNameRequired'))
-          return
-        }
-        if (!(Number(this.model.initialCapital) > 0)) {
-          this.$message.warning(this.$t('trading-assistant.validation.initialCapitalRequired'))
-          return
-        }
+      if (!this.model.name) {
+        this.$message.warning(this.$t('trading-assistant.validation.strategyNameRequired'))
+        return false
       }
-      this.step += 1
+      if (!(Number(this.model.initialCapital) > 0)) {
+        this.$message.warning(this.$t('trading-assistant.validation.initialCapitalRequired'))
+        return false
+      }
+      return this.validateFinal()
     },
     async loadSourceContract (id) {
       if (!id) return false
@@ -1233,10 +1312,18 @@ export default {
         this.$message.warning(this.$t('strategyCenter.editor.directionModeRequired'))
         return false
       }
+      if (this.model.equityStopLossEnabled && !(Number(this.model.equityStopLossPct) > 0 && Number(this.model.equityStopLossPct) <= 1)) {
+        this.$message.warning(this.$t('trading-assistant.validation.equityStopLossRequired'))
+        return false
+      }
+      if (this.model.equityTakeProfitEnabled && !(Number(this.model.equityTakeProfitPct) > 0 && Number(this.model.equityTakeProfitPct) <= 10)) {
+        this.$message.warning(this.$t('trading-assistant.validation.equityTakeProfitRequired'))
+        return false
+      }
       return true
     },
     async save () {
-      if (!this.validateFinal()) return
+      if (!(await this.validateDeployment())) return
       this.saving = true
       try {
         const payload = {
@@ -1245,6 +1332,8 @@ export default {
           initialCapital: Number(this.model.initialCapital),
           leverageEnabled: Boolean(this.model.leverageEnabled && this.supportsStrategyV2Leverage),
           leverage: this.model.leverageEnabled ? Number(this.model.leverage || 1) : 1,
+          equityStopLossPct: this.model.equityStopLossEnabled ? Number(this.model.equityStopLossPct) : 0,
+          equityTakeProfitPct: this.model.equityTakeProfitEnabled ? Number(this.model.equityTakeProfitPct) : 0,
           executionMode: this.model.executionMode,
           credentialId: this.model.executionMode === 'live' ? this.model.credentialId : undefined,
           directionMode: this.requiresDirectionMode ? this.effectiveDirectionMode : undefined,
@@ -1278,59 +1367,50 @@ export default {
 
 <style lang="less">
 .live-strategy-editor-wrap {
-  .ai-decision-filter-card { display: flex; align-items: center; gap: 14px; padding: 15px 16px; border: 1px solid #d9e6f5; border-radius: 9px; background: #f7fbff; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
+  .ai-decision-filter-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid #e1e6ed; border-radius: 8px; background: #fafbfc; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
   .ai-decision-filter-card:hover,
   .ai-decision-filter-card:focus-within { border-color: color-mix(in srgb, var(--primary-color, #1677ff) 48%, #d9e6f5); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color, #1677ff) 10%, transparent); }
   .ai-decision-filter-card.is-disabled { opacity: .65; }
-  .ai-decision-filter-card__icon { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 50%; background: #e6f4ff; color: #1677ff; font-size: 17px; }
+  .ai-decision-filter-card__icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 7px; background: color-mix(in srgb, var(--primary-color, #52c41a) 10%, #fff); color: var(--primary-color, #52c41a); font-size: 15px; }
   .ai-decision-filter-card__copy { flex: 1; min-width: 0; }
   .ai-decision-filter-card__copy strong { color: #18202c; }
   .ai-decision-filter-card__copy p { margin: 3px 0 0; color: #667085; font-size: 12px; line-height: 1.5; }
-  .ant-modal { top: 4vh; height: 92vh; padding-bottom: 0; }
-  .ant-modal-content { display: flex; flex-direction: column; height: 100%; overflow: hidden; border-radius: 12px; box-shadow: 0 24px 70px rgba(15, 23, 42, .22); }
-  .ant-modal-header { padding: 19px 26px; border-bottom-color: #e8ebf0; }
-  .ant-modal-title { color: #18202c; font-size: 18px; font-weight: 700; }
+  .ant-modal { top: 6vh; max-width: calc(100vw - 32px); padding-bottom: 0; }
+  .ant-modal-content { display: flex; flex-direction: column; max-height: 88vh; overflow: hidden; border-radius: 10px; box-shadow: 0 20px 56px rgba(15, 23, 42, .24); }
+  .ant-modal-header { flex: 0 0 auto; padding: 16px 24px; border-bottom-color: #e8ebf0; }
+  .ant-modal-title { color: #18202c; font-size: 17px; font-weight: 700; line-height: 24px; }
   .ant-modal,
   .ant-modal-content,
   .ant-modal-body,
   .ant-spin-nested-loading,
   .ant-spin-container,
   .editor-section { max-width: 100%; }
-  .ant-modal-body { flex: 1 1 auto; min-height: 0; max-height: none; overflow-x: hidden !important; overflow-y: auto; padding: 24px 28px 20px; overscroll-behavior: contain; }
+  .ant-modal-body { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: hidden; padding: 0; }
   .ant-spin-container { overflow-x: hidden; }
-  .ant-modal-footer { padding: 14px 26px; border-top-color: #e8ebf0; }
-  .ant-modal-footer .ant-btn { min-width: 86px; height: 36px; border-radius: 6px; }
-  .editor-steps { margin: 2px 4px 20px; padding: 13px 16px; border: 1px solid #e8ebf0; border-radius: 10px; background: #fafbfc; }
-  .ant-steps-item-process .ant-steps-item-icon { border-color: var(--primary-color, #1890ff); background: var(--primary-color, #1890ff); }
-  .ant-steps-item-finish .ant-steps-item-icon { border-color: var(--primary-color, #1890ff); }
-  .ant-steps-item-finish .ant-steps-item-icon > .ant-steps-icon,
+  .ant-modal-footer { flex: 0 0 auto; padding: 12px 24px; border-top-color: #e8ebf0; background: #fff; }
+  .ant-modal-footer .ant-btn { min-width: 82px; height: 34px; border-radius: 5px; }
+  .editor-content-scroll { flex: 1 1 auto; min-height: 0; max-height: calc(88vh - 108px); overflow-x: hidden; overflow-y: auto; padding: 16px 20px 20px; overscroll-behavior: contain; }
   .ant-alert-info .ant-alert-icon { color: var(--primary-color, #1890ff); }
-  .editor-steps .ant-steps-item-finish > .ant-steps-item-container > .ant-steps-item-tail::after { background: var(--primary-color, #faad14) !important; background-color: var(--primary-color, #faad14) !important; }
-  .editor-section { min-height: 360px; }
-  .editor-form { margin-top: 20px; }
-  .editor-form--source { max-width: 760px; margin-right: auto; margin-left: auto; }
-  .editor-form--execution { display: flex; flex-direction: column; gap: 14px; max-width: 780px; margin: 0 auto; }
-  .editor-form .ant-form-item { margin-bottom: 17px; }
+  .editor-section { width: 100%; max-width: 860px; margin: 0 auto; }
+  .editor-section + .editor-section { margin-top: 10px; }
+  .editor-form { max-width: 100%; margin: 0 auto; }
+  .editor-form--source { max-width: 100%; }
+  .editor-form--execution { display: flex; flex-direction: column; max-width: 860px; }
+  .editor-form .ant-form-item { margin-bottom: 14px; }
   .editor-form .ant-form-item-label { padding-bottom: 5px; font-weight: 600; }
   .editor-form .ant-input,
   .editor-form .ant-select-selection,
-  .editor-form .ant-input-number { min-height: 38px; border-radius: 6px; }
-  .editor-form .ant-select-selection__rendered { line-height: 36px; }
+  .editor-form .ant-input-number { min-height: 36px; border-radius: 5px; }
+  .editor-form .ant-select-selection__rendered { line-height: 34px; }
   .editor-form .ant-input-number { width: 100%; }
-  .source-summary { display: flex; gap: 14px; margin: 4px 0 16px; padding: 16px; border: 1px solid #e4e8ee; border-radius: 9px; background: #f8fafc; }
-  .source-summary__title { display: flex; align-items: center; gap: 8px; }
-  .source-summary__icon { display: flex; align-items: center; justify-content: center; flex: 0 0 42px; height: 42px; border-radius: 9px; background: color-mix(in srgb, var(--primary-color, #1890ff) 12%, #fff); color: var(--primary-color, #1890ff); font-size: 19px; }
-  .source-summary strong { display: block; margin-bottom: 4px; color: #202938; font-size: 15px; }
-  .source-summary p { margin: 0 0 7px; color: #697586; font-size: 12px; line-height: 1.55; }
-  .source-summary span { display: inline-flex; margin-right: 14px; color: #7c8796; font-size: 12px; }
-  .strategy-v2-summary { margin: 0 0 18px; padding: 18px; border: 1px solid #e1e6ed; border-left: 3px solid var(--primary-color, #faad14); border-radius: 10px; background: #fafbfc; }
-  .strategy-v2-summary__head { display: flex; align-items: center; gap: 12px; color: #202938; }
+  .deploy-primary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .strategy-v2-summary { margin: 0; overflow: hidden; border: 1px solid #e1e6ed; border-radius: 8px; background: #fafbfc; }
+  .strategy-v2-summary__head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 11px 14px; border-bottom: 1px solid #e7eaf0; color: #202938; }
   .strategy-v2-summary__head > div { min-width: 0; }
-  .strategy-v2-summary__head strong { display: block; font-size: 15px; line-height: 1.35; }
-  .strategy-v2-summary__head p { margin: 4px 0 0; color: #7a8594; font-size: 12px; line-height: 1.5; }
-  .strategy-v2-summary__icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 38px; height: 38px; border-radius: 9px; background: color-mix(in srgb, var(--primary-color, #faad14) 11%, #fff); color: var(--primary-color, #faad14); font-size: 16px; }
-  .strategy-v2-summary__lock { margin-left: auto; white-space: nowrap; }
-  .strategy-runtime-editor { display: flex; flex-direction: column; gap: 15px; margin: 17px 0 11px; padding: 16px; border: 1px solid #e1e6ed; border-radius: 9px; background: #fff; box-shadow: 0 1px 2px rgba(15, 23, 42, .025); }
+  .strategy-v2-summary__head strong { display: block; font-size: 13px; line-height: 1.35; }
+  .strategy-v2-summary__head p { margin: 3px 0 0; color: #7a8594; font-size: 11px; line-height: 1.45; }
+  .strategy-v2-summary__meta { display: flex; flex: 0 0 auto; align-items: center; gap: 14px; color: #7c8796; font-size: 11px; white-space: nowrap; }
+  .strategy-runtime-editor { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 14px; border: 0; background: transparent; }
   .strategy-runtime-editor__controls { display: grid; grid-template-columns: minmax(230px, 1.35fr) minmax(150px, .65fr); gap: 14px; }
   .strategy-runtime-field { display: flex !important; flex-direction: column; gap: 7px; min-width: 0; color: #354052; font-size: 12px; font-weight: 600; }
   .strategy-runtime-field--exchange { grid-column: 1 / -1; }
@@ -1339,81 +1419,95 @@ export default {
   .strategy-runtime-field__label small { color: #d48806; font-size: 11px; font-weight: 500; white-space: nowrap; }
   .strategy-runtime-product { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
   .strategy-runtime-product .ant-radio-button-wrapper { min-width: 0; height: 38px; padding: 0 12px; overflow: hidden; line-height: 36px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-  .strategy-runtime-editor__footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-top: 13px; border-top: 1px solid #edf0f4; color: #7c8796; font-size: 11px; line-height: 1.5; }
+  .strategy-runtime-product .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) { border-color: var(--primary-color, #52c41a) !important; background: color-mix(in srgb, var(--primary-color, #52c41a) 9%, #fff) !important; color: var(--primary-color, #52c41a) !important; box-shadow: -1px 0 0 0 var(--primary-color, #52c41a) !important; }
+  .strategy-runtime-editor__footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 12px; border-radius: 6px; background: color-mix(in srgb, var(--primary-color, #faad14) 6%, transparent); color: #7c8796; font-size: 11px; line-height: 1.45; }
   .strategy-runtime-editor__footer > span { min-width: 0; }
   .strategy-runtime-editor__footer .ant-btn { flex: 0 0 auto; height: 34px; padding: 0 16px; border-radius: 6px; }
   .runtime-symbol-option { display: inline-flex; align-items: center; gap: 7px; }
   .runtime-symbol-option .anticon-star { color: #faad14; }
-  .strategy-v2-summary__instrument { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 14px 0 9px; padding: 13px 14px; border: 1px solid color-mix(in srgb, var(--primary-color, #52c41a) 18%, #e4e8ee); border-radius: 8px; background: #fff; }
+  .strategy-v2-summary__instrument { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 0; padding: 14px; background: transparent; }
   .strategy-v2-summary__instrument em { color: #697586; font-size: 12px; font-style: normal; }
   .strategy-v2-summary__instrument b { color: #1f2937; font-size: 16px; overflow-wrap: anywhere; text-align: right; }
-  .strategy-v2-summary__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .strategy-v2-summary__grid span { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 11px; border: 1px solid #edf0f4; border-radius: 7px; background: #f4f6f8; }
-  .strategy-v2-summary__grid em { color: #7c8796; font-size: 11px; font-style: normal; }
-  .strategy-v2-summary__grid b { color: #273142; font-size: 12px; overflow-wrap: anywhere; text-align: right; }
   .field-hint { margin-top: 6px; color: #7d8794; font-size: 12px; line-height: 1.5; }
   .field-hint--warning { color: #d48806; }
-  .strategy-defaults, .execution-summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: -2px 0 17px; padding: 11px 13px; border: 1px solid #e4e8ee; border-radius: 7px; background: #f8fafc; color: #727d8b; font-size: 12px; }
-  .strategy-defaults strong, .execution-summary strong { color: #202938; font-size: 13px; }
+  .editor-section--execution { overflow: hidden; border: 1px solid #e1e6ed; border-radius: 8px; background: #fff; }
+  .deployment-finance-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr); gap: 12px; padding: 14px; border-top: 1px solid #e7eaf0; background: transparent; }
+  .deployment-finance-grid > .ant-form-item { min-width: 0; margin: 0; }
+  .strategy-equity-risk { padding: 14px; border-top: 1px solid #e7eaf0; }
+  .strategy-equity-risk__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 11px; }
+  .strategy-equity-risk__head strong { display: block; color: #202938; font-size: 14px; }
+  .strategy-equity-risk__head span { display: block; margin-top: 3px; color: #7d8794; font-size: 12px; line-height: 1.5; }
+  .strategy-equity-risk__head .ant-tag { flex: 0 0 auto; margin: 0; }
+  .strategy-equity-risk__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .strategy-equity-risk__row { display: grid; grid-template-columns: auto minmax(0, 1fr) 112px; align-items: center; gap: 10px; min-width: 0; padding: 11px 12px; border: 1px solid #e1e6ed; border-radius: 7px; background: #fafbfc; transition: border-color .18s ease, background .18s ease; }
+  .strategy-equity-risk__row.is-enabled { border-color: color-mix(in srgb, var(--primary-color, #52c41a) 55%, #e1e6ed); background: color-mix(in srgb, var(--primary-color, #52c41a) 5%, #fff); }
+  .strategy-equity-risk__row .ant-input-number { width: 112px; }
+  .strategy-equity-risk__copy { min-width: 0; }
+  .strategy-equity-risk__copy strong { display: block; color: #202938; font-size: 13px; line-height: 1.4; }
+  .strategy-equity-risk__copy span { display: block; margin-top: 2px; color: #7d8794; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
   .full-radio-group { display: flex; width: 100%; }
   .full-radio-group .ant-radio-button-wrapper { flex: 1; text-align: center; }
-  .parameter-panel { margin-top: 3px; padding: 16px 16px 2px; border: 1px solid #e4e8ee; border-radius: 9px; background: #fafbfc; }
-  .parameter-panel--source { margin-top: 18px; }
-  .parameter-panel__head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
+  .parameter-panel { margin-top: 0; padding: 4px 4px 0; border: 0; border-radius: 0; background: transparent; }
+  .parameter-panel--source { margin-top: 0; }
+  .parameter-panel__head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
   .parameter-panel__head strong { display: block; color: #202938; font-size: 14px; }
   .parameter-panel__head span { display: block; margin-top: 3px; color: #7d8794; font-size: 12px; }
-  .parameter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; }
+  .parameter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 14px; }
   .parameter-description { margin-top: 5px; color: #7d8794; font-size: 11px; line-height: 1.45; }
   .parameter-contract-hint { margin: -2px 0 13px; color: #7d8794; font-size: 11px; line-height: 1.5; }
-  .leverage-panel { display: flex; align-items: center; gap: 13px; margin: 2px 0 18px; padding: 15px 16px; border: 1px solid #e1e6ed; border-radius: 9px; background: #fafbfc; }
-  .leverage-panel__icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 38px; height: 38px; border-radius: 9px; background: color-mix(in srgb, var(--primary-color, #faad14) 11%, #fff); color: var(--primary-color, #faad14); font-size: 17px; }
+  .leverage-panel { display: flex; align-items: center; gap: 12px; margin: 0; padding: 0 0 0 14px; border: 0; border-left: 1px solid #e4e8ee; border-radius: 0; background: transparent; }
   .leverage-panel__copy { min-width: 0; }
   .leverage-panel__copy strong { display: block; color: #202938; font-size: 14px; }
   .leverage-panel__copy span { display: block; margin-top: 3px; color: #7d8794; font-size: 12px; line-height: 1.5; }
   .leverage-panel__control { display: flex; align-items: center; gap: 8px; flex: 0 0 138px; margin-left: auto; }
   .leverage-panel__control .ant-input-number { width: 108px; }
   .leverage-panel__control b { color: #4b5563; font-size: 16px; }
-  .execution-panel { padding: 18px; border: 1px solid #e4e8ee; border-radius: 11px; background: #fff; box-shadow: 0 2px 8px rgba(15, 23, 42, .035); }
-  .execution-panel__head { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 15px; }
+  .execution-panel { padding: 14px; border: 0; border-radius: 0; background: transparent; }
+  .execution-panel--live { border-top: 1px solid #e7eaf0; }
+  .execution-panel__head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
   .execution-panel__head > div { min-width: 0; }
-  .execution-panel__head strong { display: block; color: #202938; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
-  .execution-panel__head > div > span { display: block; margin-top: 3px; color: #7d8794; font-size: 12px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
-  .execution-panel__index { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, var(--primary-color, #faad14) 16%, #fff); color: var(--primary-color, #faad14); font-size: 12px; font-weight: 700; }
+  .execution-panel__head strong { display: block; color: #202938; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+  .execution-panel__head > div > span { display: block; margin-top: 2px; color: #7d8794; font-size: 11px; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; }
   .execution-panel__status { flex: 0 0 auto; margin: 0 0 0 auto; }
   .execution-mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: 100%; }
-  .execution-mode-card { display: flex; align-items: flex-start; min-width: 0; margin: 0 !important; padding: 15px; border: 1px solid #e1e6ed; border-radius: 9px; background: #fafbfc; white-space: normal; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .18s ease; }
-  .execution-mode-card:hover { border-color: color-mix(in srgb, var(--primary-color, #faad14) 48%, #e1e6ed); transform: translateY(-1px); }
+  .execution-mode-card { display: flex; align-items: flex-start; min-width: 0; margin: 0 !important; padding: 12px; border: 1px solid #e1e6ed; border-radius: 7px; background: #fafbfc; white-space: normal; transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
+  .execution-mode-card:hover { border-color: color-mix(in srgb, var(--primary-color, #faad14) 48%, #e1e6ed); }
   .execution-mode-card.is-selected { border-color: var(--primary-color, #faad14); background: color-mix(in srgb, var(--primary-color, #faad14) 7%, #fff); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color, #faad14) 10%, transparent); }
-  .execution-mode-card > .ant-radio { margin-top: 11px; }
-  .execution-mode-card > span:last-child { display: flex; align-items: flex-start; gap: 11px; min-width: 0; width: 100%; padding-left: 10px; white-space: normal; }
-  .execution-mode-card__icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; height: 36px; border-radius: 8px; background: color-mix(in srgb, var(--primary-color, #faad14) 11%, #fff); color: var(--primary-color, #faad14); font-size: 16px; }
+  .execution-mode-card > .ant-radio { margin-top: 8px; }
+  .execution-mode-card > span:last-child { display: flex; align-items: flex-start; gap: 9px; min-width: 0; width: 100%; padding-left: 8px; white-space: normal; }
+  .execution-mode-card__icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 32px; height: 32px; border-radius: 7px; background: color-mix(in srgb, var(--primary-color, #faad14) 11%, #fff); color: var(--primary-color, #faad14); font-size: 14px; }
   .execution-mode-card__copy { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
   .execution-mode-card__copy strong { display: block; color: #202938; font-size: 13px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; }
   .execution-mode-card__copy > span { display: block; margin-top: 4px; color: #7d8794; font-size: 11px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
-  .live-risk-card { display: flex; gap: 13px; margin-bottom: 16px; padding: 15px 16px; border: 1px solid #f0d58d; border-radius: 9px; background: #fffaf0; transition: border-color .18s ease, background .18s ease; }
-  .live-risk-card.is-confirmed { border-color: #b7dfc5; background: #f4fbf6; }
-  .live-risk-card__icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; height: 36px; border-radius: 50%; background: #fff1c7; color: #d48806; font-size: 17px; }
-  .live-risk-card.is-confirmed .live-risk-card__icon { background: #e6f6eb; color: #1f9d55; }
-  .live-risk-card__copy { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
-  .live-risk-card__copy strong { color: #4b3b16; font-size: 13px; }
-  .live-risk-card__copy p { margin: 4px 0 10px; color: #786d54; font-size: 11px; line-height: 1.55; }
-  .live-risk-card__check { color: #4b5563; font-size: 12px; font-weight: 600; }
-  .live-connection-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr); gap: 13px; }
+  .live-connection-grid { display: block; }
   .live-connection-grid .ant-form-item { margin: 0; }
-  .direction-capability { min-width: 0; padding: 12px 13px; border: 1px solid #e4e8ee; border-radius: 8px; background: #fafbfc; }
-  .direction-capability--legacy { grid-column: 1 / -1; }
-  .direction-capability__label { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #354052; font-size: 12px; font-weight: 600; }
-  .direction-capability__label .ant-tag { flex: 0 0 auto; margin-right: 0; }
-  .direction-capability p { margin: 7px 0 0; color: #7d8794; font-size: 11px; line-height: 1.5; }
+  .deployment-consent-row { display: flex; align-items: center; gap: 6px; width: 100%; max-width: 860px; margin: 10px auto 0; padding: 0 2px; color: #697586; font-size: 12px; }
+  .deployment-consent-row .ant-checkbox-wrapper { color: inherit; font-size: inherit; }
+  .deployment-consent-row__link { height: auto; padding: 0; font-size: inherit; line-height: inherit; }
+  .advanced-field { margin-bottom: 12px; }
+  .advanced-field strong { display: block; margin-bottom: 8px; color: #202938; font-size: 13px; }
+  .advanced-field p { margin: 7px 0 0; color: #7d8794; font-size: 11px; line-height: 1.5; }
   .notification-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }
-  .notification-card { display: flex; align-items: center; min-width: 0; min-height: 50px; margin: 0 !important; padding: 11px 12px; border: 1px solid #e4e8ee; border-radius: 8px; background: #fafbfc; white-space: normal; transition: border-color .18s ease, background .18s ease, transform .18s ease; }
-  .notification-card:hover { border-color: color-mix(in srgb, var(--primary-color, #faad14) 45%, #e4e8ee); transform: translateY(-1px); }
+  .notification-card { display: flex; align-items: center; min-width: 0; min-height: 42px; margin: 0 !important; padding: 9px 10px; border: 1px solid #e4e8ee; border-radius: 7px; background: #fafbfc; white-space: normal; transition: border-color .18s ease, background .18s ease; }
+  .notification-card:hover { border-color: color-mix(in srgb, var(--primary-color, #faad14) 45%, #e4e8ee); }
   .notification-card.is-selected { border-color: color-mix(in srgb, var(--primary-color, #faad14) 72%, #e4e8ee); background: color-mix(in srgb, var(--primary-color, #faad14) 7%, #fff); }
   .notification-card > span:last-child { min-width: 0; padding-left: 9px; white-space: normal; }
   .notification-card__content { display: inline-flex; align-items: center; gap: 8px; min-width: 0; color: #354052; font-size: 12px; font-weight: 600; white-space: normal; overflow-wrap: anywhere; }
   .credential-config-link { display: inline-block; margin-left: 4px; color: var(--primary-color, #faad14); font-weight: 600; }
   .notification-card__content .anticon { color: #7d8794; font-size: 15px; }
   .notification-card.is-selected .notification-card__content .anticon { color: var(--primary-color, #faad14); }
+  .deploy-collapse { overflow: hidden; border: 0; background: transparent; }
+  .deploy-collapse + .deploy-collapse { margin-top: 12px; }
+  .deploy-collapse > .ant-collapse-item { border: 0; }
+  .deploy-collapse > .ant-collapse-item > .ant-collapse-header { min-height: 42px; padding: 11px 40px 11px 14px; border-top: 1px solid #e7eaf0; color: #354052; font-size: 13px; font-weight: 600; line-height: 20px; }
+  .deploy-collapse > .ant-collapse-item > .ant-collapse-header .ant-collapse-arrow { right: 14px; left: auto; }
+  .deploy-collapse .ant-collapse-content { border-top: 1px solid #edf0f4; background: transparent; }
+  .deploy-collapse .ant-collapse-content > .ant-collapse-content-box { padding: 14px; }
+  .deploy-collapse__title { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+  .deploy-collapse__title .ant-tag { margin-right: 0; }
+  .deploy-collapse--advanced .ai-decision-filter-card { margin-bottom: 12px; }
+  .deploy-collapse--advanced .execution-panel { padding: 0; border: 0; background: transparent; }
+  .strategy-v2-summary .deploy-collapse > .ant-collapse-item > .ant-collapse-header { border-top-color: #e7eaf0; }
   .editor-reveal-enter-active,
   .editor-reveal-leave-active { transition: opacity .18s ease, transform .18s ease; }
   .editor-reveal-enter,
@@ -1421,102 +1515,96 @@ export default {
   &.theme-dark {
     .ant-modal-content,
     .ant-modal-header,
-    .ant-modal-footer { border-color: #2b2f35; background: #17191c; }
+    .ant-modal-body,
+    .ant-modal-footer,
+    .editor-content-scroll { border-color: #333; background: #1b1b1b; }
     .ant-modal-title,
-    .source-summary strong,
     .parameter-panel__head strong,
     .leverage-panel__copy strong,
-    .strategy-defaults strong,
-    .execution-summary strong,
-    .ant-form-item-label > label,
-    .ant-steps-item-title { color: #eef0f3 !important; }
-    .ant-steps-item-wait .ant-steps-item-title { color: #aab0b8 !important; }
-    .ant-steps-item-process .ant-steps-item-title { color: #eef0f3 !important; }
-    .ant-steps-item-finish .ant-steps-item-title { color: #cfd4da !important; }
-    .editor-steps,
-    .source-summary,
+    .ant-form-item-label > label { color: #eef0f3 !important; }
     .strategy-v2-summary,
+    .editor-section--execution { border-color: #333; background: #1b1b1b; }
     .parameter-panel,
-    .leverage-panel,
-    .strategy-defaults,
-    .execution-summary,
-    .execution-panel,
-    .direction-capability { border-color: #30343a; background: #121416; }
-    .source-summary__icon { background: color-mix(in srgb, var(--primary-color, #52c41a) 16%, #121416); color: var(--primary-color, #52c41a); }
-    .source-summary p,
-    .source-summary span,
+    .leverage-panel { background: transparent; }
+    .execution-panel { background: transparent; }
+    .execution-panel--live,
+    .deployment-finance-grid,
+    .strategy-equity-risk { border-top-color: #333; background: transparent; }
+    .deploy-collapse { background: transparent; }
+    .deployment-finance-grid .leverage-panel { border-left-color: #333; }
+    .deploy-collapse > .ant-collapse-item > .ant-collapse-header { border-top-color: #333; color: #dfe4e9; }
+    .deploy-collapse .ant-collapse-content { border-top-color: #333; background: transparent; color: #dfe4e9; }
     .field-hint,
     .parameter-panel__head span,
     .leverage-panel__copy span,
-    .strategy-defaults,
-    .execution-summary { color: #8c949f; }
+    .strategy-equity-risk__head span,
+    .strategy-equity-risk__copy span { color: #8c949f; }
     .execution-panel__head strong,
     .execution-mode-card__copy strong,
-    .direction-capability__label,
+    .advanced-field strong,
     .notification-card__content { color: #eef0f3; }
+    .strategy-equity-risk__head strong,
+    .strategy-equity-risk__copy strong { color: #eef0f3; }
     .execution-panel__head > div > span,
     .execution-mode-card__copy > span,
-    .direction-capability p { color: #8c949f; }
-    .execution-panel__index,
-    .execution-mode-card__icon { background: color-mix(in srgb, var(--primary-color, #faad14) 15%, #17191c); }
+    .advanced-field p { color: #8c949f; }
+    .execution-mode-card__icon { background: color-mix(in srgb, var(--primary-color, #faad14) 15%, #202020); }
     .execution-mode-card,
-    .notification-card { border-color: #34383f; background: #191c20; }
+    .notification-card,
+    .ai-decision-filter-card,
+    .strategy-equity-risk__row { border-color: #333; background: #202020; }
+    .strategy-equity-risk__row.is-enabled { border-color: color-mix(in srgb, var(--primary-color, #52c41a) 58%, #333); background: color-mix(in srgb, var(--primary-color, #52c41a) 8%, #202020); }
     .execution-mode-card:hover,
-    .notification-card:hover { border-color: color-mix(in srgb, var(--primary-color, #faad14) 55%, #34383f); }
+    .notification-card:hover { border-color: color-mix(in srgb, var(--primary-color, #faad14) 55%, #343434); }
     .execution-mode-card.is-selected,
-    .notification-card.is-selected { border-color: var(--primary-color, #faad14); background: color-mix(in srgb, var(--primary-color, #faad14) 12%, #191c20); }
-    .ai-decision-filter-card { border-color: #29465d; background: #111820; }
+    .notification-card.is-selected { border-color: var(--primary-color, #faad14); background: color-mix(in srgb, var(--primary-color, #faad14) 10%, #202020); }
     .ai-decision-filter-card:hover,
-    .ai-decision-filter-card:focus-within { border-color: color-mix(in srgb, var(--primary-color, #52c41a) 48%, #29465d); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color, #52c41a) 12%, transparent); }
-    .ai-decision-filter-card__icon { background: color-mix(in srgb, var(--primary-color, #52c41a) 16%, #111820); color: var(--primary-color, #52c41a); }
+    .ai-decision-filter-card:focus-within { border-color: color-mix(in srgb, var(--primary-color, #52c41a) 48%, #333); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color, #52c41a) 12%, transparent); }
+    .ai-decision-filter-card__icon { background: color-mix(in srgb, var(--primary-color, #52c41a) 14%, #202020); color: var(--primary-color, #52c41a); }
     .ai-decision-filter-card__copy strong { color: #eef0f3; }
     .ai-decision-filter-card__copy p { color: #98a1ac; }
-    .live-risk-card { border-color: #594b27; background: #221f17; }
-    .live-risk-card.is-confirmed { border-color: #29543a; background: #17231b; }
-    .live-risk-card__icon { background: #382f18; }
-    .live-risk-card.is-confirmed .live-risk-card__icon { background: #1e3827; }
-    .live-risk-card__copy strong { color: #f0e3bc; }
-    .live-risk-card__copy p { color: #a89f89; }
-    .live-risk-card__check { color: #d7dbe0; }
-    .strategy-v2-summary { border-color: #30343a; border-left-color: var(--primary-color, #faad14); background: #15181b; }
+    .strategy-v2-summary__head { border-bottom-color: #333; }
     .strategy-v2-summary__head,
-    .strategy-v2-summary__instrument b,
-    .strategy-v2-summary__grid b { color: #eef0f3; }
+    .strategy-v2-summary__instrument b { color: #eef0f3; }
     .strategy-v2-summary__head p,
-    .strategy-v2-summary__instrument em,
-    .strategy-v2-summary__grid em { color: #8c949f; }
-    .strategy-v2-summary__icon { background: color-mix(in srgb, var(--primary-color, #faad14) 15%, #121416); }
-    .strategy-runtime-editor { border-color: #30343a; background: #191c20; box-shadow: none; }
+    .strategy-v2-summary__meta,
+    .strategy-v2-summary__instrument em { color: #8c949f; }
+    .strategy-runtime-editor { background: transparent; }
     .strategy-runtime-field { color: #dfe4e9; }
-    .strategy-runtime-editor__footer { border-top-color: #30343a; color: #8c949f; }
-    .strategy-v2-summary__instrument { border-color: #30343a; background: #191c20; }
-    .strategy-v2-summary__grid span { border-color: #30343a; background: rgba(255, 255, 255, .035); }
-    .leverage-panel__icon { background: color-mix(in srgb, var(--primary-color, #faad14) 15%, #121416); }
+    .strategy-runtime-editor__footer { color: #8c949f; }
+    .strategy-v2-summary__instrument { background: transparent; }
     .leverage-panel__control b { color: #cfd4da; }
     .ant-input,
     .ant-input-number,
     .ant-input-number-input,
-    .ant-select-selection { border-color: #34383f; background: #1c1f23; color: #eef0f3; }
+    .ant-select-selection { border-color: #373737; background: #202020; color: #eef0f3; }
     .ant-input::placeholder,
     .ant-select-selection__placeholder { color: #6f7782; }
     .ant-select-arrow,
     .ant-input-number-handler { color: #9299a3; }
-    .ant-input-number-handler-wrap { border-color: #34383f; background: #1c1f23; }
-    .ant-radio-button-wrapper { border-color: #34383f; background: #1c1f23; color: #aab0b8; }
-    .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) { border-color: var(--primary-color, #52c41a); background: color-mix(in srgb, var(--primary-color, #52c41a) 18%, #1c1f23); color: var(--primary-color, #52c41a); box-shadow: -1px 0 0 0 var(--primary-color, #52c41a); }
+    .ant-input-number-handler-wrap { border-color: #373737; background: #202020; }
+    .ant-radio-button-wrapper { border-color: #373737; background: #202020; color: #aab0b8; }
+    .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) { border-color: var(--primary-color, #52c41a); background: color-mix(in srgb, var(--primary-color, #52c41a) 18%, #202020); color: var(--primary-color, #52c41a); box-shadow: -1px 0 0 0 var(--primary-color, #52c41a); }
+    .strategy-runtime-product .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) { background: color-mix(in srgb, var(--primary-color, #52c41a) 10%, #202020) !important; }
+    .deployment-consent-row { color: #aab0b8; }
     .ant-checkbox-wrapper,
-    .ant-modal-close,
-    .ant-steps-item-wait .ant-steps-item-icon > .ant-steps-icon { color: #aab0b8; }
-    .ant-steps-item-wait .ant-steps-item-icon { border-color: #4a4f57; background: #22262b; }
-    .ant-steps-item-tail::after { background: #34383f; }
-    .ant-steps-item-process .ant-steps-item-icon { border-color: var(--primary-color, #52c41a); background: var(--primary-color, #52c41a); }
-    .ant-steps-item-finish .ant-steps-item-icon { border-color: var(--primary-color, #52c41a); background: color-mix(in srgb, var(--primary-color, #52c41a) 10%, #17191c); }
-    .ant-steps-item-finish .ant-steps-item-icon > .ant-steps-icon,
+    .ant-modal-close { color: #aab0b8; }
     .ant-alert-info .ant-alert-icon { color: var(--primary-color, #52c41a); }
-    .ant-steps-item-finish > .ant-steps-item-container > .ant-steps-item-tail::after { background: var(--primary-color, #52c41a); }
-    .ant-alert-info { border-color: color-mix(in srgb, var(--primary-color, #52c41a) 34%, #29465d); background: color-mix(in srgb, var(--primary-color, #52c41a) 7%, #111820); }
+    .ant-alert-info { border-color: color-mix(in srgb, var(--primary-color, #52c41a) 34%, #333333); background: color-mix(in srgb, var(--primary-color, #52c41a) 7%, #141414); }
     .ant-alert-info .ant-alert-message { color: #dfe4e9; }
     .ant-alert-info .ant-alert-description { color: #98a1ac; }
+  }
+}
+.deployment-disclaimer-popover {
+  max-width: 420px;
+  .ant-popover-title { font-size: 14px; font-weight: 600; }
+  .ant-popover-inner-content { padding: 12px 16px; }
+  p { margin: 0; color: #5d6876; font-size: 13px; line-height: 1.7; }
+  &.deployment-disclaimer-popover--dark {
+    .ant-popover-inner { background: #202020; }
+    .ant-popover-title { border-bottom-color: #353535; color: #eef0f3; }
+    .ant-popover-arrow { border-right-color: #202020 !important; border-bottom-color: #202020 !important; }
+    p { color: #aab0b8; }
   }
 }
 @media (max-width: 640px) {
@@ -1527,10 +1615,15 @@ export default {
     .notification-grid,
     .execution-mode-grid,
     .live-connection-grid,
-    .strategy-runtime-editor__controls { grid-template-columns: 1fr; }
+    .strategy-runtime-editor__controls,
+    .deploy-primary-grid,
+    .deployment-finance-grid,
+    .strategy-equity-risk__grid { grid-template-columns: 1fr; }
     .strategy-runtime-field--exchange { grid-column: auto; }
     .strategy-runtime-editor__footer { align-items: stretch; flex-direction: column; }
     .leverage-panel { align-items: flex-start; flex-wrap: wrap; }
+    .deployment-finance-grid .leverage-panel { padding: 12px 0 0; border-top: 1px solid #e4e8ee; border-left: 0; }
+    &.theme-dark .deployment-finance-grid .leverage-panel { border-top-color: #333333; }
     .leverage-panel__control { flex-basis: 100%; margin-left: 51px; }
     .execution-panel { padding: 15px; }
     .execution-panel__status { display: none; }

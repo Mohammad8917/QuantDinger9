@@ -4,6 +4,7 @@
       v-if="featured"
       type="button"
       class="marketplace-feature"
+      :class="{ 'marketplace-feature--strategy': isStrategyAsset(featured) }"
       :style="featureStyle"
       @click="$emit('select', featured)"
     >
@@ -64,11 +65,14 @@
         :key="item.id"
         type="button"
         class="marketplace-hot__item"
-        :class="{ 'marketplace-hot__item--visual': !hasKpi(item) }"
+        :class="{
+          'marketplace-hot__item--visual': !hasKpi(item) && !isStrategyAsset(item),
+          'marketplace-hot__item--strategy': isStrategyAsset(item)
+        }"
         :style="hotItems.length === 1 ? hotItemStyle(item) : null"
         @click="$emit('select', item)"
       >
-        <img :src="item.preview_image || fallbackCover" :alt="item.name" />
+        <img v-if="!isStrategyAsset(item)" :src="item.preview_image || fallbackCover" :alt="item.name" @error="useFallbackImage" />
         <span class="marketplace-hot__body">
           <span class="marketplace-hot__topline">
             <strong>{{ item.name }}</strong>
@@ -101,7 +105,7 @@
 </template>
 
 <script>
-import fallbackCover from '@/assets/marketplace/market-trend-hero.webp'
+import fallbackCover from '@/assets/marketplace/indicator-preview-default.svg'
 
 export default {
   name: 'MarketplaceSpotlight',
@@ -126,13 +130,18 @@ export default {
   },
   computed: {
     featureStyle () {
+      if (this.isStrategyAsset(this.featured)) return null
       const image = this.featured && this.featured.preview_image
         ? this.featured.preview_image
         : fallbackCover
-      return { backgroundImage: `url(${image})` }
+      return { backgroundImage: image === fallbackCover ? `url(${fallbackCover})` : `url(${image}), url(${fallbackCover})` }
     }
   },
   methods: {
+    isStrategyAsset (item) {
+      const assetType = String(item && item.asset_type || '').toLowerCase()
+      return assetType === 'script_template' || assetType === 'script' || assetType === 'strategy' || assetType === 'portfolio_strategy'
+    },
     isPaid (item) {
       return item && item.pricing_type !== 'free' && Number(item.price || 0) > 0
     },
@@ -142,8 +151,7 @@ export default {
         : this.$t('community.free')
     },
     assetTypeLabel (item) {
-      const assetType = String(item && item.asset_type || '').toLowerCase()
-      return assetType === 'script_template' || assetType === 'strategy'
+      return this.isStrategyAsset(item)
         ? this.$t('community.tabScriptTemplates')
         : this.$t('community.chartIndicator')
     },
@@ -159,8 +167,16 @@ export default {
       return item && item.author && item.author.avatar
     },
     hotItemStyle (item) {
+      if (this.isStrategyAsset(item)) return null
       const image = item && item.preview_image ? item.preview_image : fallbackCover
-      return { backgroundImage: `url(${image})` }
+      return { backgroundImage: image === fallbackCover ? `url(${fallbackCover})` : `url(${image}), url(${fallbackCover})` }
+    },
+    useFallbackImage (event) {
+      const target = event && event.target
+      if (target && target.dataset.fallbackApplied !== 'true') {
+        target.dataset.fallbackApplied = 'true'
+        target.src = fallbackCover
+      }
     },
     capabilityTags (item) {
       const symbols = Array.isArray(item && item.applicable_symbols) ? item.applicable_symbols : []
@@ -404,6 +420,31 @@ export default {
     font-size: 13px;
     font-weight: 700;
   }
+
+  &--strategy {
+    min-height: 224px;
+    background-image: none !important;
+
+    .marketplace-feature__shade {
+      background: linear-gradient(135deg, color-mix(in srgb, var(--primary-color, #1890ff) 6%, transparent), transparent 54%);
+    }
+
+    .marketplace-feature__content {
+      min-height: 224px;
+    }
+
+    .marketplace-feature__title,
+    .marketplace-feature__description,
+    .marketplace-feature__tags,
+    .marketplace-feature__kpis {
+      width: 100%;
+      max-width: none;
+    }
+
+    .marketplace-feature__footer {
+      padding-top: 12px;
+    }
+  }
 }
 
 .marketplace-hot {
@@ -460,6 +501,15 @@ export default {
 
       .marketplace-hot__meta {
         margin-top: 16px;
+      }
+    }
+
+    .marketplace-hot__item--strategy {
+      min-height: 160px;
+      align-items: center;
+
+      &::before {
+        background: linear-gradient(135deg, rgba(82, 196, 26, 0.075), rgba(255, 255, 255, 0.98) 64%);
       }
     }
 
@@ -554,6 +604,11 @@ export default {
       border-radius: 6px;
       object-fit: cover;
     }
+
+    &--strategy {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+    }
   }
 
   &__body {
@@ -623,6 +678,12 @@ export default {
     color: rgba(0, 0, 0, 0.48);
     font-size: 11px;
   }
+}
+
+.marketplace-hot__item--strategy .marketplace-hot__meta {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .marketplace-badge {
@@ -729,6 +790,10 @@ export default {
     }
   }
 
+  .marketplace-feature--strategy .marketplace-feature__shade {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--primary-color, #1890ff) 8%, transparent), transparent 54%);
+  }
+
   .marketplace-hot--single {
     .marketplace-hot__item {
       background-color: #181818;
@@ -740,6 +805,10 @@ export default {
 
     .marketplace-hot__item--visual::before {
       background: linear-gradient(90deg, rgba(18, 18, 18, 0.98) 0%, rgba(18, 18, 18, 0.9) 56%, rgba(18, 18, 18, 0.2) 100%);
+    }
+
+    .marketplace-hot__item--strategy::before {
+      background: linear-gradient(135deg, color-mix(in srgb, var(--primary-color, #1890ff) 10%, #121212), rgba(18, 18, 18, 0.98) 64%);
     }
 
     .marketplace-hot__topline strong {
@@ -777,6 +846,11 @@ export default {
   .marketplace-hot__description,
   .marketplace-hot__meta {
     color: rgba(255, 255, 255, 0.48);
+  }
+
+  .marketplace-feature--strategy .marketplace-feature__footer,
+  .marketplace-hot__item--strategy .marketplace-hot__meta {
+    border-color: color-mix(in srgb, var(--primary-color, #1890ff) 24%, #303030);
   }
 
   .marketplace-hot__kpi > span {

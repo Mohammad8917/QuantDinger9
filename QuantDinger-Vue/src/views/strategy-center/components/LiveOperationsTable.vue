@@ -14,6 +14,24 @@
 
     <template v-else>
       <aside class="strategy-master">
+        <div class="master-command-bar">
+          <span class="master-health" :class="{ 'is-warning': loadError }">
+            <i></i>
+            <span>{{ loadError ? $t('strategyCenter.console.systemDegraded') : $t('strategyCenter.console.systemHealthy') }}</span>
+            <small v-if="refreshedAt">· {{ formatTime(refreshedAt) }}</small>
+          </span>
+          <div class="master-actions">
+            <a-button type="primary" size="small" icon="plus" @click="$emit('open-workspace')">{{ $t('strategyCenter.stats.createLive') }}</a-button>
+            <a-button
+              size="small"
+              icon="reload"
+              :aria-label="$t('common.refresh')"
+              :title="$t('common.refresh')"
+              :loading="loading"
+              @click="$emit('refresh')"
+            />
+          </div>
+        </div>
         <nav class="master-tabs" :aria-label="$t('strategyCenter.console.filterLabel')">
           <button
             v-for="tab in statusTabs"
@@ -40,7 +58,7 @@
 
         <div class="strategy-list" :class="{ 'is-loading': loading }">
           <button
-            v-for="strategy in filteredStrategies"
+            v-for="strategy in paginatedStrategies"
             :key="strategy.id"
             type="button"
             class="strategy-row"
@@ -68,7 +86,17 @@
             </a-button>
           </div>
         </div>
-        <footer>{{ $t('strategyCenter.console.strategyCount', { count: filteredStrategies.length }) }}</footer>
+        <footer class="master-footer">
+          <span>{{ $t('strategyCenter.console.strategyCount', { count: filteredStrategies.length }) }}</span>
+          <a-pagination
+            v-if="filteredStrategies.length > pageSize"
+            simple
+            :current="currentPage"
+            :page-size="pageSize"
+            :total="filteredStrategies.length"
+            @change="handlePageChange"
+          />
+        </footer>
       </aside>
 
       <main v-if="selectedStrategy" class="strategy-detail">
@@ -336,6 +364,7 @@ export default {
     strategies: { type: Array, default: () => [] },
     loading: { type: Boolean, default: false },
     loadError: { type: Boolean, default: false },
+    refreshedAt: { type: [Date, String, Number], default: '' },
     dark: { type: Boolean, default: false },
     initialStrategyId: { type: Number, default: 0 },
     controlLoadingId: { type: [Number, String], default: null }
@@ -346,6 +375,8 @@ export default {
       detailTab: 'overview',
       statusTab: 'all',
       keyword: '',
+      currentPage: 1,
+      pageSize: 10,
       curve: [],
       detailLoading: false,
       chart: null,
@@ -398,6 +429,10 @@ export default {
         : this.statusTab === 'running' ? this.runningStrategies : this.strategies
       const term = this.keyword.trim().toLowerCase()
       return source.filter(item => !term || [item.strategy_name, item.id, this.symbol(item)].join(' ').toLowerCase().includes(term))
+    },
+    paginatedStrategies () {
+      const start = (this.currentPage - 1) * this.pageSize
+      return this.filteredStrategies.slice(start, start + this.pageSize)
     },
     hasEquitySeries () {
       return this.curve.filter(item => Number.isFinite(Number(item && (item.equity != null ? item.equity : item.value)))).length >= 2
@@ -462,7 +497,14 @@ export default {
         const current = list.find(item => item.id === this.selectedId)
         const next = preferred || current || list.find(this.isRunning) || list[0]
         if (next && next.id !== this.selectedId) this.selectStrategy(next)
+        this.clampCurrentPage()
       }
+    },
+    statusTab () {
+      this.currentPage = 1
+    },
+    keyword () {
+      this.currentPage = 1
     },
     dark () {
       this.$nextTick(this.renderChart)
@@ -479,8 +521,19 @@ export default {
     if (this.chart) this.chart.dispose()
   },
   methods: {
+    clampCurrentPage () {
+      const lastPage = Math.max(1, Math.ceil(this.filteredStrategies.length / this.pageSize))
+      this.currentPage = Math.min(this.currentPage, lastPage)
+    },
+    handlePageChange (page) {
+      this.currentPage = Number(page) || 1
+      const list = this.$el && this.$el.querySelector('.strategy-list')
+      if (list) list.scrollTop = 0
+    },
     selectStrategy (strategy) {
       if (!strategy || !strategy.id) return
+      const index = this.filteredStrategies.findIndex(item => Number(item.id) === Number(strategy.id))
+      if (index >= 0) this.currentPage = Math.floor(index / this.pageSize) + 1
       this.selectedId = strategy.id
       this.detailTab = 'overview'
       this.loadDetails(strategy.id)
@@ -624,6 +677,15 @@ export default {
   -webkit-font-smoothing: antialiased;
 }
 .strategy-master { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid #e4e8ee; background: #fafbfc; }
+.master-command-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.master-health { display: flex; align-items: center; min-width: 0; gap: 6px; color: #3f7c57; font-size: 11px; font-weight: 550; white-space: nowrap; }
+.master-health i { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: #22a95a; box-shadow: 0 0 0 3px rgba(34, 169, 90, .1); }
+.master-health small { overflow: hidden; color: #8a94a3; font-size: 10px; font-weight: 450; text-overflow: ellipsis; }
+.master-health.is-warning { color: #b06b18; }
+.master-health.is-warning i { background: #d68a24; box-shadow: 0 0 0 3px rgba(214, 138, 36, .12); }
+.master-actions { display: flex; align-items: center; flex: 0 0 auto; gap: 5px; }
+.master-actions ::v-deep .ant-btn { height: 28px; padding: 0 8px; border-radius: 5px; font-size: 11px; }
+.master-actions ::v-deep .ant-btn:last-child { width: 28px; padding: 0; }
 .master-tabs { display: grid; grid-template-columns: repeat(3, 1fr); padding: 14px 14px 0; border-bottom: 1px solid #e7eaf0; }
 .master-tabs button { position: relative; display: flex; justify-content: center; gap: 6px; padding: 11px 4px 13px; border: 0; background: transparent; color: #667085; font-size: 14px; font-weight: 500; cursor: pointer; }
 .master-tabs button::after { content: ''; position: absolute; left: 18%; right: 18%; bottom: -1px; height: 2px; background: transparent; }
@@ -689,7 +751,7 @@ export default {
 .overview-positions-panel ::v-deep .positions-section { padding: 0 14px 14px; }
 .overview-positions-panel ::v-deep .strategy-tab-empty { min-height: 132px; border: 0; background: transparent; }
 .workspace-empty { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 620px; padding: 30px; text-align: center; }.workspace-empty > .anticon { margin-bottom: 18px; color: #d19a18; font-size: 42px; }.workspace-empty h2 { margin: 0 0 8px; }.workspace-empty p { max-width: 430px; margin-bottom: 20px; color: #7b8490; }.detail-empty { display: flex; align-items: center; justify-content: center; }
-.theme-dark { border-color: #262a30; background: #111315; color: #e5e7eb; .strategy-master { border-color: #292d33; background: #121416; }.master-tabs,.strategy-master footer { border-color: #292d33; }.master-tabs b { background: #25282d; color: #a5abb4; }.strategy-row { border-color: #272b31; }.strategy-row:hover { background: #191c20; }.strategy-row.selected { background: #211d13; }.row-main strong { color: #e7e9ed; }.row-main small,.row-status { color: #818995; }.row-status em { border-color: #383c43; color: #959ca6; }.strategy-detail { background: #101214; }.detail-header,.section-head { border-color: #292d33; }.detail-title-line h2 { color: #f0f1f3; }.status-pill.stopped { background: #262a2f; color: #9ba2ab; }.execution-pill { border-color: #3a3e45; }.runtime-status-bar strong { color: #e1e4e8; }.metric-section-head h3 { color: #d8dce2; }.panel-section { border-color: #292d33; background: #131517; }.section-head h3 { color: #e0e3e7; }.master-search ::v-deep .ant-input { border-color: #30343a; background: #181b1e; color: #e4e7eb; }.master-search ::v-deep .ant-input-search-icon,.master-search ::v-deep .ant-input-clear-icon { color: #8f9baa; }.master-search ::v-deep .ant-input-search-icon:hover,.master-search ::v-deep .ant-input-clear-icon:hover { color: #f1f5f9; }.workspace-empty h2 { color: #eceef1; }}
+.theme-dark { border-color: #2d2d2d; background: #111111; color: #e5e7eb; .strategy-master { border-color: #2d2d2d; background: #141414; }.master-tabs,.strategy-master footer { border-color: #2d2d2d; }.master-tabs b { background: #242424; color: #a5abb4; }.strategy-row { border-color: #2a2a2a; }.strategy-row:hover { background: #181818; }.strategy-row.selected { background: #211d13; }.row-main strong { color: #e7e9ed; }.row-main small,.row-status { color: #818995; }.row-status em { border-color: #3a3a3a; color: #959ca6; }.strategy-detail { background: #0d0d0d; }.detail-header,.section-head { border-color: #2d2d2d; }.detail-title-line h2 { color: #f0f1f3; }.status-pill.stopped { background: #262626; color: #9ba2ab; }.execution-pill { border-color: #3b3b3b; }.runtime-status-bar strong { color: #e1e4e8; }.metric-section-head h3 { color: #d8dce2; }.panel-section { border-color: #2d2d2d; background: #141414; }.section-head h3 { color: #e0e3e7; }.master-search ::v-deep .ant-input { border-color: #333333; background: #181818; color: #e4e7eb; }.master-search ::v-deep .ant-input-search-icon,.master-search ::v-deep .ant-input-clear-icon { color: #8f9baa; }.master-search ::v-deep .ant-input-search-icon:hover,.master-search ::v-deep .ant-input-clear-icon:hover { color: #f1f5f9; }.workspace-empty h2 { color: #eceef1; }}
 .theme-dark .exchange-pill { border-color: rgba(64, 169, 255, .3); color: #69c0ff; background: rgba(24, 144, 255, .1); }
 
 /* Operational console layout */
@@ -767,6 +829,13 @@ export default {
 }
 .list-empty > .anticon { color: #9aa3af; font-size: 24px; }
 .strategy-master footer { margin-top: 10px; padding: 4px 4px 0; border: 0; }
+.master-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+.master-footer > span { flex: 0 0 auto; white-space: nowrap; }
+.master-footer ::v-deep .ant-pagination { margin: 0; color: inherit; font-size: 11px; }
+.master-footer ::v-deep .ant-pagination-simple .ant-pagination-simple-pager { height: 24px; margin-right: 4px; line-height: 24px; }
+.master-footer ::v-deep .ant-pagination-simple .ant-pagination-simple-pager input { width: 28px; height: 24px; padding: 0 3px; border-color: var(--sc-border, #e1e6ec); background: var(--sc-surface, #fff); color: var(--sc-text, #182230); }
+.master-footer ::v-deep .ant-pagination-prev,
+.master-footer ::v-deep .ant-pagination-next { min-width: 24px; height: 24px; line-height: 24px; }
 .strategy-detail {
   min-height: 0;
   overflow-y: auto;
@@ -875,6 +944,134 @@ export default {
   padding: 0;
   border: 0;
   background: transparent;
+}
+
+.operations-workspace {
+  border-color: var(--sc-border, #e1e6ec);
+  border-radius: var(--sc-radius-lg, 10px);
+  background: var(--sc-surface, #fff);
+  color: var(--sc-text, #182230);
+  box-shadow: var(--sc-shadow, 0 8px 24px rgba(24, 34, 48, .05));
+  font-size: 13px;
+  line-height: 1.5;
+}
+.strategy-master {
+  border-color: var(--sc-border, #e1e6ec);
+  background: var(--sc-surface-subtle, #f8fafb);
+}
+.master-tabs {
+  border-color: var(--sc-border, #e1e6ec);
+  background: var(--sc-surface-muted, #f1f4f7);
+}
+.master-tabs button { color: var(--sc-muted, #667085); font-size: 12px; font-weight: 550; }
+.master-tabs button.active { background: var(--sc-surface, #fff); color: var(--primary-color, #1890ff); }
+.master-tabs b { background: var(--sc-border-soft, #ebeff3); color: var(--sc-muted, #667085); font-size: 10px; }
+.master-columns { color: var(--sc-subtle, #8a94a3); font-size: 11px; }
+.strategy-list { border-color: var(--sc-border, #e1e6ec); background: var(--sc-surface, #fff); }
+.strategy-row { border-color: var(--sc-border-soft, #ebeff3); }
+.strategy-row:hover { background: var(--sc-surface-subtle, #f8fafb); }
+.strategy-row.selected { background: color-mix(in srgb, var(--primary-color, #1890ff) 8%, var(--sc-surface, #fff)); }
+.row-main strong { color: var(--sc-heading, #111827); font-size: 13px; font-weight: 650; }
+.row-main small, .row-status { color: var(--sc-muted, #667085); font-size: 11px; }
+.row-status em { border-color: var(--sc-border, #e1e6ec); color: var(--sc-muted, #667085); font-size: 10px; }
+.row-pnl { color: var(--sc-muted, #667085); }
+.row-pnl strong { font-size: 12px; }
+.row-pnl small { font-size: 10px; }
+.profit { color: var(--sc-positive, #218653) !important; }
+.loss { color: var(--sc-negative, #d14f5a) !important; }
+.strategy-master footer { color: var(--sc-muted, #667085); font-size: 11px; }
+.strategy-detail { background: var(--sc-page, #f5f7f9); }
+.detail-header {
+  padding: 14px 16px;
+  border-color: var(--sc-border, #e1e6ec);
+  border-radius: var(--sc-radius-md, 8px);
+  background: var(--sc-surface, #fff);
+}
+.detail-title-line h2 { color: var(--sc-heading, #111827); font-size: 20px; font-weight: 700; }
+.detail-symbol, .detail-header p { color: var(--sc-muted, #667085); }
+.status-pill, .execution-pill, .exchange-pill { border-radius: 4px; font-size: 11px; }
+.runtime-status-bar { margin: 9px 2px 10px; color: var(--sc-muted, #667085); font-size: 11px; }
+.runtime-status-bar strong { color: var(--sc-text, #182230); font-size: 11px; }
+.metric-section { margin-bottom: 10px; }
+.metric-section-head { min-height: 25px; padding-bottom: 5px; }
+.metric-section-head h3 { color: var(--sc-text, #182230); font-size: 12px; font-weight: 650; }
+.metric-section-head > span { color: var(--sc-subtle, #8a94a3); font-size: 10px; }
+.financial-strip, .performance-strip { gap: 8px; }
+.financial-strip > div, .performance-strip > div {
+  padding: 10px 12px;
+  border-color: var(--sc-border, #e1e6ec);
+  border-radius: var(--sc-radius-md, 8px);
+  background: var(--sc-surface, #fff);
+}
+.financial-strip > div { min-height: 76px; }
+.performance-strip > div { min-height: 66px; }
+.financial-strip span, .performance-strip span { color: var(--sc-muted, #667085); font-size: 11px; }
+.financial-strip strong, .performance-strip strong { color: var(--sc-text, #182230); font-size: 16px; }
+.financial-strip small, .performance-strip small { color: var(--sc-subtle, #8a94a3); font-size: 10px; }
+.financial-strip .primary-financial-card {
+  border-color: color-mix(in srgb, var(--primary-color, #1890ff) 30%, var(--sc-border, #e1e6ec));
+  background: color-mix(in srgb, var(--primary-color, #1890ff) 5%, var(--sc-surface, #fff));
+}
+.financial-strip .primary-financial-card strong { font-size: 17px; }
+.performance-strip .drawdown-value { color: var(--sc-warning, #b37816); }
+.runtime-tabs ::v-deep .ant-tabs-bar {
+  border-color: var(--sc-border, #e1e6ec);
+  border-radius: var(--sc-radius-md, 8px);
+  background: var(--sc-surface, #fff);
+}
+.runtime-tabs ::v-deep .ant-tabs-nav .ant-tabs-tab { color: var(--sc-muted, #667085); font-size: 12px; }
+.runtime-tabs ::v-deep .strategy-tab-pane-inner {
+  border-color: var(--sc-border, #e1e6ec);
+  border-radius: var(--sc-radius-md, 8px);
+  background: var(--sc-surface, #fff);
+}
+.panel-section {
+  border-color: var(--sc-border, #e1e6ec);
+  border-radius: var(--sc-radius-md, 8px);
+  background: var(--sc-surface, #fff);
+  box-shadow: none;
+}
+.section-head { min-height: 46px; padding: 0 14px; border-color: var(--sc-border-soft, #ebeff3); }
+.section-head h3 { color: var(--sc-text, #182230); font-size: 14px; }
+.section-head > span { color: var(--sc-muted, #667085); font-size: 11px; }
+.section-empty { background: var(--sc-surface-subtle, #f8fafb); color: var(--sc-subtle, #8a94a3); }
+
+.theme-dark.operations-workspace {
+  border-color: var(--sc-border);
+  background: var(--sc-surface);
+  color: var(--sc-text);
+  box-shadow: var(--sc-shadow);
+  .strategy-master { border-color: var(--sc-border); background: var(--sc-page); }
+  .master-tabs { border-color: var(--sc-border); background: var(--sc-surface); }
+  .master-tabs button.active { background: var(--sc-surface-muted); }
+  .master-tabs b { background: var(--sc-surface-muted); color: var(--sc-muted); }
+  .master-health { color: var(--sc-positive); }
+  .master-health small { color: var(--sc-subtle); }
+  .strategy-list { border-color: var(--sc-border); background: var(--sc-surface); }
+  .master-footer ::v-deep .ant-pagination-prev .ant-pagination-item-link,
+  .master-footer ::v-deep .ant-pagination-next .ant-pagination-item-link { border-color: var(--sc-border); background: var(--sc-surface); color: var(--sc-muted); }
+  .strategy-row { border-color: var(--sc-border-soft); }
+  .strategy-row:hover { background: var(--sc-surface-subtle); }
+  .strategy-row.selected { background: color-mix(in srgb, var(--primary-color, #52c41a) 11%, var(--sc-surface)); }
+  .row-main strong { color: var(--sc-heading); }
+  .row-main small, .row-status, .row-pnl { color: var(--sc-muted); }
+  .strategy-detail { background: var(--sc-page); }
+  .detail-header,
+  .financial-strip > div,
+  .performance-strip > div,
+  .panel-section { border-color: var(--sc-border); background: var(--sc-surface); }
+  .financial-strip .primary-financial-card {
+    border-color: color-mix(in srgb, var(--primary-color, #52c41a) 34%, var(--sc-border));
+    background: color-mix(in srgb, var(--primary-color, #52c41a) 6%, var(--sc-surface));
+  }
+  .runtime-tabs ::v-deep .ant-tabs-bar,
+  .runtime-tabs ::v-deep .strategy-tab-pane-inner { border-color: var(--sc-border); background: var(--sc-surface); }
+  .financial-strip strong,
+  .performance-strip strong,
+  .runtime-status-bar strong,
+  .section-head h3,
+  .metric-section-head h3 { color: var(--sc-text); }
+  .section-empty { background: var(--sc-page); }
 }
 @media (max-width: 1080px) { .operations-workspace { grid-template-columns: 290px minmax(0, 1fr); }.financial-strip,.performance-strip { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 760px) { .operations-workspace { display: block; height: auto; }.strategy-master { max-height: 430px; border-right: 0; border-bottom: 1px solid #e4e8ee; }.strategy-detail { overflow: visible; padding: 14px; }.detail-header { flex-direction: column; }.detail-actions { width: 100%; }.detail-actions .ant-btn { flex: 1; }.pause-actions { width: 100%; }.financial-strip,.performance-strip { grid-template-columns: repeat(2, 1fr); }.metric-section-head { align-items: flex-start; flex-direction: column; gap: 2px; }.equity-chart { height: 240px; } }

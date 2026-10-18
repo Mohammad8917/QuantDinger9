@@ -25,18 +25,6 @@ export function parsePercentInput (raw, decimals = 4) {
   return roundTo(n, decimals)
 }
 
-/** a-input-number formatter for percent fields (value is 0–100). */
-export function percentInputFormatter (value, decimals = 2) {
-  if (value == null || value === '') return ''
-  return `${formatPercentDisplay(value, decimals)}%`
-}
-
-/** a-input-number parser for percent fields. */
-export function percentInputParser (value, decimals = 4) {
-  const n = parsePercentInput(value, decimals)
-  return n == null ? '' : n
-}
-
 /** a-input-number formatter for stored ratios (0.95 is displayed as 95%). */
 export function ratioPercentInputFormatter (value, decimals = 2) {
   if (value == null || value === '') return ''
@@ -49,13 +37,4 @@ export function ratioPercentInputFormatter (value, decimals = 2) {
 export function ratioPercentInputParser (value, decimals = 6) {
   const percent = parsePercentInput(value, decimals)
   return percent == null ? '' : roundTo(percent / 100, decimals)
-}
-
-/** Convert stored ratio (0.035) or percent (3.5) to UI percent. */
-export function ratioOrPercentToUiPercent (raw, defaultPct = 3, decimals = 4) {
-  if (raw == null || raw === '') return defaultPct
-  const n = Number(raw)
-  if (!Number.isFinite(n)) return defaultPct
-  const pct = n > 0 && n <= 1 ? n * 100 : n
-  return roundTo(pct, decimals)
 }

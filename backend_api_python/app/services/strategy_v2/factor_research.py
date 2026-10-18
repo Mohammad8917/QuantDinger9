@@ -10,8 +10,10 @@ import pandas as pd
 
 from app.services.factors import (
     FactorError,
+    compute_catalog_factor,
     compute_panel_factor,
     compute_talib_indicator,
+    factor_warmup_bars,
     get_factor,
     get_factor_metadata,
 )
@@ -49,6 +51,16 @@ class FactorResearchEngine:
 
     @classmethod
     def warmup_bars(cls, factor_id: str, params: Mapping[str, Any] | None = None) -> int:
+        cleaned = str(factor_id or "").strip().lower()
+        if cleaned.startswith("momentum_") or cleaned.startswith("volatility_"):
+            return cls._suffix_number(cleaned, 20) + 1
+        if cleaned in {"reversal", "reversal_5"}:
+            return 6
+        if not cleaned.startswith(("qlib:", "talib:")):
+            try:
+                return factor_warmup_bars(cleaned, params)
+            except FactorError:
+                pass
         try:
             metadata = get_factor_metadata(factor_id)
         except ValueError:
@@ -363,6 +375,14 @@ class FactorResearchEngine:
         params: Mapping[str, Any] | None = None,
         timestamps: Sequence[pd.Timestamp] | None = None,
     ) -> pd.DataFrame:
+        if factor_id.startswith("qlib:"):
+            return self._catalog_factor_panel(
+                frames,
+                factor_id,
+                close,
+                params,
+                timestamps,
+            )
         if factor_id.startswith("talib:"):
             normalized = dict(params or {})
             output = str(normalized.pop("output", "") or "")
@@ -405,6 +425,34 @@ class FactorResearchEngine:
         if field == "market_cap":
             panel = panel.where(panel > 0).map(math.log)
         return panel.reindex(index=close.index, columns=close.columns)
+
+    @staticmethod
+    def _catalog_factor_panel(
+        frames: Mapping[str, pd.DataFrame],
+        factor_id: str,
+        close: pd.DataFrame,
+        params: Mapping[str, Any] | None,
+        timestamps: Sequence[pd.Timestamp] | None,
+    ) -> pd.DataFrame:
+        result = pd.DataFrame(index=close.index, columns=close.columns, dtype=float)
+        requested = close.index if timestamps is None else pd.Index(timestamps)
+        requested = requested.intersection(close.index, sort=False)
+        for timestamp in requested:
+            for symbol, frame in frames.items():
+                if symbol not in result.columns or frame.empty or frame.index[0] > timestamp:
+                    continue
+                try:
+                    value = compute_catalog_factor(
+                        factor_id,
+                        frame.loc[frame.index <= timestamp],
+                        params,
+                    )
+                except FactorError as exc:
+                    if exc.code not in {"factor.noData", "factor.insufficientHistory"}:
+                        raise
+                    continue
+                result.at[timestamp, symbol] = value
+        return result
 
     @staticmethod
     def _registered_factor_panel(

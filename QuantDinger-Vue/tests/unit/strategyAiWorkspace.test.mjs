@@ -123,7 +123,7 @@ test('desktop strategy workspace uses full-height parameter, code, and AI column
   assert.match(editor, /\.editor-layout--split \.side-col \{[\s\S]*grid-column-start: 1;[\s\S]*height: 100%;/)
   assert.match(editor, /editor-layout--split-no-params/)
   assert.match(editor, /v-if="!isSplitSideMode \|\| hasStrategyConfiguration" class="side-col"/)
-  assert.match(page, /grid-template-columns: minmax\(280px, 18%\) minmax\(520px, 1fr\) minmax\(340px, 29%\)/)
+  assert.match(page, /grid-template-columns: minmax\(260px, 17%\) minmax\(620px, 1fr\) minmax\(300px, 24%\)/)
   assert.match(page, /editor-layout--split\.editor-layout--split-no-params/)
 })
 

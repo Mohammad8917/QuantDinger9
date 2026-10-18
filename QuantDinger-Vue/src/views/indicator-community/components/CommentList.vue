@@ -24,7 +24,7 @@
     </div>
 
     <div v-else-if="myComment && !canComment && !isEditing" class="my-comment-hint">
-      <a-icon type="check-circle" theme="twoTone" two-tone-color="#52c41a" />
+      <a-icon type="check-circle" theme="filled" class="my-comment-hint__icon" />
       <span>{{ $t('community.alreadyCommented') }}</span>
       <a-button type="link" size="small" @click="startEdit(myComment)">
         {{ $t('community.editMyComment') }}
@@ -42,7 +42,7 @@
             <div class="comment-meta">
               <div class="user-name">
                 {{ comment.user && comment.user.nickname }}
-                <a-tag v-if="comment.user && comment.user.id === currentUserId" size="small" color="blue">{{ $t('community.me') }}</a-tag>
+                <a-tag v-if="comment.user && comment.user.id === currentUserId" size="small" class="current-user-tag">{{ $t('community.me') }}</a-tag>
               </div>
               <div class="comment-info">
                 <a-rate :value="comment.rating" disabled :style="{ fontSize: '12px' }" />
@@ -246,13 +246,17 @@ export default {
     gap: 8px;
     padding: 12px 16px;
     margin-bottom: 16px;
-    background: #f6ffed;
-    border: 1px solid #b7eb8f;
+    background: color-mix(in srgb, var(--primary-color, #1890ff) 6%, #fff);
+    border: 1px solid color-mix(in srgb, var(--primary-color, #1890ff) 28%, transparent);
     border-radius: 8px;
 
     span {
-      color: #52c41a;
+      color: var(--primary-color, #1890ff);
       font-size: 14px;
+    }
+
+    &__icon {
+      color: var(--primary-color, #1890ff);
     }
   }
 
@@ -292,6 +296,12 @@ export default {
             font-size: 14px;
             font-weight: 500;
             color: rgba(0, 0, 0, 0.85);
+
+            .current-user-tag {
+              border-color: color-mix(in srgb, var(--primary-color, #1890ff) 30%, transparent);
+              background: color-mix(in srgb, var(--primary-color, #1890ff) 9%, transparent);
+              color: var(--primary-color, #1890ff);
+            }
           }
 
           .comment-info {
@@ -361,19 +371,21 @@ body.dark,
     }
 
     .my-comment-hint {
-      background: rgba(82, 196, 26, 0.1);
-      border-color: rgba(82, 196, 26, 0.3);
+      background: color-mix(in srgb, var(--primary-color, #1890ff) 8%, #1f1f1f);
+      border-color: color-mix(in srgb, var(--primary-color, #1890ff) 32%, #303030);
 
       span {
-        color: #95de64;
+        color: var(--primary-color-hover, #69c0ff);
       }
+
+      &__icon { color: var(--primary-color-hover, #69c0ff); }
     }
 
     .comments .comment-item {
       border-color: #303030;
 
       &.is-mine {
-        background: rgba(24, 144, 255, 0.05);
+        background: #202020;
       }
 
       .comment-header .comment-meta {

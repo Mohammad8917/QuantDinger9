@@ -54,12 +54,6 @@ export function normalizePercentParamValue (raw) {
   return n
 }
 
-export function percentParamToRatio (value) {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return 0
-  return n
-}
-
 export function formatStrategyInstrument (config = {}) {
   const market = String(config.market_category || config.market || 'Crypto').trim() || 'Crypto'
   const symbol = String(config.symbol || '').trim().toUpperCase()
@@ -122,6 +116,19 @@ export function applyStrategyRuntimeConfigToCode (code, config = {}) {
       `$1${JSON.stringify(config.market_category === 'Crypto' ? `Crypto:${String(config.symbol || '').trim().toUpperCase()}@spot` : instrument)}$2`
     )
   }
+  if (String(config.market_category || '') === 'Crypto' && config.market_type) {
+    if (String(config.market_type).toLowerCase() === 'spot') {
+      next = next.replace(
+        /^(\s*)context\.allow_leverage\(([^)]*)\)\s*$/m,
+        '$1# runtime_product_leverage: context.allow_leverage($2)'
+      )
+    } else {
+      next = next.replace(
+        /^(\s*)#\s*runtime_product_leverage:\s*context\.allow_leverage\(([^)]*)\)\s*$/m,
+        '$1context.allow_leverage($2)'
+      )
+    }
+  }
   if (timeframe) {
     const previousTimeframe = extractStrategyRuntimeConfigFromCode(source).timeframe
     next = replacePrimaryTimeframeReferences(next, previousTimeframe, timeframe)
@@ -155,6 +162,8 @@ export function extractStrategyRuntimeConfigFromCode (code) {
     source.match(/context\.set_exchange\(\s*["']([^"']+)["']/m)
   const directionMatch = source.match(/^\s*g\.trade_direction\s*=\s*["'](long|short|both)["']/im) ||
     source.match(/^\s*#\s*trade_direction\s*:\s*(long|short|both)\b/im)
+  const equityTakeProfitMatch = source.match(/^\s*EQUITY_TAKE_PROFIT\s*=\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?)\s*$/im)
+  const equityStopLossMatch = source.match(/^\s*EQUITY_STOP_LOSS\s*=\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?)\s*$/im)
   const instrument = String((instrumentMatch && instrumentMatch[1]) || '').trim()
   const match = instrument.match(/^([^:]+):(.+)$/i)
   const result = {}
@@ -167,6 +176,8 @@ export function extractStrategyRuntimeConfigFromCode (code) {
   if (timeframeMatch && timeframeMatch[1]) result.timeframe = String(timeframeMatch[1]).trim()
   if (exchangeMatch && exchangeMatch[1]) result.exchange_id = String(exchangeMatch[1]).trim().toLowerCase()
   if (directionMatch && directionMatch[1]) result.trade_direction = String(directionMatch[1]).trim().toLowerCase()
+  if (equityTakeProfitMatch) result.equity_take_profit_pct = Math.max(0, Number(equityTakeProfitMatch[1]) || 0)
+  if (equityStopLossMatch) result.equity_stop_loss_pct = Math.max(0, Number(equityStopLossMatch[1]) || 0)
   return result
 }
 
@@ -527,16 +538,6 @@ export function buildTemplateParamValues (templateOrKey, overrides = {}) {
     } else {
       acc[param.name] = raw
     }
-    return acc
-  }, {})
-}
-
-export function buildRuntimeParamValues (params = [], overrides = {}) {
-  return (params || []).filter(param => param && param.name && !isRuntimeReservedParam(param.name)).reduce((acc, param) => {
-    const raw = Object.prototype.hasOwnProperty.call(overrides, param.name)
-      ? overrides[param.name]
-      : param.default
-    acc[param.name] = param.type === 'percent' ? percentParamToRatio(raw) : raw
     return acc
   }, {})
 }

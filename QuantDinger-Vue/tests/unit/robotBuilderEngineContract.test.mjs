@@ -31,7 +31,7 @@ test('robot generation remains visible and requires a valid engine payload', () 
   assert.match(builderSource, /const hasLiveCredential = this\.embedded \|\| this\.form\.execution_mode !== 'live'/)
   assert.match(builderSource, /if \(!this\.embedded && this\.form\.execution_mode === 'live' && !this\.selectedCredential\)/)
   assert.match(builderSource, /value="neutral"[\s\S]*?disabled/)
-  assert.match(builderSource, /\.is-embedded \.executor-workbench \{[\s\S]*?height: calc\(100% - 64px\)/)
+  assert.match(builderSource, /\.is-embedded \.executor-workbench \{[\s\S]*?height: 100%/)
 })
 
 test('robot configuration keeps high-frequency choices in compact horizontal controls', () => {
@@ -43,10 +43,40 @@ test('robot configuration keeps high-frequency choices in compact horizontal con
   assert.match(builderSource, /grid-template-columns: minmax\(430px, 480px\) minmax\(0, 1fr\)/)
 })
 
-test('all robot types open advanced settings by default and use neutral risk surfaces', () => {
-  assert.match(builderSource, /class="advanced-collapse"[^>]*default-active-key="advanced"/)
-  assert.match(builderSource, /\.theme-dark \.equity-risk-card \{[\s\S]*?background: #111315/)
-  assert.match(builderSource, /\.theme-dark \.trigger-contract-card \{[\s\S]*?background: #111315/)
+test('embedded robot types reset to the top with advanced settings closed', () => {
+  assert.match(builderSource, /ref="configScroll" class="executor-config-scroll"/)
+  assert.match(builderSource, /advancedKeys: this\.embedded \? \[\] : \['advanced'\]/)
+  assert.match(builderSource, /if \(this\.embedded\) this\.advancedKeys = \[\]/)
+  assert.match(builderSource, /this\.\$refs\.configScroll\.scrollTop = 0/)
+  assert.match(builderSource, /ref="previewPanel" class="executor-preview-panel"/)
+  assert.match(builderSource, /querySelectorAll\('\.ant-table-body'\)/)
+  assert.match(builderSource, /element\.scrollLeft = 0/)
+  assert.match(builderSource, /v-model="advancedKeys" class="advanced-collapse"/)
+})
+
+test('embedded advanced settings render as one bordered disclosure surface', () => {
+  assert.match(builderSource, /\.is-embedded \.advanced-collapse\s*\{[^}]*border:\s*1px solid #e5e7eb;[^}]*border-radius:\s*8px;[^}]*overflow:\s*hidden;/s)
+  assert.match(builderSource, /\.is-embedded \.advanced-collapse \/deep\/ \.ant-collapse-content\s*\{[^}]*border-top:\s*1px solid #e5e7eb;/s)
+  assert.match(builderSource, /\.theme-dark\.is-embedded \.advanced-collapse \/deep\/ \.ant-collapse-content\s*\{[^}]*border-color:\s*#2a2a2a;/s)
+})
+
+test('embedded robot catalog uses compact theme-aware icons', () => {
+  assert.match(builderSource, /<span class="catalog-icon"><a-icon :type="item\.icon" \/><\/span>/)
+  assert.match(builderSource, /\.is-embedded \.catalog-icon \{[\s\S]*?color: var\(--primary-color[\s\S]*?background: color-mix/)
+  assert.doesNotMatch(builderSource, /v-if="!embedded" class="catalog-icon"/)
+})
+
+test('embedded preview table only scrolls vertically when rows exceed the compact viewport', () => {
+  assert.match(builderSource, /:scroll="tableScroll"/)
+  assert.match(builderSource, /tableScroll \(\) \{[\s\S]*?if \(!this\.embedded\) return \{ x: 860, y: 430 \}[\s\S]*?this\.levels\.length > 8 \? \{ y: 430 \} : undefined/)
+  assert.match(builderSource, /const width = \(compact, regular\) => this\.embedded \? compact : regular/)
+  assert.match(builderSource, /this\.form\.executor_type === 'layered_martingale'[\s\S]*?column\.dataIndex !== 'level'[\s\S]*?rows\.filter\(column => !\['layer_index', 'order_index'\]\.includes\(column\.dataIndex\)\)/)
+  assert.match(builderSource, /\.is-embedded \.executor-level-table \/deep\/ \.ant-table-body::\-webkit-scrollbar \{[\s\S]*?height: 6px/)
+})
+
+test('robot risk surfaces use a neutral visual treatment', () => {
+  assert.match(builderSource, /\.theme-dark \.equity-risk-card \{[\s\S]*?background: #171717/)
+  assert.match(builderSource, /\.theme-dark \.trigger-contract-card \{[\s\S]*?background: #171717/)
   assert.doesNotMatch(builderSource, /\.theme-dark \.equity-risk-card \{[\s\S]*?background: #102a43/)
 })
 

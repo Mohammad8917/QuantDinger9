@@ -124,14 +124,6 @@ export function deleteChatSession (sessionId) {
   })
 }
 
-export function saveChatHistory (parameter) {
-  return request({
-    url: marketApi.SaveChatHistory,
-    method: 'post',
-    data: parameter
-  })
-}
-
 export function saveCopilotMessage (parameter) {
   return request({
     url: marketApi.SaveCopilotMessage,
@@ -281,27 +273,6 @@ export function clearChatSessionMemory (sessionId) {
   return request({
     url: `${marketApi.GetChatSessions}/${sessionId}/memory`,
     method: 'delete'
-  })
-}
-
-export function getConfig () {
-  return request({
-    url: marketApi.GetConfig,
-    method: 'get'
-  })
-}
-
-export function getMenuFooterConfig () {
-  return request({
-    url: marketApi.GetMenuFooterConfig,
-    method: 'get'
-  })
-}
-
-export function getMarketTypes () {
-  return request({
-    url: marketApi.GetMarketTypes,
-    method: 'get'
   })
 }
 

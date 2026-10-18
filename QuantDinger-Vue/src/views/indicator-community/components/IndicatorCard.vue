@@ -2,20 +2,12 @@
   <a-card
     hoverable
     class="indicator-card"
+    :class="{ 'indicator-card--strategy': isStrategyAsset }"
     :body-style="{ padding: '12px' }"
     @click="$emit('click', indicator)"
   >
-    <div class="card-cover" :style="coverStyle">
-      <img
-        v-if="indicator.preview_image && !imageError"
-        :src="indicator.preview_image"
-        :alt="indicator.name"
-        @error="handleImageError"
-      />
-      <div v-else class="default-cover" :style="{ background: coverGradient }">
-        <span class="cover-title">{{ indicatorInitials }}</span>
-        <span class="cover-subtitle">{{ indicator.name }}</span>
-      </div>
+    <div v-if="!isStrategyAsset" class="card-cover">
+      <img :src="previewImage" :alt="indicator.name" @error="handleImageError" />
       <div class="cover-badges">
         <div class="cover-badges__left">
           <a-tooltip v-if="isStrategyAsset && hasScore" :title="scoreTooltip">
@@ -47,25 +39,29 @@
     </div>
 
     <div class="card-content">
-      <h3 class="card-title" :title="indicator.name">{{ indicator.name }}</h3>
-      <p class="card-desc">{{ indicator.description || $t('community.noDescription') }}</p>
-      <div v-if="!isStrategyAsset" class="visual-summary">
-        <div class="visual-summary__head">
-          <span><a-icon type="eye" /> {{ $t('community.visualProfile') }}</span>
-          <strong>{{ visibilityLabel }}</strong>
+      <div v-if="isStrategyAsset" class="strategy-card-head">
+        <div class="strategy-card-title-row">
+          <h3 class="card-title" :title="indicator.name">{{ indicator.name }}</h3>
+          <div class="strategy-card-badges">
+            <a-tooltip v-if="hasScore" :title="scoreTooltip">
+              <span class="strategy-score-badge" :class="scoreBadgeClass">
+                <a-icon type="trophy" theme="filled" /> {{ scoreLabel }}
+              </span>
+            </a-tooltip>
+            <span v-if="indicator.vip_free" class="vip-free-tag">{{ $t('community.vipFree') }}</span>
+            <span class="price-tag" :class="isPaid ? 'paid' : 'free'">
+              {{ isPaid ? `${indicator.price} ${$t('community.credits')}` : $t('community.free') }}
+            </span>
+          </div>
         </div>
-        <div class="visual-meter" aria-hidden="true">
-          <span class="visual-meter__bar visual-meter__bar--trend"></span>
-          <span class="visual-meter__bar visual-meter__bar--signal"></span>
-          <span class="visual-meter__bar visual-meter__bar--zone"></span>
-        </div>
-        <div class="visual-chips">
-          <span><a-icon type="sliders" /> {{ parameterChipLabel }}</span>
-          <span><a-icon type="environment" /> {{ $t('community.chartMarkers') }}</span>
-          <span><a-icon type="block" /> {{ $t('community.overlayLayers') }}</span>
-        </div>
+        <span v-if="indicator.is_own" class="strategy-ownership-tag">{{ $t('community.myStrategy') }}</span>
+        <span v-else-if="indicator.is_purchased" class="strategy-ownership-tag strategy-ownership-tag--purchased">
+          <a-icon type="check-circle" /> {{ $t('community.purchased') }}
+        </span>
       </div>
-      <div v-else-if="hasKpi" class="card-kpi">
+      <h3 v-else class="card-title" :title="indicator.name">{{ indicator.name }}</h3>
+      <p class="card-desc">{{ indicator.description || $t('community.noDescription') }}</p>
+      <div v-if="isStrategyAsset && hasKpi" class="card-kpi">
         <div class="kpi-cell">
           <div class="kpi-label">{{ $t('community.totalReturn') }}</div>
           <div class="kpi-value" :class="returnToneClass">{{ formatPercent(indicator.total_return) }}</div>
@@ -105,7 +101,9 @@
           <strong>{{ confirmationFrequencyLabel }}</strong>
         </div>
       </div>
-      <div v-else-if="hasApplicable" class="card-tags">
+      <div v-else class="card-tags card-tags--indicator">
+        <a-tag class="tag-visibility"><a-icon :type="codeHidden ? 'lock' : 'unlock'" /> {{ visibilityLabel }}</a-tag>
+        <a-tag v-if="parameterCount > 0" class="tag-params"><a-icon type="sliders" /> {{ parameterChipLabel }}</a-tag>
         <a-tag v-for="sym in visibleSymbols" :key="`s-${sym}`" class="tag-symbol">{{ sym }}</a-tag>
         <a-tag v-if="extraSymbolCount > 0" class="tag-extra">+{{ extraSymbolCount }}</a-tag>
         <a-tag v-for="tf in visibleTimeframes" :key="`t-${tf}`" class="tag-tf">{{ tf }}</a-tag>
@@ -136,20 +134,7 @@
 </template>
 
 <script>
-const GRADIENT_PRESETS = [
-  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-  'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-  'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-  'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-  'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
-  'linear-gradient(135deg, #d299c2 0%, #fef9d7 100%)',
-  'linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%)',
-  'linear-gradient(135deg, #fddb92 0%, #d1fdff 100%)',
-  'linear-gradient(135deg, #9890e3 0%, #b1f4cf 100%)',
-  'linear-gradient(135deg, #ebc0fd 0%, #d9ded8 100%)',
-  'linear-gradient(135deg, #f6d365 0%, #fda085 100%)'
-]
+import fallbackCover from '@/assets/marketplace/indicator-preview-default.svg'
 
 export default {
   name: 'IndicatorCard',
@@ -202,25 +187,10 @@ export default {
       if (!values.length) return ''
       return values.slice(0, 2).join(' · ') + (values.length > 2 ? ` +${values.length - 2}` : '')
     },
-    coverGradient () {
-      const index = (this.indicator.id || 0) % GRADIENT_PRESETS.length
-      return GRADIENT_PRESETS[index]
-    },
-    indicatorInitials () {
-      const name = this.indicator.name || 'I'
-      if (/[\u4e00-\u9fa5]/.test(name)) {
-        return name.slice(0, 2)
-      }
-      const words = name.split(/\s+/)
-      if (words.length >= 2) {
-        return (words[0][0] + words[1][0]).toUpperCase()
-      }
-      return name.slice(0, 2).toUpperCase()
-    },
-    coverStyle () {
-      return {
-        background: (!this.indicator.preview_image || this.imageError) ? this.coverGradient : '#f5f5f5'
-      }
+    previewImage () {
+      return this.indicator.preview_image && !this.imageError
+        ? this.indicator.preview_image
+        : fallbackCover
     },
     scoreNumber () {
       const v = parseFloat(this.indicator.score)
@@ -320,7 +290,7 @@ export default {
       return `${sign}${v.toFixed(2)}%`
     },
     handleImageError () {
-      this.imageError = true
+      if (!this.imageError) this.imageError = true
     }
   }
 }
@@ -343,7 +313,9 @@ export default {
   .card-cover {
     position: relative;
     width: 100%;
-    height: 140px;
+    aspect-ratio: 16 / 9;
+    height: auto;
+    min-height: 0;
     overflow: hidden;
 
     img {
@@ -547,6 +519,73 @@ export default {
     flex-direction: column;
     padding: 4px 0;
 
+    .strategy-card-head {
+      margin-bottom: 8px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
+    .strategy-card-title-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+
+      .card-title {
+        margin: 1px 0 0;
+        font-size: 16px;
+        line-height: 1.35;
+      }
+    }
+
+    .strategy-card-badges {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 5px;
+      flex-shrink: 0;
+    }
+
+    .strategy-score-badge,
+    .price-tag,
+    .strategy-ownership-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .strategy-score-badge {
+      color: #fff;
+      &.score-badge--top { background: linear-gradient(135deg, #f5af19, #f12711); }
+      &.score-badge--good { background: linear-gradient(135deg, #36d1dc, #5b86e5); }
+      &.score-badge--mid { background: linear-gradient(135deg, #8e8e8e, #b4b4b4); }
+      &.score-badge--low { background: rgba(0, 0, 0, 0.55); }
+    }
+
+    .price-tag {
+      color: #fff;
+      &.free { background: #52c41a; }
+      &.paid { background: linear-gradient(135deg, #f5af19 0%, #f12711 100%); }
+    }
+
+    .strategy-ownership-tag {
+      margin-top: 7px;
+      color: rgba(0, 0, 0, 0.58);
+      background: rgba(0, 0, 0, 0.05);
+
+      &--purchased {
+        color: #389e0d;
+        background: rgba(82, 196, 26, 0.1);
+      }
+    }
+
     .card-title {
       font-size: 14px;
       font-weight: 600;
@@ -688,6 +727,8 @@ export default {
       }
       .tag-symbol { background: rgba(24, 144, 255, 0.08); color: var(--primary-color, #1890ff); }
       .tag-tf { background: rgba(82, 196, 26, 0.08); color: #389e0d; }
+      .tag-visibility { background: rgba(0, 0, 0, 0.045); color: rgba(0, 0, 0, 0.62); }
+      .tag-params { background: rgba(114, 46, 209, 0.08); color: #722ed1; }
       .tag-extra {
         background: rgba(0, 0, 0, 0.04);
         color: rgba(0, 0, 0, 0.45);
@@ -696,11 +737,11 @@ export default {
     }
 
     .strategy-applicability {
-      margin: 2px 0 9px;
+      margin: 2px 0 14px;
       padding: 7px 8px;
-      border: 1px solid rgba(82, 196, 26, 0.16);
+      border: 1px solid color-mix(in srgb, var(--primary-color, #1890ff) 20%, transparent);
       border-radius: 6px;
-      background: rgba(82, 196, 26, 0.045);
+      background: color-mix(in srgb, var(--primary-color, #1890ff) 5%, transparent);
 
       &__row {
         display: flex;
@@ -765,6 +806,16 @@ export default {
   border-color: #303030;
 
   .card-content {
+    .strategy-card-head { border-bottom-color: rgba(255, 255, 255, 0.09); }
+    .strategy-ownership-tag {
+      color: rgba(255, 255, 255, 0.62);
+      background: rgba(255, 255, 255, 0.07);
+      &--purchased {
+        color: #95de64;
+        background: rgba(82, 196, 26, 0.14);
+      }
+    }
+
     .card-title {
       color: rgba(255, 255, 255, 0.85);
     }
@@ -819,6 +870,8 @@ export default {
     .card-tags {
       .tag-symbol { background: rgba(24, 144, 255, 0.16); color: #69c0ff; }
       .tag-tf { background: rgba(82, 196, 26, 0.16); color: #95de64; }
+      .tag-visibility { background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.68); }
+      .tag-params { background: rgba(114, 46, 209, 0.18); color: #b37feb; }
       .tag-extra { background: rgba(255, 255, 255, 0.08); color: rgba(255, 255, 255, 0.45); }
     }
   }
@@ -839,6 +892,15 @@ export default {
   }
 
   .card-content {
+    .strategy-card-head { border-bottom-color: rgba(255, 255, 255, 0.09); }
+    .strategy-ownership-tag {
+      color: rgba(255, 255, 255, 0.62);
+      background: rgba(255, 255, 255, 0.07);
+      &--purchased {
+        color: #95de64;
+        background: rgba(82, 196, 26, 0.14);
+      }
+    }
     .card-title { color: rgba(255, 255, 255, 0.9); }
     .card-desc { color: rgba(255, 255, 255, 0.58); }
     .card-author .author-name { color: rgba(255, 255, 255, 0.76); }
@@ -858,8 +920,9 @@ export default {
     }
 
     .strategy-applicability {
-      border-color: rgba(82, 196, 26, 0.28);
-      background: rgba(82, 196, 26, 0.09);
+      border-color: color-mix(in srgb, var(--primary-color, #1890ff) 28%, #303030);
+      background: #242424;
+      box-shadow: inset 2px 0 0 var(--primary-color, #1890ff);
 
       &__row {
         span { color: rgba(255, 255, 255, 0.6); }

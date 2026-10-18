@@ -22,7 +22,7 @@ test('price deviation preserves direction and missing references', () => {
 
 test('execution labels are available in every supported locale', () => {
   for (const locale of Object.values(messages)) {
-    for (const key of ['price', 'reference', 'deviation', 'note', 'deviationHint', 'orderId', 'pnlHint', 'gridPnlHint', 'pairPending', 'feesPending', 'entryOrders', 'exitOrder', 'gridPendingSummary', 'exchangePnl', 'systemPnl', 'gridNetPnl', 'exchangePnlHint', 'excluding_fees', 'venue_defined', 'reportPending', 'reportPendingWithSystem', 'reportUnavailable', 'spotPnlNotApplicable', 'orderTotalElsewhere', 'reportSource', 'reportedQuantity', 'systemSummary']) {
+    for (const key of ['price', 'reference', 'deviation', 'fillSummary', 'qualitySummary', 'note', 'deviationHint', 'orderId', 'pnlHint', 'gridPnlHint', 'pairPending', 'feesPending', 'entryOrders', 'exitOrder', 'gridPendingSummary', 'exchangePnl', 'systemPnl', 'gridNetPnl', 'exchangePnlHint', 'excluding_fees', 'venue_defined', 'reportPending', 'reportPendingWithSystem', 'reportUnavailable', 'spotPnlNotApplicable', 'orderTotalElsewhere', 'reportSource', 'reportedQuantity', 'systemSummary']) {
       assert.ok(locale[`trading-assistant.execution.${key}`])
     }
     for (const key of ['positionCost', 'marketValue', 'averageEntryPrice']) {

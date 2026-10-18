@@ -33,7 +33,7 @@ export const asyncRouterMap = [
         path: '/indicator-community',
         name: 'IndicatorCommunity',
         component: () => import('@/views/indicator-community'),
-        meta: { title: 'menu.dashboard.community', keepAlive: false, icon: 'shop', permission: ['dashboard'] }
+        meta: { title: 'menu.dashboard.community', keepAlive: false, icon: 'shop', permission: ['dashboard'], capability: 'marketplace_enabled' }
       },
       // Strategy IDE.
       {
@@ -105,7 +105,7 @@ export const asyncRouterMap = [
         path: '/billing',
         name: 'Billing',
         component: () => import('@/views/billing'),
-        meta: { title: 'menu.billing', keepAlive: false, icon: 'wallet', permission: ['dashboard'] }
+        meta: { title: 'menu.billing', keepAlive: false, icon: 'wallet', permission: ['dashboard'], capability: 'billing_enabled' }
       },
       // User profile. Admin-only items follow the menu divider.
       {

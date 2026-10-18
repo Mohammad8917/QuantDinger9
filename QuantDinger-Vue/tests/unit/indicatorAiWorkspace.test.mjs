@@ -52,8 +52,8 @@ test('indicator AI separates discussion from explicit code changes', () => {
   assert.match(viewSource, /interactionMode: requestMode/)
   assert.match(viewSource, /replyType === 'discussion'/)
   assert.match(viewSource, /message_type: 'discussion'/)
-  assert.match(viewSource, /\{ label: this\.\$t\('indicatorIde\.aiQuickExplain'\), mode: 'discussion' \}/)
-  assert.match(viewSource, /\{ label: this\.\$t\('indicatorIde\.aiQuickParameters'\), mode: 'modify' \}/)
+  assert.match(viewSource, /\{ label: this\.\$t\('indicatorIde\.aiQuickExplain'\), mode: 'discussion', icon: 'file-search' \}/)
+  assert.match(viewSource, /\{ label: this\.\$t\('indicatorIde\.aiQuickParameters'\), mode: 'modify', icon: 'sliders' \}/)
 
   const discussionBlock = viewSource.slice(
     viewSource.indexOf("if (replyType === 'discussion')"),
@@ -76,15 +76,27 @@ test('candidate requires an explicit user action before entering the editor', ()
 })
 
 test('desktop editor is wider while the chart remains the flexible workspace', () => {
+  assert.match(viewSource, /codeDrawerVisible: true/)
   assert.match(viewSource, /\.ide-left\s*\{[\s\S]*?width: 38%;[\s\S]*?min-width: 420px;[\s\S]*?max-width: 600px;/)
   assert.match(viewSource, /\.ai-conversation\s*\{[\s\S]*?flex: 1 1 auto;[\s\S]*?resize: none;/)
   assert.match(viewSource, /class="ai-composer-toolbar"/)
   assert.match(viewSource, /\.ai-composer-toolbar\s*\{[\s\S]*?justify-content: space-between;/)
   assert.doesNotMatch(viewSource, /\.ai-composer-send\s*\{[^}]*?position: absolute;/)
-  assert.match(viewSource, /min-width: 116px;/)
-  assert.match(viewSource, /height: 32px;/)
+  assert.match(viewSource, /min-width: 72px;/)
+  assert.match(viewSource, /height: 28px;/)
   assert.match(viewSource, /\{\{ \$t\('indicatorIde\.aiSend'\) \}\}/)
   assert.match(viewSource, /class="ide-right ide-right--workspace"/)
+})
+
+test('empty AI workspace keeps a full conversation area and anchors the composer at the bottom', () => {
+  assert.match(viewSource, /:class="\{ 'is-empty': !aiWorkspaceLoading && !aiMessages\.length \}"/)
+  assert.doesNotMatch(viewSource, /class="ai-conversation-empty__intro"/)
+  assert.match(viewSource, /<a-icon :type="item\.icon" \/>/)
+  assert.match(viewSource, /\.ai-quick-prompts\s*\{[\s\S]*?display: grid;[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/)
+  assert.doesNotMatch(viewSource, /&\.is-empty \.ai-conversation\s*\{[\s\S]*?flex: 0 0 auto;/)
+  assert.match(viewSource, /\.ai-conversation-empty\s*\{[\s\S]*?justify-content: center;/)
+  assert.match(viewSource, /\.ai-composer ::v-deep \.ai-prompt-input textarea\s*\{[\s\S]*?min-height: 80px;/)
+  assert.doesNotMatch(viewSource, /class="ai-helper-tip"/)
 })
 
 test('code and AI areas share one accessible draggable vertical split', () => {
@@ -130,19 +142,22 @@ test('plain Enter sends while Ctrl or Command Enter keeps a newline', () => {
   assert.match(enterHandler, /this\.handleAIGenerate\(\)/)
 })
 
-test('indicator quick trade opens as a compact right-side drawer', () => {
+test('indicator quick trade opens as a compact draggable floating console', () => {
   assert.match(viewSource, /quickTradeDrawerVisible: false/)
-  assert.match(viewSource, /class="ide-chart-fs-row"[\s\S]*?class="chart-panel"[\s\S]*?class="ide-quick-drawer"/)
+  assert.match(viewSource, /ref="chartPanel" class="chart-panel"[\s\S]*?class="ide-quick-float"/)
   assert.doesNotMatch(viewSource, /class="chart-panel-qt-btn"/)
-  assert.match(viewSource, /class="ide-quick-drawer-rail"[\s\S]*?:aria-expanded="quickTradeDrawerVisible"[\s\S]*?@click="toggleQuickTradeDrawer"/)
-  assert.match(viewSource, /\.ide-quick-drawer--collapsed\s*\{[\s\S]*?flex-basis: 34px;/)
-  assert.match(viewSource, /<quick-trade-panel[\s\S]*?embedded-dock[\s\S]*?side-dock/)
+  assert.match(viewSource, /class="ide-quick-float__titlebar" @mousedown="startQuickTradeDrag"/)
+  assert.match(viewSource, /:style="quickTradeFloatingStyle"/)
+  assert.match(viewSource, /<quick-trade-panel[\s\S]*?embedded-dock[\s\S]*?side-dock[\s\S]*?floating-console/)
   assert.match(viewSource, /\.ide-chart-fs-row\s*\{[\s\S]*?flex-direction: row;/)
-  assert.match(viewSource, /\.ide-quick-drawer\s*\{[\s\S]*?width: clamp\(370px, 28vw, 440px\);/)
+  assert.match(viewSource, /\.ide-quick-float\s*\{[\s\S]*?position: absolute;[\s\S]*?width: min\(408px, calc\(100% - 24px\)\);/)
+  assert.match(viewSource, /\.ide-quick-float\s*\{[\s\S]*?&\.is-minimized\s*\{[\s\S]*?width: 244px;/)
+  assert.match(viewSource, /snapFloatingPanelPosition/)
   assert.match(quickTradeSource, /embeddedDock: \{ type: Boolean, default: false \}/)
   assert.match(quickTradeSource, /sideDock: \{ type: Boolean, default: false \}/)
+  assert.match(quickTradeSource, /floatingConsole: \{ type: Boolean, default: false \}/)
   assert.match(quickTradeSource, /<div v-if="!embeddedDock" class="qt-symbol-bar">/)
-  assert.match(quickTradeSource, /\.quick-trade-embedded\.qt-embedded-ide\.qt-embedded-dock\.qt-embedded-side-dock\s*\{/)
+  assert.match(quickTradeSource, /\.quick-trade-embedded\.qt-floating-console\s*\{/)
   assert.match(quickTradeSource, /\.qt-side-account-control\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) 32px;/)
   assert.match(quickTradeSource, /\.qt-embedded-split--cols\s*\{[\s\S]*?flex-direction: column;/)
   assert.match(quickTradeSource, /\.qt-position-card\s*\{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/)

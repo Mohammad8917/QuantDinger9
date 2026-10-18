@@ -92,6 +92,16 @@ test('strategy builder restores runtime controls from legacy source code', () =>
   })
 })
 
+test('strategy builder reads generated robot equity defaults for deployment', () => {
+  const config = extractStrategyRuntimeConfigFromCode(`
+EQUITY_TAKE_PROFIT = 0.1
+EQUITY_STOP_LOSS = 0.06
+`)
+
+  assert.equal(config.equity_take_profit_pct, 0.1)
+  assert.equal(config.equity_stop_loss_pct, 0.06)
+})
+
 test('exchange control is shown only when the strategy explicitly owns exchange selection', () => {
   assert.equal(strategyCodeUsesExplicitExchange('g.symbol = "Crypto:BTC/USDT@spot"'), false)
   assert.equal(strategyCodeUsesExplicitExchange('g.exchange_id = "okx"'), true)
@@ -177,6 +187,31 @@ def initialize(context):
   assert.match(updated, /TIMEFRAME = "4H"/)
   assert.match(updated, /set_universe\(\[INSTRUMENT\]\)/)
   assert.match(updated, /subscribe\(frequency=TIMEFRAME\)/)
+})
+
+test('strategy product switching preserves derivative leverage permission safely', () => {
+  const swapSource = `def initialize(context):
+    context.set_universe(["Crypto:BTC/USDT@swap"])
+    context.allow_leverage(max_leverage=20)
+`
+  const spotSource = applyStrategyRuntimeConfigToCode(swapSource, {
+    market_category: 'Crypto',
+    symbol: 'BTC/USDT',
+    market_type: 'spot'
+  })
+
+  assert.match(spotSource, /Crypto:BTC\/USDT@spot/)
+  assert.doesNotMatch(spotSource, /^\s*context\.allow_leverage/m)
+  assert.match(spotSource, /runtime_product_leverage: context\.allow_leverage\(max_leverage=20\)/)
+
+  const restoredSwapSource = applyStrategyRuntimeConfigToCode(spotSource, {
+    market_category: 'Crypto',
+    symbol: 'BTC/USDT',
+    market_type: 'swap'
+  })
+  assert.match(restoredSwapSource, /Crypto:BTC\/USDT@swap/)
+  assert.match(restoredSwapSource, /^\s*context\.allow_leverage\(max_leverage=20\)/m)
+  assert.doesNotMatch(restoredSwapSource, /runtime_product_leverage/)
 })
 
 test('v7 grid source removes stale executor metadata while preserving deployment defaults', () => {

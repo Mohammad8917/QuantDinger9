@@ -32,7 +32,11 @@ from app.openapi.schemas.high_risk import (
 from app.utils.db import get_db_connection
 from app.utils.logger import get_logger
 from app.utils.auth import login_required
-from app.services.quick_trade.balances import empty_balance_dict, fetch_balance_raw, parse_balance as _parse_balance
+from app.services.quick_trade.balances import (
+    empty_balance_dict,
+    fetch_balance_raw,
+    parse_balance as _parse_balance,  # noqa: F401 - compatibility export
+)
 from app.services.quick_trade.credentials import build_exchange_config, create_exchange_client
 from app.services.quick_trade.errors import (
     exchange_error_user_message,
@@ -43,6 +47,7 @@ from app.services.quick_trade.orders import (
     attach_quick_trade_protection,
     enrich_fill,
     limit_order_kwargs,
+    quick_trade_protection_status,
     quick_order_status,
 )
 from app.services.quick_trade.symbols import is_supported_crypto_exchange, symbols_match as quick_trade_symbols_match
@@ -51,7 +56,6 @@ from app.services.quick_trade.products import (
     build_product_aware_config as _build_product_aware_config,
 )
 from app.services.quick_trade.positions import (
-    extract_signed_position_qty as _extract_signed_position_qty,
     infer_position_side_from_row as _infer_position_side_from_row,
     normalize_okx_positions_raw as _normalize_okx_positions_raw,
     parse_positions as _parse_positions,
@@ -345,8 +349,8 @@ def place_order(body):
                                 - leverage = 1: spot market
                                 - leverage > 1: swap (perpetual futures) market
       market_type    (str)    - "swap" / "spot" (optional, auto-determined by leverage if not provided)
-      tp_price       (float)  - take-profit price (optional, for record only)
-      sl_price       (float)  - stop-loss price (optional, for record only)
+      tp_price       (float)  - exchange-native take-profit price for swaps
+      sl_price       (float)  - exchange-native stop-loss price for swaps
       source         (str)    - "ai_radar" / "ai_analysis" / "indicator" / "manual"
     """
     exchange_id = ""
@@ -657,6 +661,15 @@ def place_order(body):
             protection_error = str(protection_exc)
             logger.error("Quick Trade native protection failed order=%s: %s", exchange_order_id, protection_exc)
 
+        protection_status, protection_error = quick_trade_protection_status(
+            requested=tp_price > 0 or sl_price > 0,
+            market_type=market_type,
+            filled_qty=filled,
+            avg_price=avg_fill,
+            responses=protection_result,
+            error=protection_error,
+        )
+
         status = quick_order_status(
             requested_qty=base_qty,
             filled_qty=filled,
@@ -672,6 +685,7 @@ def place_order(body):
             "exchange_status": exchange_status,
             "native_protection": protection_result,
             "native_protection_error": protection_error,
+            "protection_status": protection_status,
             "protected_filled_qty": filled if protection_result else 0.0,
             "margin_mode": margin_mode,
             "client_order_id": client_order_id,
@@ -699,7 +713,7 @@ def place_order(body):
             exchange_order_id=exchange_order_id,
             filled=filled,
             avg_price=avg_fill,
-            error_msg="",
+            error_msg=protection_error,
             source=source,
             raw_result=raw_record,
             commission=commission,
@@ -719,7 +733,7 @@ def place_order(body):
                 "status": status,
                 "margin_amount": usdt_amount if market_type == "swap" else None,
                 "notional_amount": order_notional_usdt,
-                "protection_status": "failed" if protection_error else ("attached" if protection_result else "not_requested"),
+                "protection_status": protection_status,
                 "protection_error": protection_error,
             },
         })
@@ -1058,7 +1072,6 @@ def _fetch_exchange_positions_raw(
     from app.services.live_trading.symbols import (
         to_bybit_symbol,
         to_gate_currency_pair,
-        to_okx_spot_inst_id,
         to_okx_swap_inst_id,
     )
 

@@ -20,10 +20,6 @@ export function replaceUniverseMembers (universeId, members) {
   return request({ url: `/api/universes/${universeId}/members`, method: 'put', data: { members } })
 }
 
-export function createUniverseSnapshot (universeId, data = {}) {
-  return request({ url: `/api/universes/${universeId}/snapshots`, method: 'post', data })
-}
-
 export function cloneUniverse (universeId, data = {}) {
   return request({ url: `/api/universes/${universeId}/clone`, method: 'post', data })
 }

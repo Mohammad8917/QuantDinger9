@@ -688,7 +688,7 @@
       </a-tab-pane>
 
       <!-- Tab 3: Order List -->
-      <a-tab-pane key="orders" :tab="$t('adminOrders.tabTitle') || 'Order List'">
+      <a-tab-pane v-if="billingEnabled" key="orders" :tab="$t('adminOrders.tabTitle') || 'Order List'">
         <!-- Order Summary Cards -->
         <div class="summary-cards" v-if="orderSummary">
           <div class="summary-card">
@@ -930,7 +930,7 @@
         </a-modal>
       </a-tab-pane>
 
-      <a-tab-pane key="rewardWithdrawals" :tab="$t('adminReferralWithdrawals.tabTitle')">
+      <a-tab-pane v-if="billingEnabled" key="rewardWithdrawals" :tab="$t('adminReferralWithdrawals.tabTitle')">
         <div class="summary-cards" v-if="rewardWithdrawalSummary">
           <div class="summary-card">
             <div class="summary-icon" style="background: linear-gradient(135deg, #667eea, #764ba2)">
@@ -1567,6 +1567,9 @@ export default {
     }
   },
   computed: {
+    billingEnabled () {
+      return this.$store.state.features.config.billing_enabled !== false
+    },
     ...mapGetters(['userInfo']),
     isZh () {
       const locale = this.$i18n ? String(this.$i18n.locale || '') : 'zh-CN'

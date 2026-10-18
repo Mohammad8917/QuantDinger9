@@ -5,6 +5,7 @@ import app from './modules/app'
 import user from './modules/user'
 import brand from './modules/brand'
 import policy from './modules/policy'
+import features from './modules/features'
 
 // dynamic router permission control
 import permission from './modules/async-router'
@@ -22,6 +23,7 @@ export default new Vuex.Store({
     user,
     brand,
     policy,
+    features,
     permission
   },
   state: {},

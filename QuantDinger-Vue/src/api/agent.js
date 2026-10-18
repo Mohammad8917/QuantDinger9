@@ -90,17 +90,3 @@ export function listMyAgentAudit (params) {
     params
   })
 }
-
-/**
- * Jobs submitted by agents (paged via limit only; newest first).
- * NOTE: this hits an agent-scoped endpoint, so it requires an agent token —
- * not a JWT. The admin UI does not call this; use the SSE stream instead.
- */
-export function listAgentJobs (agentToken, params) {
-  return request({
-    url: '/api/agent/v1/jobs',
-    method: 'get',
-    params,
-    headers: { Authorization: `Bearer ${agentToken}` }
-  })
-}

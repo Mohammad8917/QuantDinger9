@@ -1288,9 +1288,15 @@ export default {
 
 <style lang="less" scoped>
 .indicator-community-container {
+  --market-font-body: 14px;
+  --market-font-control: 13px;
+  --market-font-small: 12px;
+  --market-font-section: 20px;
   padding: 24px;
   min-height: calc(100vh - 120px);
   background: #f5f5f5;
+  font-size: var(--market-font-body);
+  line-height: 1.5;
 
   .market-header {
     margin-bottom: 18px;
@@ -1355,6 +1361,7 @@ export default {
       ::v-deep .ant-input-affix-wrapper,
       ::v-deep .ant-input-number {
         border-radius: 6px;
+        font-size: var(--market-font-control);
       }
 
       ::v-deep .ant-btn,
@@ -1489,12 +1496,12 @@ export default {
       h3 {
         margin: 0;
         color: rgba(0, 0, 0, 0.88);
-        font-size: 20px;
+        font-size: var(--market-font-section);
         font-weight: 700;
       }
 
       span {
-        font-size: 12px;
+        font-size: var(--market-font-small);
       }
     }
   }
@@ -1546,6 +1553,18 @@ export default {
 
     ::v-deep .ant-tabs-bar {
       margin-bottom: 0;
+    }
+
+    ::v-deep .ant-tabs-nav .ant-tabs-tab {
+      font-size: var(--market-font-body);
+      font-weight: 600;
+      line-height: 22px;
+    }
+
+    ::v-deep .ant-tabs-nav .ant-badge {
+      color: inherit;
+      font: inherit;
+      line-height: inherit;
     }
   }
 

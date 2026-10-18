@@ -75,7 +75,6 @@
 
 <script>
 import { getStrategyAiDecisions } from '@/api/strategy'
-import { getQuickTradeAiDecisions } from '@/api/quick-trade'
 
 export default {
   name: 'AiDecisionRecords',
@@ -102,15 +101,7 @@ export default {
   methods: {
     async load () {
       const requestToken = ++this.requestToken
-      const isQuickTrade = this.sourceType === 'quick_trade'
-      const sourceId = Number(this.sourceId || 0)
-      if (!isQuickTrade && !this.strategyId) {
-        this.rows = []
-        this.loading = false
-        this.$emit('loaded', this.rows)
-        return
-      }
-      if (isQuickTrade && !sourceId) {
+      if (!this.strategyId) {
         this.rows = []
         this.loading = false
         this.$emit('loaded', this.rows)
@@ -119,14 +110,7 @@ export default {
       this.loading = true
       this.loadFailed = false
       try {
-        const res = isQuickTrade
-          ? await getQuickTradeAiDecisions({
-            credential_id: sourceId,
-            symbol: this.symbol,
-            market_type: this.marketType,
-            limit: 100
-          })
-          : await getStrategyAiDecisions(this.strategyId)
+        const res = await getStrategyAiDecisions(this.strategyId)
         if (requestToken !== this.requestToken) return
         this.rows = (res && Array.isArray(res.data)) ? res.data : []
         this.$emit('loaded', this.rows)
@@ -288,17 +272,17 @@ export default {
 .theme-dark .ai-decision-record__summary time,
 .theme-dark .ai-decision-record__provider,
 .theme-dark .ai-decision-record__meta { color: #98a1ac; }
-.theme-dark .ai-decision-records__list /deep/ .ant-collapse-item { border-color: #30343a; background: #15181b; }
+.theme-dark .ai-decision-records__list /deep/ .ant-collapse-item { border-color: #333333; background: #151515; }
 .theme-dark .ai-decision-records__list /deep/ .ant-collapse-header { color: #eef0f3; }
-.theme-dark .ai-decision-records__list /deep/ .ant-collapse-content { border-top-color: #30343a; background: #15181b; color: #eef0f3; }
-.theme-dark .ai-decision-record__checks .ant-tag { color: #cfd4da; border-color: #43484f; background: #22262b; }
+.theme-dark .ai-decision-records__list /deep/ .ant-collapse-content { border-top-color: #333333; background: #151515; color: #eef0f3; }
+.theme-dark .ai-decision-record__checks .ant-tag { color: #cfd4da; border-color: #434343; background: #222222; }
 .theme-dark .ai-decision-record__fallback { color: #ffc53d; }
 .theme-dark .ai-decision-record__technical { color: #7f8a96; }
-.theme-dark .ai-decision-record__details { border-top-color: #30343a; }
+.theme-dark .ai-decision-record__details { border-top-color: #333333; }
 .theme-dark .ai-decision-record__details-title,
 .theme-dark .ai-decision-check__head { color: #cfd4da; }
-.theme-dark .ai-decision-check { border-top-color: #30343a; }
-.theme-dark .ai-decision-check__probabilities span { color: #aeb5bd; background: #22262b; }
+.theme-dark .ai-decision-check { border-top-color: #333333; }
+.theme-dark .ai-decision-check__probabilities span { color: #aeb5bd; background: #222222; }
 .theme-dark .ai-decision-check__probabilities span.selected { color: #91caff; background: #102a44; }
 .theme-dark /deep/ .ant-empty-description { color: #98a1ac; }
 

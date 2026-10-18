@@ -48,6 +48,3 @@ export const CRYPTO_SIGNUP_CARDS = [
     signupUrl: 'https://www.htx.com/invite/zh-cn/1f?invite_code=dinger'
   }
 ]
-
-/** @deprecated Use CRYPTO_SIGNUP_CARDS */
-export const EXCHANGE_SIGNUP_CARDS = [...CRYPTO_SIGNUP_CARDS]

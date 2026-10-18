@@ -8,7 +8,7 @@
       <p class="page-desc">{{ $t('profile.description') || 'Manage your account settings and preferences' }}</p>
     </div>
 
-    <div class="profile-overview-grid">
+    <div class="profile-overview-grid" :class="{ 'billing-disabled': !billingEnabled }">
       <a-card :bordered="false" class="profile-card">
         <div class="profile-identity">
           <a-avatar :size="72" :src="profile.avatar || '/avatar2.jpg'" />
@@ -44,7 +44,7 @@
         </div>
       </a-card>
 
-      <a-card :bordered="false" class="credits-card">
+      <a-card v-if="billingEnabled" :bordered="false" class="credits-card">
         <div class="credits-header">
           <h3 class="credits-title">
             <a-icon type="wallet" />
@@ -80,7 +80,7 @@
         </div>
       </a-card>
 
-      <a-card :bordered="false" class="referral-card">
+      <a-card v-if="billingEnabled" :bordered="false" class="referral-card">
         <div class="referral-card-heading">
           <h3 class="referral-title">
             <a-icon type="team" />
@@ -139,7 +139,7 @@
       </a-card>
 
       <a-modal
-        v-if="rewardData.enabled"
+        v-if="billingEnabled && rewardData.enabled"
         v-model="rewardWithdrawalVisible"
         :title="$t('profile.referralRewards.withdrawTitle')"
         :confirmLoading="rewardWithdrawalSubmitting"
@@ -377,7 +377,7 @@
             </div>
           </a-tab-pane>
 
-          <a-tab-pane key="credits">
+          <a-tab-pane v-if="billingEnabled" key="credits">
             <span slot="tab"><a-icon type="wallet" />{{ $t('profile.creditsLog') || '消费记录' }}</span>
             <a-table
               :columns="creditsLogColumns"
@@ -643,7 +643,7 @@
             </div>
           </a-tab-pane>
 
-          <a-tab-pane key="referrals">
+          <a-tab-pane v-if="billingEnabled" key="referrals">
             <span slot="tab"><a-icon type="team" />{{ $t('profile.referral.listTab') || '邀请列表' }}</span>
             <a-tabs v-model="referralRecordTab" class="referral-record-tabs">
               <a-tab-pane key="promotions" :tab="$t('profile.referralRewards.promotionRecords')">
@@ -990,6 +990,9 @@ export default {
     }
   },
   computed: {
+    billingEnabled () {
+      return this.$store.state.features.config.billing_enabled !== false
+    },
     profileTabsPosition () {
       return this.profileViewportWidth >= 960 ? 'left' : 'top'
     },
@@ -1199,10 +1202,10 @@ export default {
       if (val === 'loginLogs' && this.loginLogs.length === 0) {
         this.loadLoginLogs()
       }
-      if (val === 'credits' && this.creditsLog.length === 0) {
+      if (this.billingEnabled && val === 'credits' && this.creditsLog.length === 0) {
         this.loadCreditsLog()
       }
-      if (val === 'referrals' && (!this.referralData.list || this.referralData.list.length === 0)) {
+      if (this.billingEnabled && val === 'referrals' && (!this.referralData.list || this.referralData.list.length === 0)) {
         this.loadReferrals()
       }
       if (val === 'notifications' && !this.notificationSettings.telegram_chat_id && !this.notificationSettings.discord_webhook) {
@@ -1238,8 +1241,10 @@ export default {
     // jump straight to a specific tab.
     this.applyTabFromQuery(this.$route.query.tab)
     this.loadProfile()
-    this.loadReferrals()
-    this.loadReferralRewards()
+    if (this.billingEnabled) {
+      this.loadReferrals()
+      this.loadReferralRewards()
+    }
   },
   beforeDestroy () {
     window.removeEventListener('resize', this.syncProfileViewport)
@@ -1254,7 +1259,8 @@ export default {
     // Whitelist of tabs we accept from ``?tab=xxx``. Anything else is a no-op
     // so a malformed link can't put the page in a weird state.
     applyTabFromQuery (rawTab) {
-      const allowed = ['basic', 'agentTokens', 'password', 'security', 'credits', 'notifications', 'referrals', 'loginLogs']
+      const allowed = ['basic', 'agentTokens', 'password', 'security', 'notifications', 'loginLogs']
+      if (this.billingEnabled) allowed.push('credits', 'referrals')
       if (rawTab && allowed.includes(rawTab) && this.activeTab !== rawTab) {
         this.activeTab = rawTab
       }
@@ -3110,6 +3116,10 @@ export default {
     grid-template-columns: minmax(320px, 1fr) minmax(280px, 0.82fr) minmax(360px, 1.12fr);
     gap: 12px;
     margin-bottom: 12px;
+
+    &.billing-disabled {
+      grid-template-columns: minmax(320px, 1fr);
+    }
 
     > .ant-card {
       min-width: 0;

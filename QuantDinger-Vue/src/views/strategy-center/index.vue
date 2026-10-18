@@ -1,27 +1,11 @@
 <template>
   <div class="strategy-center qd-workspace-page qd-page-frame" :class="{ 'theme-dark': isDarkTheme }">
-    <header class="sc-header">
-      <div>
-        <div class="sc-title-row">
-          <h1>{{ $t('strategyCenter.console.title') }}</h1>
-          <span class="system-health" :class="{ 'is-warning': loadError }">
-            <i></i>{{ loadError ? $t('strategyCenter.console.systemDegraded') : $t('strategyCenter.console.systemHealthy') }}
-          </span>
-        </div>
-        <p>{{ $t('strategyCenter.console.subtitle') }}</p>
-      </div>
-      <div class="sc-refresh">
-        <span v-if="refreshedAt">{{ $t('systemOverview.colUpdatedAt') }} · {{ formatTime(refreshedAt) }}</span>
-        <a-button type="primary" icon="plus" @click="openCreateLive">{{ $t('strategyCenter.stats.createLive') }}</a-button>
-        <a-button icon="reload" :loading="loading" @click="loadStrategies">{{ $t('common.refresh') }}</a-button>
-      </div>
-    </header>
-
     <live-operations-table
       ref="operationsTable"
       :strategies="strategies"
       :loading="loading"
       :load-error="loadError"
+      :refreshed-at="refreshedAt"
       :dark="isDarkTheme"
       :initial-strategy-id="initialStrategyId"
       :control-loading-id="controlLoadingId"
@@ -29,6 +13,7 @@
       @stop="handleStop"
       @edit="openEditLive"
       @delete="handleDelete"
+      @refresh="loadStrategies"
       @open-workspace="openStrategyWorkspace"
       @ownership-reconciled="loadStrategies({ force: true })"
     />
@@ -314,14 +299,31 @@ export default {
 
 <style lang="less" scoped>
 .strategy-center {
+  --sc-page: #f5f7f9;
+  --sc-surface: #ffffff;
+  --sc-surface-subtle: #f8fafb;
+  --sc-surface-muted: #f1f4f7;
+  --sc-border: #e1e6ec;
+  --sc-border-soft: #ebeff3;
+  --sc-text: #182230;
+  --sc-heading: #111827;
+  --sc-muted: #667085;
+  --sc-subtle: #8a94a3;
+  --sc-positive: #218653;
+  --sc-negative: #d14f5a;
+  --sc-warning: #b37816;
+  --sc-radius-sm: 6px;
+  --sc-radius-md: 8px;
+  --sc-radius-lg: 10px;
+  --sc-shadow: 0 8px 24px rgba(24, 34, 48, .05);
   display: flex;
   flex-direction: column;
   height: calc(100vh - 64px);
   min-height: 0;
   overflow: hidden;
   padding: 18px 20px 24px !important;
-  background: #f6f7f9;
-  color: #18202c;
+  background: var(--sc-page);
+  color: var(--sc-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
@@ -329,41 +331,25 @@ export default {
   text-rendering: optimizeLegibility;
 }
 .strategy-center > .operations-workspace { flex: 1 1 auto; min-height: 0; }
-.sc-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 40px;
-  margin-bottom: 10px;
-  > div:first-child { display: flex; align-items: center; gap: 16px; min-width: 0; }
-  h1 { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.2; letter-spacing: -.015em; color: #111827; white-space: nowrap; }
-  p { min-width: 0; margin: 0; overflow: hidden; color: #667085; font-size: 12px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
-}
-.sc-title-row { display: flex; align-items: center; flex: 0 0 auto; gap: 10px; }
-.system-health {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: #3f7c57;
-  font-size: 12px;
-  font-weight: 500;
-  i { width: 7px; height: 7px; border-radius: 50%; background: #22a95a; box-shadow: 0 0 0 4px rgba(34, 169, 90, 0.12); }
-  &.is-warning { color: #b06b18; i { background: #d68a24; box-shadow: 0 0 0 4px rgba(214, 138, 36, 0.12); } }
-}
-.sc-refresh { display: flex; align-items: center; flex: 0 0 auto; gap: 10px; color: #667085; font-size: 12px; font-variant-numeric: tabular-nums; }
 .theme-dark {
-  background: #080808;
-  color: #e7e9ed;
-  .sc-header h1 { color: #f3f4f6; }
-  .sc-header p, .sc-refresh { color: #7f8793; }
-  .system-health { color: #61c885; }
+  --sc-page: #080808;
+  --sc-surface: #111111;
+  --sc-surface-subtle: #151515;
+  --sc-surface-muted: #181818;
+  --sc-border: rgba(255, 255, 255, .1);
+  --sc-border-soft: rgba(255, 255, 255, .07);
+  --sc-text: #e4e7ec;
+  --sc-heading: #f2f4f7;
+  --sc-muted: #8f98a6;
+  --sc-subtle: #6f7885;
+  --sc-positive: #55bd7c;
+  --sc-negative: #f06f79;
+  --sc-warning: #d5a348;
+  --sc-shadow: none;
+  background: var(--sc-page);
+  color: var(--sc-text);
 }
 @media (max-width: 720px) {
   .strategy-center { height: auto; min-height: calc(100vh - 64px); overflow: visible; padding: 12px !important; }
-  .sc-header { align-items: stretch; flex-direction: column; }
-  .sc-header > div:first-child { width: 100%; }
-  .sc-header p { display: none; }
-  .sc-refresh { width: 100%; justify-content: space-between; }
 }
 </style>

@@ -424,6 +424,15 @@ export default {
     }
   }
 
+  &.setting-drawer--dark {
+    :deep(.ant-drawer-content),
+    :deep(.ant-drawer-wrapper-body),
+    :deep(.ant-drawer-body) {
+      background: #080808 !important;
+      color: rgba(226, 232, 240, 0.86) !important;
+    }
+  }
+
   body.dark &,
   body.realdark &,
   .basic-layout-wrapper.dark &,
@@ -431,7 +440,7 @@ export default {
     :deep(.ant-drawer-content),
     :deep(.ant-drawer-wrapper-body),
     :deep(.ant-drawer-body) {
-      background: #171717 !important;
+      background: #080808 !important;
       color: rgba(226, 232, 240, 0.86) !important;
     }
 
@@ -494,13 +503,13 @@ export default {
 body.dark .setting-drawer,
 body.realdark .setting-drawer,
 .setting-drawer.setting-drawer--dark {
-  --setting-drawer-bg: #11161c;
-  --setting-drawer-panel: #171c22;
-  --setting-drawer-panel-soft: #202833;
-  --setting-drawer-border: #2b3542;
-  --setting-drawer-text: #e6edf5;
-  --setting-drawer-muted: #a4b2c2;
-  --setting-drawer-subtle: #738295;
+  --setting-drawer-bg: #080808;
+  --setting-drawer-panel: #111111;
+  --setting-drawer-panel-soft: #181818;
+  --setting-drawer-border: #2d2d2d;
+  --setting-drawer-text: #e6e6e6;
+  --setting-drawer-muted: #a8a8a8;
+  --setting-drawer-subtle: #737373;
 }
 
 body.dark .setting-drawer .ant-drawer-content,

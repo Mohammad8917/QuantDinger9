@@ -6,7 +6,12 @@ const chartTypeMessages = {
     'indicatorIde.chartType.candleUpStroke': 'Hollow up candles',
     'indicatorIde.chartType.candleDownStroke': 'Hollow down candles',
     'indicatorIde.chartType.ohlc': 'OHLC bars',
-    'indicatorIde.chartType.area': 'Area'
+    'indicatorIde.chartType.line': 'Line',
+    'indicatorIde.chartType.area': 'Area',
+    'indicatorIde.chartType.hlcArea': 'HLC area',
+    'indicatorIde.chartType.heikinAshi': 'Heikin Ashi',
+    'indicatorIde.chartType.renko': 'Renko',
+    'indicatorIde.chartType.range': 'Range bars'
   },
   'zh-CN': {
     'indicatorIde.chartType.label': '图表类型',
@@ -15,7 +20,12 @@ const chartTypeMessages = {
     'indicatorIde.chartType.candleUpStroke': '涨空心蜡烛图',
     'indicatorIde.chartType.candleDownStroke': '跌空心蜡烛图',
     'indicatorIde.chartType.ohlc': 'OHLC 美国线',
-    'indicatorIde.chartType.area': '面积图'
+    'indicatorIde.chartType.line': '线形图',
+    'indicatorIde.chartType.area': '面积图',
+    'indicatorIde.chartType.hlcArea': 'HLC 区域图',
+    'indicatorIde.chartType.heikinAshi': '平均 K 线图',
+    'indicatorIde.chartType.renko': '砖形图',
+    'indicatorIde.chartType.range': '范围图'
   },
   'zh-TW': {
     'indicatorIde.chartType.label': '圖表類型',
@@ -24,7 +34,12 @@ const chartTypeMessages = {
     'indicatorIde.chartType.candleUpStroke': '漲空心蠟燭圖',
     'indicatorIde.chartType.candleDownStroke': '跌空心蠟燭圖',
     'indicatorIde.chartType.ohlc': 'OHLC 美國線',
-    'indicatorIde.chartType.area': '面積圖'
+    'indicatorIde.chartType.line': '線形圖',
+    'indicatorIde.chartType.area': '面積圖',
+    'indicatorIde.chartType.hlcArea': 'HLC 區域圖',
+    'indicatorIde.chartType.heikinAshi': '平均 K 線圖',
+    'indicatorIde.chartType.renko': '磚形圖',
+    'indicatorIde.chartType.range': '範圍圖'
   },
   'ja-JP': {
     'indicatorIde.chartType.label': 'チャートタイプ',
@@ -33,7 +48,12 @@ const chartTypeMessages = {
     'indicatorIde.chartType.candleUpStroke': '上昇中空ローソク足',
     'indicatorIde.chartType.candleDownStroke': '下降中空ローソク足',
     'indicatorIde.chartType.ohlc': 'OHLCバー',
-    'indicatorIde.chartType.area': 'エリア'
+    'indicatorIde.chartType.line': 'ライン',
+    'indicatorIde.chartType.area': 'エリア',
+    'indicatorIde.chartType.hlcArea': 'HLCエリア',
+    'indicatorIde.chartType.heikinAshi': '平均足',
+    'indicatorIde.chartType.renko': '練行足',
+    'indicatorIde.chartType.range': 'レンジバー'
   },
   'ko-KR': {
     'indicatorIde.chartType.label': '차트 유형',
@@ -42,7 +62,12 @@ const chartTypeMessages = {
     'indicatorIde.chartType.candleUpStroke': '상승 할로우 캔들',
     'indicatorIde.chartType.candleDownStroke': '하락 할로우 캔들',
     'indicatorIde.chartType.ohlc': 'OHLC 바',
-    'indicatorIde.chartType.area': '영역'
+    'indicatorIde.chartType.line': '라인',
+    'indicatorIde.chartType.area': '영역',
+    'indicatorIde.chartType.hlcArea': 'HLC 영역',
+    'indicatorIde.chartType.heikinAshi': '하이킨 아시',
+    'indicatorIde.chartType.renko': '렌코',
+    'indicatorIde.chartType.range': '레인지 바'
   },
   'de-DE': {
     'indicatorIde.chartType.label': 'Charttyp',
@@ -51,7 +76,12 @@ const chartTypeMessages = {
     'indicatorIde.chartType.candleUpStroke': 'Hohle Aufwärtskerzen',
     'indicatorIde.chartType.candleDownStroke': 'Hohle Abwärtskerzen',
     'indicatorIde.chartType.ohlc': 'OHLC-Balken',
-    'indicatorIde.chartType.area': 'Fläche'
+    'indicatorIde.chartType.line': 'Linie',
+    'indicatorIde.chartType.area': 'Fläche',
+    'indicatorIde.chartType.hlcArea': 'HLC-Fläche',
+    'indicatorIde.chartType.heikinAshi': 'Heikin Ashi',
+    'indicatorIde.chartType.renko': 'Renko',
+    'indicatorIde.chartType.range': 'Range-Balken'
   },
   'fr-FR': {
     'indicatorIde.chartType.label': 'Type de graphique',
@@ -60,7 +90,12 @@ const chartTypeMessages = {
     'indicatorIde.chartType.candleUpStroke': 'Bougies haussières creuses',
     'indicatorIde.chartType.candleDownStroke': 'Bougies baissières creuses',
     'indicatorIde.chartType.ohlc': 'Barres OHLC',
-    'indicatorIde.chartType.area': 'Aire'
+    'indicatorIde.chartType.line': 'Ligne',
+    'indicatorIde.chartType.area': 'Aire',
+    'indicatorIde.chartType.hlcArea': 'Aire HLC',
+    'indicatorIde.chartType.heikinAshi': 'Heikin Ashi',
+    'indicatorIde.chartType.renko': 'Renko',
+    'indicatorIde.chartType.range': 'Barres de plage'
   },
   'ru-RU': {
     'indicatorIde.chartType.label': 'Тип графика',
@@ -69,7 +104,12 @@ const chartTypeMessages = {
     'indicatorIde.chartType.candleUpStroke': 'Пустые растущие свечи',
     'indicatorIde.chartType.candleDownStroke': 'Пустые падающие свечи',
     'indicatorIde.chartType.ohlc': 'Бары OHLC',
-    'indicatorIde.chartType.area': 'Область'
+    'indicatorIde.chartType.line': 'Линия',
+    'indicatorIde.chartType.area': 'Область',
+    'indicatorIde.chartType.hlcArea': 'Область HLC',
+    'indicatorIde.chartType.heikinAshi': 'Хейкин Аши',
+    'indicatorIde.chartType.renko': 'Ренко',
+    'indicatorIde.chartType.range': 'Диапазонные бары'
   },
   'ar-SA': {
     'indicatorIde.chartType.label': 'نوع الرسم',
@@ -78,7 +118,12 @@ const chartTypeMessages = {
     'indicatorIde.chartType.candleUpStroke': 'شموع صاعدة مجوفة',
     'indicatorIde.chartType.candleDownStroke': 'شموع هابطة مجوفة',
     'indicatorIde.chartType.ohlc': 'أعمدة OHLC',
-    'indicatorIde.chartType.area': 'مساحة'
+    'indicatorIde.chartType.line': 'خط',
+    'indicatorIde.chartType.area': 'مساحة',
+    'indicatorIde.chartType.hlcArea': 'مساحة HLC',
+    'indicatorIde.chartType.heikinAshi': 'هيكين آشي',
+    'indicatorIde.chartType.renko': 'رينكو',
+    'indicatorIde.chartType.range': 'أعمدة النطاق'
   },
   'th-TH': {
     'indicatorIde.chartType.label': 'ประเภทกราฟ',
@@ -87,7 +132,12 @@ const chartTypeMessages = {
     'indicatorIde.chartType.candleUpStroke': 'แท่งเทียนขาขึ้นโปร่ง',
     'indicatorIde.chartType.candleDownStroke': 'แท่งเทียนขาลงโปร่ง',
     'indicatorIde.chartType.ohlc': 'แท่ง OHLC',
-    'indicatorIde.chartType.area': 'พื้นที่'
+    'indicatorIde.chartType.line': 'เส้น',
+    'indicatorIde.chartType.area': 'พื้นที่',
+    'indicatorIde.chartType.hlcArea': 'พื้นที่ HLC',
+    'indicatorIde.chartType.heikinAshi': 'ไฮกินอาชิ',
+    'indicatorIde.chartType.renko': 'เรนโก',
+    'indicatorIde.chartType.range': 'แท่งช่วงราคา'
   },
   'vi-VN': {
     'indicatorIde.chartType.label': 'Loại biểu đồ',
@@ -96,7 +146,12 @@ const chartTypeMessages = {
     'indicatorIde.chartType.candleUpStroke': 'Nến tăng rỗng',
     'indicatorIde.chartType.candleDownStroke': 'Nến giảm rỗng',
     'indicatorIde.chartType.ohlc': 'Thanh OHLC',
-    'indicatorIde.chartType.area': 'Vùng'
+    'indicatorIde.chartType.line': 'Đường',
+    'indicatorIde.chartType.area': 'Vùng',
+    'indicatorIde.chartType.hlcArea': 'Vùng HLC',
+    'indicatorIde.chartType.heikinAshi': 'Heikin Ashi',
+    'indicatorIde.chartType.renko': 'Renko',
+    'indicatorIde.chartType.range': 'Thanh phạm vi'
   }
 }
 

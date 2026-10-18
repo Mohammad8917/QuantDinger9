@@ -536,13 +536,15 @@ export default {
           active: this.selectedRangeDays === rangeDays
         }
       })
-      if (this.backtestRangeLimitDays !== null) presets.push({
-        key: 'max',
-        startDate: end.clone().subtract(this.backtestRangeLimitDays, 'days'),
-        label: this.$t('strategyEvolution.quickRange.max', { days: this.backtestRangeLimitDays }),
-        disabled: false,
-        active: this.selectedRangeDays === this.backtestRangeLimitDays
-      })
+      if (this.backtestRangeLimitDays !== null) {
+        presets.push({
+          key: 'max',
+          startDate: end.clone().subtract(this.backtestRangeLimitDays, 'days'),
+          label: this.$t('strategyEvolution.quickRange.max', { days: this.backtestRangeLimitDays }),
+          disabled: false,
+          active: this.selectedRangeDays === this.backtestRangeLimitDays
+        })
+      }
       return presets
     },
     canRun () { return Boolean(!this.loadingSource && this.form.sourceId && this.selectedParameterCount && this.parameterRangesValid && this.form.startDate && this.form.endDate && !this.backtestRangeExceeded) }
@@ -896,13 +898,13 @@ export default {
       const read = (name, fallback) => (styles && styles.getPropertyValue(name).trim()) || fallback
       return {
         text: read('--evo-chart-text', this.isDarkTheme ? '#8b949e' : '#667085'),
-        grid: read('--evo-chart-grid', this.isDarkTheme ? '#262b2d' : '#e5e7eb'),
+        grid: read('--evo-chart-grid', this.isDarkTheme ? '#2d2d2d' : '#e5e7eb'),
         accent: read('--evo-accent', '#52c41a'),
         accentArea: read('--evo-chart-accent-area', this.isDarkTheme ? 'rgba(82,196,26,.1)' : 'rgba(82,196,26,.08)'),
         cyan: read('--evo-chart-secondary', '#20c8c8'),
         red: read('--evo-danger', '#ff5a5f'),
         redArea: read('--evo-chart-danger-area', this.isDarkTheme ? 'rgba(255,90,95,.14)' : 'rgba(255,90,95,.1)'),
-        tooltipBackground: read('--evo-tooltip-bg', this.isDarkTheme ? '#15191a' : '#ffffff'),
+        tooltipBackground: read('--evo-tooltip-bg', this.isDarkTheme ? '#181818' : '#ffffff'),
         tooltipText: read('--evo-tooltip-text', this.isDarkTheme ? '#f4f7f5' : '#1f2937')
       }
     },
@@ -975,13 +977,13 @@ export default {
   font-size: 12px;
 }
 .evolution-shell.theme-dark {
-  --evo-page: #090b0c;
-  --evo-panel: #0f1213;
-  --evo-surface: #111516;
-  --evo-surface-strong: #0b0e0f;
-  --evo-input: #151918;
-  --evo-border: #262b2d;
-  --evo-border-soft: #202426;
+  --evo-page: #080808;
+  --evo-panel: #111111;
+  --evo-surface: #151515;
+  --evo-surface-strong: #0d0d0d;
+  --evo-input: #181818;
+  --evo-border: #2d2d2d;
+  --evo-border-soft: #242424;
   --evo-heading: #f4f7f5;
   --evo-text: #dce2de;
   --evo-muted: #8d9792;
@@ -991,11 +993,11 @@ export default {
   --evo-warning: #d7aa2b;
   --evo-shadow: rgba(0, 0, 0, .24);
   --evo-chart-text: #8b949e;
-  --evo-chart-grid: #262b2d;
+  --evo-chart-grid: #2d2d2d;
   --evo-chart-secondary: #20c8c8;
   --evo-chart-accent-area: color-mix(in srgb, var(--evo-accent) 13%, transparent);
   --evo-chart-danger-area: rgba(255, 90, 95, .14);
-  --evo-tooltip-bg: #15191a;
+  --evo-tooltip-bg: #181818;
   --evo-tooltip-text: #f4f7f5;
   color-scheme: dark;
 }

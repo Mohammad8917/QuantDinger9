@@ -5,7 +5,7 @@
       v-bind="containerProps"
       @close="handleClose"
       class="quick-trade-shell"
-      :class="[embedded ? 'quick-trade-embedded' : 'quick-trade-drawer', { 'theme-dark': isDark, 'qt-embedded-ide': embedded && embeddedIde, 'qt-embedded-dock': embedded && embeddedDock, 'qt-embedded-side-dock': embedded && embeddedDock && sideDock }]"
+      :class="[embedded ? 'quick-trade-embedded' : 'quick-trade-drawer', { 'theme-dark': isDark, 'qt-embedded-ide': embedded && embeddedIde, 'qt-embedded-dock': embedded && embeddedDock, 'qt-embedded-side-dock': embedded && embeddedDock && sideDock, 'qt-floating-console': floatingConsole, 'qt-floating-activity-open': floatingActivityExpanded }]"
     >
       <!-- Header (hidden in embedded mode since parent tab already shows title) -->
       <div v-if="!embedded" class="qt-header">
@@ -183,6 +183,17 @@
         </template>
       </div>
 
+      <div v-if="floatingConsole" class="qt-floating-quote-row">
+        <div class="qt-floating-quote qt-floating-quote--buy">
+          <span>{{ buyActionText }}</span>
+          <strong>{{ formatPrice(currentPrice) }}</strong>
+        </div>
+        <div class="qt-floating-quote qt-floating-quote--sell">
+          <span>{{ sellActionText }}</span>
+          <strong>{{ formatPrice(currentPrice) }}</strong>
+        </div>
+      </div>
+
       <div :class="['qt-embedded-split', { 'qt-embedded-split--cols': embedded }]">
         <div class="qt-embedded-col qt-embedded-col-left">
 
@@ -278,8 +289,12 @@
             <!-- Amount / quantity -->
             <div class="qt-section qt-amount-block">
               <template v-if="isSpotCashOrder">
+                <div v-if="floatingConsole" class="qt-floating-side-tabs">
+                  <button type="button" :class="{ active: floatingEntrySide === 'buy' }" @click="floatingEntrySide = 'buy'">{{ buyActionText }}</button>
+                  <button type="button" :class="{ active: floatingEntrySide === 'sell' }" @click="floatingEntrySide = 'sell'">{{ sellActionText }}</button>
+                </div>
                 <div class="qt-spot-order-inputs">
-                  <div class="qt-side-amount qt-side-amount--buy">
+                  <div v-show="!floatingConsole || floatingEntrySide === 'buy'" class="qt-side-amount qt-side-amount--buy">
                     <div class="qt-side-heading">
                       <strong class="qt-side-title qt-side-title--buy">
                         <a-icon type="arrow-up" />
@@ -330,7 +345,7 @@
                       >{{ percent }}%</a-button>
                     </div>
                   </div>
-                  <div class="qt-side-amount qt-side-amount--sell">
+                  <div v-show="!floatingConsole || floatingEntrySide === 'sell'" class="qt-side-amount qt-side-amount--sell">
                     <div class="qt-side-heading">
                       <strong class="qt-side-title qt-side-title--sell">
                         <a-icon type="arrow-down" />
@@ -410,6 +425,15 @@
                   style="width: 100%"
                   :placeholder="$t('quickTrade.enterAmount')"
                 />
+                <div v-if="isSwapMode" class="qt-quick-amounts qt-quick-amounts--swap">
+                  <a-button
+                    v-for="percent in [10, 25, 50, 100]"
+                    :key="`swap-${percent}`"
+                    size="small"
+                    :disabled="balanceLoading || activeBalanceAvailable <= 0"
+                    @click="setQuickAmountByPercent(percent, floatingEntrySide)"
+                  >{{ percent }}%</a-button>
+                </div>
                 <div v-if="isSwapMode && !embeddedDock" class="qt-notional-summary">
                   {{ $t('quickTrade.marginNotionalFormula', {
                     margin: formatPrice(amount),
@@ -488,6 +512,7 @@
           </div>
 
           <div
+            v-if="supportsNativeProtection"
             class="qt-risk-action-stack"
             :class="{ 'is-tpsl-open': embeddedDock && dockTpslEnabled }"
           >
@@ -526,19 +551,7 @@
                     :placeholder="$t('quickTrade.slPlaceholder')" />
                 </div>
               </div>
-              <div class="qt-hint-text qt-tpsl-record-hint">{{ $t('quickTrade.tpslRecordOnlyHint') }}</div>
-            </div>
-
-            <div v-if="!embeddedDock" class="qt-ai-filter-row">
-              <div>
-                <strong><a-icon type="safety" /> {{ $t('aiDecisionFilter.title') }}</strong>
-                <span>{{ $t('aiDecisionFilter.quickTradeHint') }}</span>
-              </div>
-              <a-switch
-                v-model="aiDecisionFilter"
-                :aria-label="$t('aiDecisionFilter.title')"
-                size="small"
-              />
+              <div class="qt-hint-text qt-tpsl-record-hint">{{ $t('quickTrade.tpslNativeHint') }}</div>
             </div>
 
             <!-- Submit Buttons -->
@@ -569,7 +582,19 @@
           </div>
 
         </div>
-        <div class="qt-embedded-col qt-embedded-col-right">
+        <button
+          v-if="floatingConsole"
+          type="button"
+          class="qt-floating-activity-toggle"
+          :class="{ active: floatingActivityExpanded }"
+          :aria-expanded="floatingActivityExpanded ? 'true' : 'false'"
+          @click="floatingActivityExpanded = !floatingActivityExpanded"
+        >
+          <span><a-icon type="bars" /> {{ $t('quickTrade.floating.activity') }}</span>
+          <span class="qt-floating-activity-count">{{ currentPositions.length + openOrderRows.length }}</span>
+          <a-icon :type="floatingActivityExpanded ? 'up' : 'down'" />
+        </button>
+        <div v-show="!floatingConsole || floatingActivityExpanded" class="qt-embedded-col qt-embedded-col-right">
 
           <div v-if="embeddedDock" class="qt-dock-tabs">
             <button
@@ -654,28 +679,6 @@
               <a-icon type="inbox" class="qt-empty-icon" />
               <span class="qt-empty-desc">{{ $t('quickTrade.noPositionHint') }}</span>
             </div>
-          </div>
-
-          <div v-if="embeddedDock && activeDockTab === 'aiDecisions'" class="qt-history-section qt-dock-history qt-ai-decision-history">
-            <ai-decision-records
-              source-type="quick_trade"
-              :source-id="selectedCredentialId"
-              :symbol="currentSymbol"
-              :market-type="aiDecisionMarketType"
-              :refresh-key="aiDecisionRefreshKey"
-              :is-dark="isDark"
-              compact
-              @loaded="onAiDecisionsLoaded"
-            />
-          </div>
-
-          <div v-if="embeddedDock && activeDockTab === 'eventRadar'" class="qt-history-section qt-dock-history qt-event-radar-history">
-            <event-radar-panel
-              :symbol="currentSymbol"
-              :market-type="aiDecisionMarketType"
-              :is-dark="isDark"
-              :active="activeDockTab === 'eventRadar'"
-            />
           </div>
 
           <!-- Trade Records -->
@@ -827,8 +830,6 @@ import { mapState } from 'vuex'
 import { listExchangeCredentials } from '@/api/credentials'
 import { formatExchangeCredentialLabel, isQuickTradeExchangeCredential } from '@/utils/exchangeCredential'
 import ExchangeAccountModal from '@/components/ExchangeAccountModal/ExchangeAccountModal.vue'
-import AiDecisionRecords from '@/views/strategy-center/components/AiDecisionRecords.vue'
-import EventRadarPanel from '@/components/QuickTradePanel/EventRadarPanel.vue'
 import { placeQuickOrder, getQuickTradeBalance, getQuickTradePosition, getQuickTradeHistory, closeQuickTradePosition, cancelQuickTradeOrder } from '@/api/quick-trade'
 import { searchSymbols, getWatchlist } from '@/api/market'
 import { getUserInfo } from '@/api/login'
@@ -838,7 +839,7 @@ import { broker } from '@/api/broker'
 
 export default {
   name: 'QuickTradePanel',
-  components: { ExchangeAccountModal, AiDecisionRecords, EventRadarPanel },
+  components: { ExchangeAccountModal },
   props: {
     visible: { type: Boolean, default: false },
     symbol: { type: String, default: '' },
@@ -847,12 +848,13 @@ export default {
     source: { type: String, default: 'manual' }, // ai_radar / ai_analysis / indicator / manual
     marketType: { type: String, default: 'swap' }, // swap / spot
     market: { type: String, default: 'Crypto' },
+    exchangeId: { type: String, default: '' },
     symbolLocked: { type: Boolean, default: false },
     embedded: { type: Boolean, default: false },
     embeddedIde: { type: Boolean, default: false },
     embeddedDock: { type: Boolean, default: false },
     sideDock: { type: Boolean, default: false },
-    aiDecisionFilterEnabled: { type: Boolean, default: false },
+    floatingConsole: { type: Boolean, default: false },
     overlayGetContainer: { type: Function, default: null }
   },
   data () {
@@ -883,7 +885,6 @@ export default {
       marginMode: 'cross',
       tpPrice: null,
       slPrice: null,
-      aiDecisionFilter: this.aiDecisionFilterEnabled,
       // state
       submitting: false,
       submittingSide: '',
@@ -891,13 +892,13 @@ export default {
       currentPrice: 0,
       currentPositions: [],
       recentTrades: [],
-      aiDecisionCount: 0,
-      aiDecisionRefreshKey: 0,
       historyCollapsed: true,
       activeDockTab: 'positions',
       dockRefreshing: false,
       cancellingTradeId: null,
       expandedTradeIds: {},
+      floatingEntrySide: 'buy',
+      floatingActivityExpanded: false,
       dockTpslEnabled: false,
       closeScope: 'full', // full | system_tracked
       // symbol search
@@ -953,6 +954,9 @@ export default {
       const amount = Math.max(0, Number(this.amount) || 0)
       return this.isSwapMode ? amount * Math.max(1, Number(this.leverage) || 1) : amount
     },
+    supportsNativeProtection () {
+      return this.isSwapMode || this.isStockMarket
+    },
     accountLabel () {
       return this.isStockMarket ? this.$t('quickTrade.brokerAccount') : this.$t('quickTrade.exchange')
     },
@@ -977,9 +981,6 @@ export default {
     },
     effectiveMarketType () {
       return this.isStockMarket ? 'spot' : this.tradeMode
-    },
-    aiDecisionMarketType () {
-      return this.isStockMarket ? 'USStock' : this.effectiveMarketType
     },
     swapBalanceAvailable () {
       const leg = this.balance && this.balance.swap
@@ -1051,9 +1052,7 @@ export default {
       return [
         { key: 'positions', label: this.$t('quickTrade.currentPosition'), count: this.currentPositions.length },
         { key: 'openOrders', label: this.$t('quickTrade.openOrders'), count: this.openOrderRows.length },
-        { key: 'tradeRecords', label: this.$t('quickTrade.tradeRecords'), count: this.scopedTradeRows.length },
-        { key: 'aiDecisions', label: this.$t('aiDecisionFilter.tab'), count: this.aiDecisionCount },
-        { key: 'eventRadar', label: this.$t('eventRadar.tab'), count: 0 }
+        { key: 'tradeRecords', label: this.$t('quickTrade.tradeRecords'), count: this.scopedTradeRows.length }
       ]
     },
     balanceErrorMessage () {
@@ -1135,9 +1134,6 @@ export default {
     }
   },
   watch: {
-    aiDecisionFilterEnabled (val) {
-      this.aiDecisionFilter = Boolean(val)
-    },
     visible (val) {
       if (this.embedded) {
         if (val) {
@@ -1186,6 +1182,11 @@ export default {
     marketType () {
       this.syncTradeModeFromProps()
     },
+    exchangeId (val) {
+      if (val && this.isCryptoMarket && this.credentials.length) {
+        this.syncCredentialToExchange(val)
+      }
+    },
     selectedCredentialId (val) {
       this.buyQuantity = null
       this.sellQuantity = null
@@ -1193,6 +1194,17 @@ export default {
       this.resetBalance()
       this.currentPositions = []
       this.recentTrades = []
+      if (val && this.isCryptoMarket) {
+        const credential = this.credentials.find(c => c.id === val)
+        const credentialExchangeId = String((credential && credential.exchange_id) || '').trim().toLowerCase()
+        if (credentialExchangeId) {
+          this.$emit('exchange-change', {
+            credentialId: val,
+            exchangeId: credentialExchangeId,
+            marketType: this.effectiveMarketType
+          })
+        }
+      }
       // Reload position when credential changes
       if (val && this.currentSymbol) {
         this.loadPosition()
@@ -1247,6 +1259,23 @@ export default {
     syncTradeModeFromProps () {
       const nextMode = this.isStockMarket ? 'spot' : (String(this.marketType || '').toLowerCase() === 'spot' ? 'spot' : 'swap')
       if (this.tradeMode !== nextMode) this.tradeMode = nextMode
+    },
+    syncCredentialToExchange (exchangeId) {
+      if (!this.isCryptoMarket) return false
+      const normalizedExchangeId = String(exchangeId || '').trim().toLowerCase()
+      if (!normalizedExchangeId) return false
+      const selected = this.credentials.find(c => c.id === this.selectedCredentialId)
+      if (selected && String(selected.exchange_id || '').trim().toLowerCase() === normalizedExchangeId) return true
+      const matchingCredential = this.credentials.find(c => String(c.exchange_id || '').trim().toLowerCase() === normalizedExchangeId)
+      if (!matchingCredential) {
+        this.selectedCredentialId = undefined
+        this.resetBalance()
+        this.currentPositions = []
+        this.recentTrades = []
+        return false
+      }
+      this.onCredentialChange(matchingCredential.id)
+      return true
     },
     selectTradeMode (mode) {
       const nextMode = mode === 'spot' ? 'spot' : 'swap'
@@ -1588,8 +1617,9 @@ export default {
             this.resetBalance()
             this.currentPositions = []
           }
-          // Auto-select first if none selected
-          if (!this.selectedCredentialId && this.credentials.length > 0) {
+          if (this.exchangeId) {
+            this.syncCredentialToExchange(this.exchangeId)
+          } else if (!this.selectedCredentialId && this.credentials.length > 0) {
             this.selectedCredentialId = this.credentials[0].id
             this.onCredentialChange(this.selectedCredentialId)
           }
@@ -1853,7 +1883,6 @@ export default {
           this.loadPosition(),
           this.loadHistory()
         ])
-        this.aiDecisionRefreshKey += 1
       } finally {
         this.dockRefreshing = false
       }
@@ -1920,8 +1949,7 @@ export default {
           margin_mode: this.isSwapMode ? this.marginMode : undefined,
           tp_price: useProtectionPrices ? (this.tpPrice || 0) : 0,
           sl_price: useProtectionPrices ? (this.slPrice || 0) : 0,
-          source: this.source,
-          ai_decision_filter: this.aiDecisionFilter
+          source: this.source
         }
         if (buyByQuantity) payload.quantity = Number(this.buyQuantity)
         if (sellByQuantity) payload.quantity = Number(this.sellQuantity)
@@ -1937,14 +1965,6 @@ export default {
           // Load position with retry mechanism (exchange may need time to update)
           await this.loadPositionWithRetry()
         } else {
-          if (res.ai_rejected) {
-            const decision = (res.data && res.data.ai_decision) || {}
-            this.$notification.warning({
-              message: this.$t('aiDecisionFilter.rejected'),
-              description: this.aiDecisionReason(decision)
-            })
-            return
-          }
           const hint = res.error_hint ? this.$t(res.error_hint) : ''
           this.$notification.error({
             message: this.$t('quickTrade.orderFailed'),
@@ -1959,7 +1979,6 @@ export default {
           description: hint || rd.msg || e.message || ''
         })
       } finally {
-        if (this.aiDecisionFilter) this.aiDecisionRefreshKey += 1
         this.submitting = false
         this.submittingSide = ''
       }
@@ -1987,6 +2006,7 @@ export default {
         })
         return
       }
+      const useProtectionPrices = !this.embeddedDock || this.dockTpslEnabled
       const payload = {
         credential_id: this.selectedCredentialId,
         symbol: this.normalizeBrokerSymbol(this.currentSymbol),
@@ -1997,8 +2017,9 @@ export default {
         orderType: this.orderType,
         price: this.orderType === 'limit' ? price : undefined,
         reference_price: price,
-        source: this.source,
-        ai_decision_filter: this.aiDecisionFilter
+        take_profit_price: useProtectionPrices ? Number(this.tpPrice || 0) : 0,
+        stop_loss_price: useProtectionPrices ? Number(this.slPrice || 0) : 0,
+        source: this.source
       }
       const res = await broker.alpaca.placeOrder(payload)
       if (this.apiSuccess(res)) {
@@ -2008,31 +2029,11 @@ export default {
         await this.loadPositionWithRetry()
       } else {
         const data = this.apiPayload(res)
-        if (res && res.ai_rejected) {
-          const decision = (data && data.ai_decision) || {}
-          this.$notification.warning({
-            message: this.$t('aiDecisionFilter.rejected'),
-            description: this.aiDecisionReason(decision)
-          })
-          return
-        }
         this.$notification.error({
           message: this.$t('quickTrade.orderFailed'),
           description: data.msg || data.message || ''
         })
       }
-    },
-    aiDecisionReason (decision) {
-      const reason = String((decision && decision.reason) || '')
-      const exactKey = `aiDecisionFilter.reason.${reason}`
-      const exact = this.$t(exactKey)
-      if (exact !== exactKey) return exact
-      const baseKey = `aiDecisionFilter.reason.${reason.split(':')[0]}`
-      const translated = this.$t(baseKey)
-      return translated === baseKey ? (reason || this.$t('aiDecisionFilter.rejectedHint')) : translated
-    },
-    onAiDecisionsLoaded (rows) {
-      this.aiDecisionCount = Array.isArray(rows) ? rows.length : 0
     },
     async handleClosePosition (pos) {
       if (!pos || !this.selectedCredentialId || !this.currentSymbol) return
@@ -2328,8 +2329,6 @@ export default {
 
   .qt-position-section { padding: 0 0 10px; }
   .qt-history-section { padding: 0 0 10px; }
-  .qt-ai-decision-history { overflow: auto; }
-  .qt-event-radar-history { overflow: auto; }
 
   .qt-direction-toggle .qt-dir-btn { padding: 8px; font-size: 13px; border-radius: 6px; }
   .qt-quick-amounts { margin-top: 6px; margin-bottom: 2px; }
@@ -3385,6 +3384,250 @@ export default {
     border-radius: 0;
     background: transparent;
   }
+}
+
+.quick-trade-embedded.qt-floating-console {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  background: transparent;
+
+  .qt-dock-header {
+    gap: 7px;
+    padding: 9px 12px 8px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .qt-side-account-block { gap: 5px; }
+  .qt-side-section-heading { font-size: 10px; }
+  .qt-side-account-control {
+    grid-template-columns: minmax(0, 1fr) 30px;
+    gap: 5px;
+  }
+  .qt-side-account-control > .qt-dock-icon-btn,
+  .qt-side-balance-row > .qt-dock-icon-btn {
+    width: 30px;
+    height: 30px;
+    min-height: 30px;
+  }
+  .qt-side-account-control ::v-deep .ant-select,
+  .qt-side-account-control ::v-deep .ant-select-selection,
+  .qt-side-account-control ::v-deep .ant-select-selection--single {
+    height: 30px;
+  }
+  .qt-side-account-control ::v-deep .ant-select-selection__rendered { line-height: 28px; }
+  .qt-side-trade-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px;
+  }
+  .qt-side-trade-controls > .qt-side-market-segmented:only-child { grid-column: 1 / -1; }
+  .qt-dock-trade-settings { min-width: 0; }
+  .qt-dock-leverage-trigger { min-width: 0; }
+  .qt-side-balance-row {
+    gap: 6px;
+    padding-top: 6px;
+  }
+  .qt-dock-balance strong { font-size: 12px; }
+  .qt-embedded-split--cols {
+    display: flex;
+    overflow: visible;
+  }
+  .qt-embedded-split--cols .qt-embedded-col-left {
+    padding: 8px 12px 10px !important;
+  }
+  .qt-order-entry-stack {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .qt-section {
+    padding: 0;
+  }
+  .qt-order-type-section ::v-deep .ant-radio-button-wrapper {
+    height: 30px;
+    line-height: 28px;
+  }
+  .qt-limit-section .qt-label { margin-bottom: 4px; }
+  .qt-amount-block { min-width: 0; }
+  .qt-spot-order-inputs {
+    display: block;
+    gap: 0;
+  }
+  .qt-side-amount {
+    min-height: 0;
+    padding: 9px;
+    border-color: #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+  }
+  .qt-side-heading { margin-bottom: 6px; }
+  .qt-side-title { font-size: 12px; }
+  .qt-side-amount .qt-amount-label-row {
+    min-height: 0;
+    margin-bottom: 5px;
+  }
+  .qt-side-available { width: auto; }
+  .qt-side-amount ::v-deep .ant-input-number { height: 34px; }
+  .qt-side-amount ::v-deep .ant-input-number-input { height: 32px; }
+  .qt-side-amount .qt-quick-amounts { padding-top: 7px; }
+  .qt-side-amount .qt-quick-amounts button {
+    height: 26px;
+    font-size: 11px;
+  }
+  .qt-risk-action-stack {
+    position: static;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #e2e8f0;
+  }
+  .qt-dock-tpsl-toggle { margin-bottom: 6px; }
+  .qt-tpsl-card {
+    margin: 0 0 8px;
+    padding: 9px;
+    border-radius: 8px;
+  }
+  .qt-tpsl-record-hint {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  .qt-submit-section {
+    gap: 8px;
+    padding: 0;
+  }
+  .qt-submit-btn {
+    height: 38px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 800;
+  }
+  .qt-embedded-split--cols .qt-embedded-col-right {
+    max-height: 310px;
+    border-top: 1px solid #e2e8f0 !important;
+  }
+  .qt-dock-tabs {
+    min-height: 38px;
+    padding: 0 8px;
+  }
+  .qt-dock-tabs button {
+    height: 38px;
+    padding: 0 8px;
+    font-size: 10px;
+  }
+  .qt-position-section,
+  .qt-history-section {
+    max-height: 270px;
+    padding: 8px 10px;
+  }
+  .qt-position-empty { min-height: 108px; }
+  .qt-position-card {
+    gap: 6px 10px;
+    padding: 9px;
+  }
+}
+
+.qt-floating-quote-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 9px 12px 0;
+}
+.qt-floating-quote {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid;
+  border-radius: 8px;
+  span {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  strong {
+    overflow: hidden;
+    font-size: 15px;
+    line-height: 1;
+    text-overflow: ellipsis;
+  }
+}
+.qt-floating-quote--buy {
+  color: #237804;
+  border-color: rgba(82, 196, 26, .34);
+  background: rgba(82, 196, 26, .08);
+}
+.qt-floating-quote--sell {
+  color: #cf1322;
+  border-color: rgba(245, 34, 45, .3);
+  background: rgba(245, 34, 45, .07);
+}
+.qt-floating-side-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 7px;
+  padding: 3px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  button {
+    height: 28px;
+    padding: 0 8px;
+    color: #64748b;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  button:first-child.active {
+    color: #237804;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .12);
+  }
+  button:last-child.active {
+    color: #cf1322;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .12);
+  }
+}
+.qt-floating-activity-toggle {
+  width: calc(100% - 24px);
+  height: 34px;
+  margin: 0 12px 10px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
+  &.active {
+    color: var(--primary-color, #ff5a1f);
+    border-color: color-mix(in srgb, var(--primary-color, #ff5a1f) 28%, transparent);
+    background: color-mix(in srgb, var(--primary-color, #ff5a1f) 6%, transparent);
+  }
+}
+.qt-floating-activity-count {
+  min-width: 18px;
+  height: 18px;
+  margin-left: auto;
+  padding: 0 5px;
+  border-radius: 999px;
+  color: #64748b;
+  background: #e2e8f0;
+  font-size: 10px;
+  line-height: 18px;
+  text-align: center;
 }
 
 @media (max-width: 1180px) {
@@ -4566,6 +4809,57 @@ export default {
   }
   .qt-empty-desc {
     color: #888;
+  }
+  &.qt-floating-console {
+    .qt-dock-header,
+    .qt-embedded-split--cols .qt-embedded-col-left,
+    .qt-risk-action-stack {
+      background: transparent !important;
+    }
+    .qt-dock-header,
+    .qt-side-balance-row,
+    .qt-risk-action-stack,
+    .qt-embedded-split--cols .qt-embedded-col-right {
+      border-color: #343434 !important;
+    }
+    .qt-side-amount {
+      border-color: #383838;
+      background: #202020;
+    }
+    .qt-floating-side-tabs {
+      background: #202020;
+      button { color: rgba(255, 255, 255, .5); }
+      button.active {
+        background: #303030;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, .42);
+      }
+      button:first-child.active { color: #95de64; }
+      button:last-child.active { color: #ff7875; }
+    }
+  }
+  .qt-floating-quote--buy {
+    color: #95de64;
+    border-color: rgba(82, 196, 26, .32);
+    background: rgba(82, 196, 26, .1);
+  }
+  .qt-floating-quote--sell {
+    color: #ff7875;
+    border-color: rgba(255, 77, 79, .3);
+    background: rgba(255, 77, 79, .09);
+  }
+  .qt-floating-activity-toggle {
+    color: rgba(255, 255, 255, .62);
+    border-color: #383838;
+    background: #202020;
+    &.active {
+      color: var(--primary-color, #ff5a1f);
+      border-color: color-mix(in srgb, var(--primary-color, #ff5a1f) 34%, transparent);
+      background: color-mix(in srgb, var(--primary-color, #ff5a1f) 10%, transparent);
+    }
+  }
+  .qt-floating-activity-count {
+    color: rgba(255, 255, 255, .62);
+    background: #383838;
   }
 }
 </style>

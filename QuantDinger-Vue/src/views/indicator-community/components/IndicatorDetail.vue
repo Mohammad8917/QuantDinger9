@@ -11,13 +11,16 @@
   >
     <a-spin :spinning="loading">
       <div v-if="detail" class="detail-container indicator-detail-modal" :class="{ 'is-dark': isDarkTheme }">
-        <div class="detail-header" :style="headerStyle">
-          <div class="header-cover" v-if="detail.preview_image">
-            <img :src="detail.preview_image" :alt="detail.name" @error="imageError = true" />
-          </div>
-          <div class="header-cover default-cover" v-else>
-            <span class="cover-initials">{{ indicatorInitials }}</span>
-          </div>
+        <div v-if="isIndicatorAsset" class="detail-preview">
+          <img :src="detailPreviewImage" :alt="detail.name" @error="imageError = true" />
+        </div>
+        <div
+          class="detail-header"
+          :class="{
+            'detail-header--indicator': isIndicatorAsset,
+            'detail-header--strategy': isStrategyAsset
+          }"
+        >
           <div class="header-info">
             <div class="strategy-title-row">
               <h2 class="indicator-name">{{ detail.name }}</h2>
@@ -33,6 +36,10 @@
               <div class="publish-time">
                 {{ $t('community.publishedAt') }}: {{ formatDate(detail.created_at) }}
               </div>
+            </div>
+            <div v-if="isIndicatorAsset" class="indicator-essential-tags">
+              <a-tag><a-icon :type="codeHidden ? 'lock' : 'unlock'" /> {{ codeHidden ? $t('community.codeHidden') : $t('community.codeVisible') }}</a-tag>
+              <a-tag v-if="parameterCount > 0"><a-icon type="sliders" /> {{ parameterLabel }}</a-tag>
             </div>
             <div class="indicator-stats">
               <a-statistic :title="$t('community.downloads')" :value="detail.purchase_count || 0">
@@ -268,38 +275,6 @@
             />
           </div>
 
-          <div class="section indicator-profile-section" v-if="isIndicatorAsset">
-            <h3>{{ $t('community.indicatorProfile') }}</h3>
-            <div class="indicator-profile-grid">
-              <div
-                v-for="item in indicatorProfileItems"
-                :key="item.key"
-                class="profile-item"
-              >
-                <div class="profile-item__icon" :class="item.tone ? 'profile-item__icon--' + item.tone : ''">
-                  <a-icon :type="item.icon" />
-                </div>
-                <div class="profile-item__body">
-                  <span>{{ item.label }}</span>
-                  <strong>{{ item.value }}</strong>
-                </div>
-              </div>
-            </div>
-            <div class="visual-showcase">
-              <div class="visual-showcase__copy">
-                <strong>{{ $t('community.chartOnlyIndicator') }}</strong>
-                <span>{{ $t('community.chartOnlyIndicatorHint') }}</span>
-              </div>
-              <div class="visual-showcase__bars" aria-hidden="true">
-                <span class="visual-line visual-line--fast"></span>
-                <span class="visual-line visual-line--slow"></span>
-                <span class="visual-zone"></span>
-                <span class="visual-dot visual-dot--buy"></span>
-                <span class="visual-dot visual-dot--sell"></span>
-              </div>
-            </div>
-          </div>
-
           <div class="section">
             <h3>{{ $t('community.reviews') }} ({{ comments.total || 0 }})</h3>
             <comment-list
@@ -416,6 +391,7 @@
 import { mapState } from 'vuex'
 import CommentList from './CommentList.vue'
 import request from '@/utils/request'
+import fallbackCover from '@/assets/marketplace/indicator-preview-default.svg'
 
 export default {
   name: 'IndicatorDetail',
@@ -488,7 +464,12 @@ export default {
       return !this.isStrategyAsset
     },
     modalWidth () {
-      return this.isStrategyAsset ? 860 : 720
+      return 860
+    },
+    detailPreviewImage () {
+      return this.detail && this.detail.preview_image && !this.imageError
+        ? this.detail.preview_image
+        : fallbackCover
     },
     strategyContract () {
       const contract = (this.detail && (this.detail.marketplace_contract || this.detail.strategy_contract)) ||
@@ -599,57 +580,6 @@ export default {
         ? this.$t('community.paramCount', { n: this.parameterCount })
         : this.$t('community.adjustableParams')
     },
-    ratingLabel () {
-      const rating = Number((this.detail && this.detail.avg_rating) || 0)
-      const count = Number((this.detail && this.detail.rating_count) || 0)
-      return rating > 0 ? `${rating.toFixed(1)} / ${count}` : this.$t('community.noRatings')
-    },
-    indicatorProfileItems () {
-      const d = this.detail || {}
-      return [
-        {
-          key: 'source',
-          icon: this.codeHidden ? 'lock' : 'unlock',
-          tone: this.codeHidden ? 'warning' : 'success',
-          label: this.$t('community.codeVisibility'),
-          value: this.codeHidden ? this.$t('community.codeHidden') : this.$t('community.codeVisible')
-        },
-        {
-          key: 'params',
-          icon: 'sliders',
-          tone: 'primary',
-          label: this.$t('community.parameters'),
-          value: this.parameterLabel
-        },
-        {
-          key: 'markers',
-          icon: 'environment',
-          tone: 'success',
-          label: this.$t('community.chartMarkers'),
-          value: this.$t('community.visualSignals')
-        },
-        {
-          key: 'layers',
-          icon: 'block',
-          tone: 'gold',
-          label: this.$t('community.overlayLayers'),
-          value: this.$t('community.chartAnnotations')
-        },
-        {
-          key: 'downloads',
-          icon: 'download',
-          label: this.$t('community.downloads'),
-          value: String(d.purchase_count || 0)
-        },
-        {
-          key: 'rating',
-          icon: 'star',
-          tone: 'gold',
-          label: this.$t('community.rating'),
-          value: this.ratingLabel
-        }
-      ]
-    },
     localCopyMissing () {
       return !!(this.detail && this.detail.is_purchased && this.detail.local_copy_missing)
     },
@@ -669,31 +599,6 @@ export default {
     hasEquityCurve () {
       return this.performance && Array.isArray(this.performance.equity_curve) &&
         this.performance.equity_curve.length > 1
-    },
-    headerStyle () {
-      if (!this.detail) return {}
-      const gradients = [
-        'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-        'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-        'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-        'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-        'linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%)'
-      ]
-      const index = (this.detail.id || 0) % gradients.length
-      return { background: gradients[index] }
-    },
-    indicatorInitials () {
-      if (!this.detail) return ''
-      const name = this.detail.name || 'I'
-      if (/[\u4e00-\u9fa5]/.test(name)) {
-        return name.slice(0, 2)
-      }
-      const words = name.split(/\s+/)
-      if (words.length >= 2) {
-        return (words[0][0] + words[1][0]).toUpperCase()
-      }
-      return name.slice(0, 2).toUpperCase()
     }
   },
   watch: {
@@ -721,12 +626,14 @@ export default {
       this.performance = null
       this.comments = { items: [], total: 0, page: 1 }
       this.myComment = null
+      this.imageError = false
       this.showAllParameters = false
       this.disposeEquityChart()
     },
 
     async loadDetail () {
       this.loading = true
+      this.imageError = false
       try {
         const res = await request({
           url: `/api/community/indicators/${this.indicatorId}`,
@@ -1193,7 +1100,22 @@ export default {
   .detail-container {
     display: flex;
     flex-direction: column;
-    max-height: 80vh;
+    max-height: 90vh;
+  }
+
+  .detail-preview {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    flex-shrink: 0;
+    overflow: hidden;
+    background: #111;
+
+    img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
   }
 
   .detail-header {
@@ -1202,6 +1124,18 @@ export default {
     padding: 16px 20px;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: #fff;
+
+    &--indicator {
+      border-bottom: 1px solid #ededed;
+      background: #fff;
+      color: #262626;
+    }
+
+    &--strategy {
+      border-bottom: 1px solid #ededed;
+      background: #fff;
+      color: #262626;
+    }
 
     .header-cover {
       width: 156px;
@@ -1306,6 +1240,56 @@ export default {
           opacity: 0.8;
         }
       }
+
+      .indicator-essential-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 10px;
+
+        .ant-tag {
+          margin: 0;
+          border-color: #e0e0e0;
+          background: #f5f5f5;
+          color: #595959;
+        }
+      }
+    }
+
+    &--indicator,
+    &--strategy {
+      .header-info {
+        .indicator-name,
+        .author-name {
+          color: #1f1f1f;
+        }
+
+        .indicator-meta .publish-time {
+          color: #8c8c8c;
+          opacity: 1;
+        }
+
+        .indicator-stats ::v-deep .ant-statistic {
+          .ant-statistic-title {
+            color: #8c8c8c;
+          }
+
+          .ant-statistic-content {
+            color: #262626;
+          }
+        }
+
+        .indicator-stats .rating-text {
+          color: #8c8c8c;
+          opacity: 1;
+        }
+      }
+    }
+
+    &--strategy .header-info .strategy-title-row .strategy-api-badge {
+      border-color: rgba(82, 196, 26, 0.28);
+      background: rgba(82, 196, 26, 0.08);
+      color: #389e0d;
     }
   }
 
@@ -2049,6 +2033,54 @@ export default {
 // Dark theme: scoped overrides beat the light-theme rules above because
 // `.is-dark` adds an extra class on the same [data-v] subtree.
 .detail-container.is-dark {
+  .detail-preview {
+    background: #111;
+  }
+
+  .detail-header--indicator {
+    border-color: #303030;
+    background: #1f1f1f;
+    color: #e5e5e5;
+
+    .header-info {
+      .indicator-name { color: #f0f0f0; }
+      .publish-time { color: #8c8c8c; }
+
+      .indicator-stats ::v-deep .ant-statistic {
+        .ant-statistic-title { color: #8c8c8c; }
+        .ant-statistic-content { color: #e5e5e5; }
+      }
+
+      .indicator-essential-tags .ant-tag {
+        border-color: #383838;
+        background: #282828;
+        color: #bdbdbd;
+      }
+    }
+  }
+
+  .detail-header--strategy {
+    border-color: #303030;
+    background: #1f1f1f;
+    color: #e5e5e5;
+
+    .header-info {
+      .indicator-name { color: #f0f0f0; }
+      .publish-time { color: #8c8c8c; }
+
+      .strategy-api-badge {
+        border-color: color-mix(in srgb, var(--primary-color, #1890ff) 32%, transparent);
+        background: color-mix(in srgb, var(--primary-color, #1890ff) 12%, transparent);
+        color: var(--primary-color-hover, #69c0ff);
+      }
+
+      .indicator-stats ::v-deep .ant-statistic {
+        .ant-statistic-title { color: #8c8c8c; }
+        .ant-statistic-content { color: #e5e5e5; }
+      }
+    }
+  }
+
   .detail-body {
     background: #1a1a1a;
 
@@ -2066,13 +2098,13 @@ export default {
     }
 
     .strategy-contract-section {
-      border-color: #373d37;
-      background: linear-gradient(145deg, #202320, #202020);
+      border-color: color-mix(in srgb, var(--primary-color, #1890ff) 24%, #303030);
+      background: #202020;
     }
 
     .source-controlled-badge {
-      background: rgba(82, 196, 26, 0.16);
-      color: #95de64;
+      background: color-mix(in srgb, var(--primary-color, #1890ff) 14%, transparent);
+      color: var(--primary-color-hover, #69c0ff);
     }
 
     .contract-card,
@@ -2088,8 +2120,8 @@ export default {
     }
 
     .contract-card__icon {
-      background: rgba(82, 196, 26, 0.12);
-      color: #8fd96a;
+      background: color-mix(in srgb, var(--primary-color, #1890ff) 14%, transparent);
+      color: var(--primary-color-hover, #69c0ff);
     }
 
     .contract-logic-card,
@@ -2107,7 +2139,7 @@ export default {
       color: rgba(255, 255, 255, 0.62);
 
       .anticon {
-        color: #95de64;
+        color: var(--primary-color-hover, #69c0ff);
       }
     }
 
@@ -2122,7 +2154,10 @@ export default {
       &__head {
         strong { color: rgba(255, 255, 255, 0.88); }
         span { color: rgba(255, 255, 255, 0.46); }
-        .parameter-count { background: rgba(82, 196, 26, 0.14); color: #95de64; }
+        .parameter-count {
+          background: color-mix(in srgb, var(--primary-color, #1890ff) 14%, transparent);
+          color: var(--primary-color-hover, #69c0ff);
+        }
       }
     }
 
@@ -2364,7 +2399,7 @@ export default {
 .qd-indicator-detail-modal-wrap--dark {
   .ant-modal-content {
     background: #1f1f1f;
-    color: rgba(255, 255, 255, 0.85);
+    color: #e5e5e5;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   }
 
@@ -2399,12 +2434,12 @@ export default {
     }
 
     .section h3 {
-      color: rgba(255, 255, 255, 0.88);
+      color: #f0f0f0;
       border-color: #303030;
     }
 
     .description {
-      color: rgba(255, 255, 255, 0.65);
+      color: #bdbdbd;
     }
 
     .indicator-profile-grid .profile-item {
@@ -2583,14 +2618,19 @@ export default {
 
   // Comments block in the modal: inherit dark colors.
   .comment-list {
-    color: rgba(255, 255, 255, 0.85);
+    color: #e5e5e5;
 
     .comment-item {
       border-color: #303030;
 
-      .comment-content { color: rgba(255, 255, 255, 0.72); }
+      &.is-mine {
+        background: #202020 !important;
+      }
+
+      .user-name { color: #ededed !important; }
+      .comment-content { color: #c7c7c7; }
       .comment-meta,
-      .comment-time { color: rgba(255, 255, 255, 0.45); }
+      .comment-time { color: #8c8c8c; }
     }
 
     .ant-input,

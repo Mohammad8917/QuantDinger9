@@ -26,14 +26,16 @@ import backtestRangeOverrides from './backtest-range-overrides'
 import settingsResearchOverrides from './settings-research-overrides'
 import settingsRuntimeOverrides from './settings-runtime-overrides'
 import strategyBuilderOverrides from './strategy-builder-overrides'
-import eventRadarMessages from './lang/event-radar'
 import currentFeatureOverrides from './lang/current-feature-overrides'
 import strategyEvolutionMessages from './lang/strategy-evolution'
 import quickTradeSpotSellMessages from './lang/quick-trade-spot-sell'
 import talibFactorMessages from './lang/talib-factors'
 import factorResearchMessages from './lang/factor-research-factors'
+import factorLibraryEnhancementMessages from './lang/factor-library-enhancements'
 import backtestWorkbenchMessages from './lang/backtest-workbench'
 import strategyReviewMessages from './lang/strategy-review'
+import quickTradeFloatingMessages from './lang/quick-trade-floating'
+import settingsFeatureMessages from './settings-feature-overrides'
 
 Vue.use(VueI18n)
 
@@ -66,13 +68,15 @@ const messages = {
     ...(settingsRuntimeOverrides[defaultLang] || {}),
     ...(strategyBuilderOverrides[defaultLang] || {}),
     ...(currentFeatureOverrides[defaultLang] || {}),
-    ...(eventRadarMessages[defaultLang] || {}),
     ...(strategyEvolutionMessages[defaultLang] || {}),
     ...(quickTradeSpotSellMessages[defaultLang] || {}),
     ...(talibFactorMessages[defaultLang] || {}),
     ...(factorResearchMessages[defaultLang] || {}),
+    ...(factorLibraryEnhancementMessages[defaultLang] || {}),
     ...(backtestWorkbenchMessages[defaultLang] || {}),
-    ...(strategyReviewMessages[defaultLang] || {})
+    ...(strategyReviewMessages[defaultLang] || {}),
+    ...(quickTradeFloatingMessages[defaultLang] || {}),
+    ...(settingsFeatureMessages[defaultLang] || {})
   }
 }
 
@@ -164,13 +168,15 @@ function mergeLocaleOverrides (lang) {
     ...(settingsRuntimeOverrides[lang] || {}),
     ...(strategyBuilderOverrides[lang] || {}),
     ...(currentFeatureOverrides[lang] || {}),
-    ...(eventRadarMessages[lang] || {}),
     ...(strategyEvolutionMessages[lang] || {}),
     ...(quickTradeSpotSellMessages[lang] || {}),
     ...(talibFactorMessages[lang] || {}),
     ...(factorResearchMessages[lang] || {}),
+    ...(factorLibraryEnhancementMessages[lang] || {}),
     ...(backtestWorkbenchMessages[lang] || {}),
-    ...(strategyReviewMessages[lang] || {})
+    ...(strategyReviewMessages[lang] || {}),
+    ...(quickTradeFloatingMessages[lang] || {}),
+    ...(settingsFeatureMessages[lang] || {})
   }
   i18n.setLocaleMessage(lang, {
     ...(i18n.getLocaleMessage(lang) || {}),
@@ -216,12 +222,14 @@ export async function loadLanguageAsync (lang = defaultLang) {
       ...(settingsRuntimeOverrides[lang] || {}),
       ...(strategyBuilderOverrides[lang] || {}),
       ...(currentFeatureOverrides[lang] || {}),
-      ...(eventRadarMessages[lang] || {}),
       ...(quickTradeSpotSellMessages[lang] || {}),
       ...(talibFactorMessages[lang] || {}),
       ...(factorResearchMessages[lang] || {}),
+      ...(factorLibraryEnhancementMessages[lang] || {}),
       ...(backtestWorkbenchMessages[lang] || {}),
-      ...(strategyReviewMessages[lang] || {})
+      ...(strategyReviewMessages[lang] || {}),
+      ...(quickTradeFloatingMessages[lang] || {}),
+      ...(settingsFeatureMessages[lang] || {})
     })
     i18n.setLocaleMessage(lang, locale)
     loadedLanguages.push(lang)

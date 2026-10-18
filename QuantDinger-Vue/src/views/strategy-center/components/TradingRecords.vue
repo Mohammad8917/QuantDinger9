@@ -25,7 +25,7 @@
       :pagination="{ pageSize: 10 }"
       size="small"
       rowKey="id"
-      :scroll="{ x: 1800 }"
+      :scroll="{ x: 1370 }"
     >
       <template slot="type" slot-scope="text, record">
         <div class="trade-type-cell">
@@ -38,54 +38,77 @@
       <template slot="instrument" slot-scope="text, record">
         <span class="trade-instrument">{{ formatTradeInstrument(record) }}</span>
       </template>
-      <template slot="price" slot-scope="text, record">
-        <a-tooltip :title="formatExecutionNumber(text) + (record.exchange_order_id ? ' · ' + $t('trading-assistant.execution.orderId') + ': ' + record.exchange_order_id : '')">
-          <span>{{ formatExecutionPrice(text) }}</span>
-        </a-tooltip>
+      <template slot="execution" slot-scope="text, record">
+        <div class="execution-cell">
+          <a-tooltip :title="formatExecutionNumber(record.price) + (record.exchange_order_id ? ' · ' + $t('trading-assistant.execution.orderId') + ': ' + record.exchange_order_id : '')">
+            <strong>{{ formatExecutionPrice(record.price) }}</strong>
+          </a-tooltip>
+          <a-tooltip :title="$t('trading-assistant.table.amount') + ': ' + formatExecutionNumber(record.amount) + ' · ' + $t('trading-assistant.table.value') + ': ' + formatTradeValue(record.value)">
+            <small>{{ formatExecutionNumber(record.amount) }} · {{ formatTradeValue(record.value) }}</small>
+          </a-tooltip>
+        </div>
       </template>
-      <template slot="reference_price" slot-scope="text">
-        <a-tooltip :title="formatExecutionNumber(text)">
-          <span>{{ formatExecutionPrice(text) }}</span>
-        </a-tooltip>
-      </template>
-      <template slot="price_deviation_pct" slot-scope="text, record">
-        <a-tooltip :title="executionDeviationHint(record)">
-          <span>{{ formatExecutionDeviation(text, record) }}</span>
-        </a-tooltip>
-      </template>
-      <template slot="amount" slot-scope="text">
-        {{ formatExecutionNumber(text) }}
-      </template>
-      <template slot="value" slot-scope="text">
-        ${{ parseFloat(text).toFixed(2) }}
+      <template slot="execution_quality" slot-scope="text, record">
+        <div class="execution-quality-cell">
+          <a-tooltip :title="formatExecutionNumber(record.reference_price)">
+            <strong>{{ formatExecutionPrice(record.reference_price) }}</strong>
+          </a-tooltip>
+          <a-tooltip :title="executionDeviationHint(record)">
+            <small>{{ formatExecutionDeviation(record.price_deviation_pct, record) }}</small>
+          </a-tooltip>
+        </div>
       </template>
       <template slot="exchange_pnl" slot-scope="text, record">
-        <a-popover v-if="text && text.status === 'reported'" placement="top" trigger="hover">
+        <a-popover
+          v-if="text && text.status === 'reported'"
+          placement="top"
+          trigger="hover"
+          :overlay-class-name="isDark ? 'strategy-pnl-popover strategy-pnl-popover--dark' : 'strategy-pnl-popover'"
+        >
           <div slot="content" class="pnl-breakdown">
-            <p>{{ $t('trading-assistant.execution.exchangePnlHint') }}</p>
-            <p>{{ $t('trading-assistant.execution.' + text.fee_basis) }}</p>
-            <p>{{ $t('trading-assistant.execution.orderId') }}: {{ text.order_id }}</p>
-            <p>{{ $t('trading-assistant.execution.reportedQuantity') }}: {{ formatExecutionNumber(text.quantity) }}</p>
-            <p>{{ $t('trading-assistant.execution.reportSource') }}: {{ text.source }}</p>
+            <div class="pnl-breakdown__header">
+              <div>
+                <strong>{{ $t('trading-assistant.execution.exchangePnl') }}</strong>
+                <p>{{ $t('trading-assistant.execution.exchangePnlHint') }}</p>
+              </div>
+            </div>
+            <div class="pnl-breakdown__badge">{{ $t('trading-assistant.execution.' + text.fee_basis) }}</div>
+            <div class="pnl-breakdown__rows">
+              <div class="pnl-breakdown__row"><span>{{ $t('trading-assistant.execution.orderId') }}</span><strong>{{ text.order_id }}</strong></div>
+              <div class="pnl-breakdown__row"><span>{{ $t('trading-assistant.execution.reportedQuantity') }}</span><strong>{{ formatExecutionNumber(text.quantity) }}</strong></div>
+              <div class="pnl-breakdown__row"><span>{{ $t('trading-assistant.execution.reportSource') }}</span><strong>{{ text.source }}</strong></div>
+            </div>
           </div>
           <span :class="['ta-pnl', { 'ta-pnl-pos': text.amount > 0, 'ta-pnl-neg': text.amount < 0 }]">{{ formatReportedPnl(text, record) }}</span>
         </a-popover>
         <span v-else class="pnl-status">{{ formatReportedPnl(text, record) }}</span>
       </template>
       <template slot="profit" slot-scope="text, record">
-        <a-popover v-if="hasRealizedProfit(record) || record.pnl_source === 'grid_exchange_order_pairs'" placement="top" trigger="hover">
+        <a-popover
+          v-if="hasRealizedProfit(record) || record.pnl_source === 'grid_exchange_order_pairs'"
+          placement="top"
+          trigger="hover"
+          :overlay-class-name="isDark ? 'strategy-pnl-popover strategy-pnl-popover--dark' : 'strategy-pnl-popover'"
+        >
           <div slot="content" class="pnl-breakdown">
-            <p>{{ $t(record.pnl_source === 'grid_exchange_order_pairs' ? 'trading-assistant.execution.gridPnlHint' : 'trading-assistant.execution.pnlHint') }}</p>
-            <div><span>{{ $t('trading-assistant.costs.grossRealized') }}</span><strong>{{ formatSignedMoney(record.profit_gross) }}</strong></div>
-            <div><span>{{ $t('trading-assistant.costs.openingCommission') }}</span><strong>{{ formatExpense(record.open_commission_allocated) }}</strong></div>
-            <div><span>{{ $t('trading-assistant.costs.closingCommission') }}</span><strong>{{ formatExpense(record.close_commission) }}</strong></div>
+            <div class="pnl-breakdown__header">
+              <div>
+                <strong>{{ $t(record.pnl_source === 'grid_exchange_order_pairs' ? 'trading-assistant.execution.gridNetPnl' : 'trading-assistant.execution.systemPnl') }}</strong>
+                <p>{{ $t(record.pnl_source === 'grid_exchange_order_pairs' ? 'trading-assistant.execution.gridPnlHint' : 'trading-assistant.execution.pnlHint') }}</p>
+              </div>
+            </div>
+            <div class="pnl-breakdown__rows">
+              <div class="pnl-breakdown__row"><span>{{ $t('trading-assistant.costs.grossRealized') }}</span><strong :class="moneyTone(record.profit_gross)">{{ formatSignedMoney(record.profit_gross) }}</strong></div>
+              <div class="pnl-breakdown__row"><span>{{ $t('trading-assistant.costs.openingCommission') }}</span><strong :class="expenseTone(record.open_commission_allocated)">{{ formatExpense(record.open_commission_allocated) }}</strong></div>
+              <div class="pnl-breakdown__row"><span>{{ $t('trading-assistant.costs.closingCommission') }}</span><strong :class="expenseTone(record.close_commission)">{{ formatExpense(record.close_commission) }}</strong></div>
+            </div>
             <div v-for="(match, index) in record.matched_orders || []" :key="index" class="grid-order-match">
               <p>{{ $t('trading-assistant.execution.entryOrders') }}: {{ match.entry_order_ids.join(', ') }}</p>
               <p>{{ $t('trading-assistant.execution.exitOrder') }}: {{ match.exit_order_id }}</p>
               <p>{{ $t('trading-assistant.table.amount') }}: {{ formatExecutionNumber(match.quantity) }}</p>
               <p>{{ formatExecutionPrice(match.entry_price) }} → {{ formatExecutionPrice(match.exit_price) }}</p>
             </div>
-            <div class="pnl-breakdown-total"><span>{{ $t('trading-assistant.costs.netRealized') }}</span><strong>{{ formatProfit(record) }}</strong></div>
+            <div :class="['pnl-breakdown-total', moneyTone(netTradePnl(record))]"><span>{{ $t('trading-assistant.costs.netRealized') }}</span><strong>{{ formatProfit(record) }}</strong></div>
           </div>
           <span :class="['ta-pnl', profitToneClass(record)]">{{ formatProfit(record) }}</span>
         </a-popover>
@@ -207,72 +230,36 @@ export default {
           title: this.$t('trading-assistant.table.time'),
           dataIndex: 'created_at',
           key: 'created_at',
-          width: 180,
+          width: 150,
           scopedSlots: { customRender: 'time' }
         },
         {
           title: this.$t('trading-assistant.table.typeAndAction'),
           dataIndex: 'type',
           key: 'type',
-          width: 220,
+          width: 190,
           scopedSlots: { customRender: 'type' }
         },
         {
           title: this.$t('trading-assistant.table.instrument'),
           dataIndex: 'symbol',
           key: 'symbol',
-          width: 130,
+          width: 110,
           scopedSlots: { customRender: 'instrument' }
         },
         {
-          title: this.$t('trading-assistant.execution.reference'),
-          dataIndex: 'reference_price',
-          key: 'reference_price',
-          width: 140,
-          scopedSlots: { customRender: 'reference_price' }
-        },
-        {
-          title: this.$t('trading-assistant.execution.price'),
+          title: this.$t('trading-assistant.execution.fillSummary'),
           dataIndex: 'price',
-          key: 'price',
-          width: 120,
-          scopedSlots: { customRender: 'price' }
-        },
-        {
-          title: this.$t('trading-assistant.execution.deviation'),
-          dataIndex: 'price_deviation_pct',
-          key: 'price_deviation_pct',
-          width: 130,
-          scopedSlots: { customRender: 'price_deviation_pct' }
-        },
-        {
-          title: this.$t('trading-assistant.table.amount'),
-          dataIndex: 'amount',
-          key: 'amount',
-          width: 120,
-          scopedSlots: { customRender: 'amount' }
-        },
-        {
-          title: this.$t('trading-assistant.table.value'),
-          dataIndex: 'value',
-          key: 'value',
-          width: 120,
-          scopedSlots: { customRender: 'value' }
-        },
-        {
-          title: this.$t('trading-assistant.execution.exchangePnl'),
-          dataIndex: 'exchange_pnl',
-          key: 'exchange_pnl',
-          className: 'pnl-column',
-          width: 210,
-          scopedSlots: { customRender: 'exchange_pnl' }
+          key: 'execution',
+          width: 190,
+          scopedSlots: { customRender: 'execution' }
         },
         {
           title: this.$t(this.records.some(r => r.pnl_source === 'grid_exchange_order_pairs') ? 'trading-assistant.execution.gridNetPnl' : 'trading-assistant.execution.systemPnl'),
           dataIndex: 'profit',
           key: 'profit',
           className: 'pnl-column',
-          width: 180,
+          width: 150,
           scopedSlots: { customRender: 'profit' }
         }
       ]
@@ -285,13 +272,30 @@ export default {
           scopedSlots: { customRender: 'grid_matched_profit' }
         })
       }
-      cols.push({
-        title: this.$t('trading-assistant.table.commission'),
-        dataIndex: 'commission',
-        key: 'commission',
-        width: 100,
-        scopedSlots: { customRender: 'commission' }
-      })
+      cols.push(
+        {
+          title: this.$t('trading-assistant.table.commission'),
+          dataIndex: 'commission',
+          key: 'commission',
+          width: 120,
+          scopedSlots: { customRender: 'commission' }
+        },
+        {
+          title: this.$t('trading-assistant.execution.exchangePnl'),
+          dataIndex: 'exchange_pnl',
+          key: 'exchange_pnl',
+          className: 'pnl-column',
+          width: 170,
+          scopedSlots: { customRender: 'exchange_pnl' }
+        },
+        {
+          title: this.$t('trading-assistant.execution.qualitySummary'),
+          dataIndex: 'reference_price',
+          key: 'execution_quality',
+          width: 160,
+          scopedSlots: { customRender: 'execution_quality' }
+        }
+      )
       return cols
     }
   },
@@ -317,6 +321,9 @@ export default {
     formatExecutionNumber,
     formatExecutionPrice,
     formatPriceDeviation,
+    formatTradeValue (value) {
+      return formatTradeMoney(value)
+    },
     formatReportedPnl (report, record) {
       if (!report || report.status === 'not_applicable') return '--'
       if (report.status === 'not_applicable_spot') {
@@ -572,6 +579,10 @@ export default {
       if (value === null || value === undefined || value === '') return '--'
       return formatTradeMoney(-Number(value), true)
     },
+    expenseTone (value) {
+      if (value === null || value === undefined || value === '') return 'cost-neutral'
+      return this.moneyTone(-Number(value))
+    },
     moneyTone (value) {
       const number = Number(value || 0)
       if (number > 0) return 'cost-positive'
@@ -673,25 +684,34 @@ export default {
 
   .cost-summary-grid {
     display: grid;
-    grid-template-columns: repeat(5, minmax(130px, 1fr));
-    gap: 10px;
-    margin-bottom: 14px;
+    grid-auto-columns: minmax(132px, 1fr);
+    grid-auto-flow: column;
+    gap: 8px;
+    margin-bottom: 12px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
   }
   .cost-summary-card {
-    padding: 12px 14px;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    background: #fff;
-    span { display: block; margin-bottom: 6px; color: #64748b; font-size: 12px; }
-    strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--sc-border, #e2e8f0);
+    border-radius: var(--sc-radius-sm, 6px);
+    background: var(--sc-surface-subtle, #fff);
+    span { display: block; margin-bottom: 4px; overflow: hidden; color: var(--sc-muted, #64748b); font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+    strong { display: block; overflow: hidden; color: var(--sc-text, #17202d); font-size: 15px; font-weight: 650; line-height: 1.35; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
   }
-  .cost-positive { color: @success-color; }
-  .cost-negative { color: @danger-color; }
-  .cost-neutral { color: #64748b; }
+  .cost-positive { color: var(--sc-positive, @success-color); }
+  .cost-negative { color: var(--sc-negative, @danger-color); }
+  .cost-neutral { color: var(--sc-muted, #64748b); }
   &.theme-dark .cost-summary-card {
-    background: #171717;
-    border-color: rgba(255, 255, 255, 0.1);
-    span { color: rgba(255, 255, 255, 0.48); }
+    background: var(--sc-surface-subtle, #171717);
+    border-color: var(--sc-border, rgba(255, 255, 255, 0.1));
+    span { color: var(--sc-muted, rgba(255, 255, 255, 0.48)); }
+    strong { color: var(--sc-text, #e4e7ec); }
+    .cost-positive { color: var(--sc-positive, #49c292); }
+    .cost-negative { color: var(--sc-negative, #ff6b7a); }
+    .cost-neutral { color: var(--sc-muted, #8f98a6); }
   }
 
   .trade-type-cell {
@@ -717,6 +737,17 @@ export default {
     white-space: nowrap;
   }
 
+  .execution-cell,
+  .execution-quality-cell {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 3px;
+    font-variant-numeric: tabular-nums;
+    strong { overflow: hidden; color: var(--sc-text, #17202d); font-size: 12px; font-weight: 650; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+    small { overflow: hidden; color: var(--sc-muted, #64748b); font-size: 10px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+  }
+
   .ta-pnl {
     font-weight: 600;
     font-variant-numeric: tabular-nums;
@@ -739,6 +770,11 @@ export default {
   }
   &.theme-dark .trade-instrument {
     color: rgba(255, 255, 255, 0.88);
+  }
+  &.theme-dark .execution-cell,
+  &.theme-dark .execution-quality-cell {
+    strong { color: var(--sc-text, #e4e7ec); }
+    small { color: var(--sc-muted, #8f98a6); }
   }
   &.theme-dark .ta-pnl-zero {
     color: rgba(255, 255, 255, 0.45) !important;
@@ -873,12 +909,12 @@ export default {
     font-weight: 600;
     color: #475569;
     border-bottom: 2px solid #e2e8f0;
-    padding: 12px 16px;
-    font-size: 13px;
+    padding: 9px 12px;
+    font-size: 12px;
   }
 
   ::v-deep .ant-table-tbody > tr > td {
-    padding: 12px 16px;
+    padding: 9px 12px;
     color: #334155;
     border-bottom: 1px solid #f1f5f9;
     transition: background 0.2s ease;
@@ -992,20 +1028,20 @@ export default {
     }
 
     ::v-deep .ant-table-thead > tr > th {
-      background: #2a2e39 !important;
+      background: #222222 !important;
       color: #d1d4dc !important;
-      border-bottom-color: #363c4e !important;
+      border-bottom-color: #333333 !important;
       font-weight: 600;
     }
 
     ::v-deep .ant-table-tbody > tr > td {
       background: #1c1c1c !important;
       color: #d1d4dc !important;
-      border-bottom-color: #363c4e !important;
+      border-bottom-color: #333333 !important;
     }
 
     ::v-deep .ant-table-tbody > tr:hover > td {
-      background: #2a2e39 !important;
+      background: #222222 !important;
     }
 
     ::v-deep .ant-table-tbody > tr > td span:not(.ant-tag) {
@@ -1143,16 +1179,16 @@ body.dark .trading-records .ant-table-tbody > tr > td,
 body.realdark .trading-records .ant-table-tbody > tr > td {
   color: #d1d4dc !important;
   background: #1c1c1c !important;
-  border-bottom-color: #363c4e !important;
+  border-bottom-color: #333333 !important;
 }
 
 .theme-dark .trading-records .ant-table-thead > tr > th,
 .theme-dark .trading-records[data-v] .ant-table-thead > tr > th,
 body.dark .trading-records .ant-table-thead > tr > th,
 body.realdark .trading-records .ant-table-thead > tr > th {
-  background: #2a2e39 !important;
+  background: #222222 !important;
   color: #d1d4dc !important;
-  border-bottom-color: #363c4e !important;
+  border-bottom-color: #333333 !important;
   font-weight: 600 !important;
 }
 
@@ -1175,7 +1211,7 @@ body.realdark .trading-records .ant-table-tbody > tr > td *:not(.ant-tag) {
 .theme-dark .trading-records[data-v] .ant-table-tbody > tr:hover > td,
 body.dark .trading-records .ant-table-tbody > tr:hover > td,
 body.realdark .trading-records .ant-table-tbody > tr:hover > td {
-  background: #2a2e39 !important;
+  background: #222222 !important;
 }
 
 .theme-dark .trading-records .ant-table-thead > tr > th,
@@ -1188,21 +1224,21 @@ body.realdark .trading-records .ant-table-thead > tr > th {
 }
 
 .theme-dark .trading-records[data-v-8a68b65a] .ant-table-tbody > tr:hover > td {
-  background: #2a2e39 !important;
+  background: #222222 !important;
 }
 
 body.dark .trading-records[data-v-8a68b65a] .ant-table-tbody > tr > td,
 body.realdark .trading-records[data-v-8a68b65a] .ant-table-tbody > tr > td {
   color: #d1d4dc !important;
   background: #1c1c1c !important;
-  border-bottom-color: #363c4e !important;
+  border-bottom-color: #333333 !important;
 }
 
 body.dark .trading-records[data-v-8a68b65a] .ant-table-thead > tr > th,
 body.realdark .trading-records[data-v-8a68b65a] .ant-table-thead > tr > th {
-  background: #2a2e39 !important;
+  background: #222222 !important;
   color: #d1d4dc !important;
-  border-bottom-color: #363c4e !important;
+  border-bottom-color: #333333 !important;
 }
 
 .theme-dark .trading-records[data-v] .ant-table-tbody > tr > td,
@@ -1210,22 +1246,22 @@ body.dark .trading-records[data-v] .ant-table-tbody > tr > td,
 body.realdark .trading-records[data-v] .ant-table-tbody > tr > td {
   color: #d1d4dc !important;
   background: #1c1c1c !important;
-  border-bottom-color: #363c4e !important;
+  border-bottom-color: #333333 !important;
 }
 
 .theme-dark .trading-records[data-v] .ant-table-thead > tr > th,
 body.dark .trading-records[data-v] .ant-table-thead > tr > th,
 body.realdark .trading-records[data-v] .ant-table-thead > tr > th {
-  background: #2a2e39 !important;
+  background: #222222 !important;
   color: #d1d4dc !important;
-  border-bottom-color: #363c4e !important;
+  border-bottom-color: #333333 !important;
 }
 
 .theme-dark .trading-records[data-v-8a68b65a] .ant-pagination-item,
 body.dark .trading-records[data-v-8a68b65a] .ant-pagination-item,
 body.realdark .trading-records[data-v-8a68b65a] .ant-pagination-item {
   background: #1c1c1c !important;
-  border-color: #363c4e !important;
+  border-color: #333333 !important;
 
   a {
     color: #d1d4dc !important;
@@ -1258,7 +1294,7 @@ body.dark .trading-records[data-v-8a68b65a] .ant-pagination-next .ant-pagination
 body.realdark .trading-records[data-v-8a68b65a] .ant-pagination-prev .ant-pagination-item-link,
 body.realdark .trading-records[data-v-8a68b65a] .ant-pagination-next .ant-pagination-item-link {
   background: #1c1c1c !important;
-  border-color: #363c4e !important;
+  border-color: #333333 !important;
   color: #d1d4dc !important;
 }
 
@@ -1276,7 +1312,7 @@ body.realdark .trading-records[data-v-8a68b65a] .ant-pagination-next:hover .ant-
 body.dark .trading-records[data-v] .ant-pagination-item,
 body.realdark .trading-records[data-v] .ant-pagination-item {
   background: #1c1c1c !important;
-  border-color: #363c4e !important;
+  border-color: #333333 !important;
 
   a {
     color: #d1d4dc !important;
@@ -1309,7 +1345,7 @@ body.dark .trading-records[data-v] .ant-pagination-next .ant-pagination-item-lin
 body.realdark .trading-records[data-v] .ant-pagination-prev .ant-pagination-item-link,
 body.realdark .trading-records[data-v] .ant-pagination-next .ant-pagination-item-link {
   background: #1c1c1c !important;
-  border-color: #363c4e !important;
+  border-color: #333333 !important;
   color: #d1d4dc !important;
 }
 
@@ -1386,19 +1422,129 @@ body.realdark .trading-records[data-v] .ant-table-wrapper {
 }
 
 .pnl-breakdown {
-  min-width: 220px;
-  > div { display: flex; justify-content: space-between; gap: 24px; padding: 4px 0; }
-  span { color: #64748b; }
-  strong { font-variant-numeric: tabular-nums; }
-  .pnl-breakdown-total { margin-top: 4px; padding-top: 8px; border-top: 1px solid #e2e8f0; }
+  width: 380px;
+  max-width: calc(100vw - 48px);
+  font-variant-numeric: tabular-nums;
+
+  .pnl-breakdown__header {
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e2e8f0;
+    > div { min-width: 0; }
+    strong { display: block; color: #17202d; font-size: 14px; font-weight: 650; line-height: 1.4; }
+    p { margin: 4px 0 0; color: #64748b; font-size: 11px; line-height: 1.55; }
+  }
+
+  .pnl-breakdown__badge {
+    display: inline-flex;
+    margin-top: 10px;
+    padding: 3px 8px;
+    border: 1px solid rgba(24, 144, 255, 0.22);
+    border-radius: 999px;
+    color: var(--primary-color, #1890ff);
+    background: rgba(24, 144, 255, 0.06);
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
+  .pnl-breakdown__rows { padding-top: 8px; }
+  .pnl-breakdown__row,
+  .pnl-breakdown-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    min-height: 28px;
+    padding: 4px 0;
+    span { color: #64748b; font-size: 12px; }
+    strong { overflow: hidden; color: #17202d; font-size: 12px; font-weight: 650; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+  }
+  .pnl-breakdown-total {
+    margin-top: 6px;
+    padding: 10px 10px 6px;
+    border-top: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #f8fafc;
+    strong { font-size: 13px; }
+  }
+  .pnl-breakdown__row strong.cost-positive,
+  .pnl-breakdown-total.cost-positive strong { color: #0ecb81; }
+  .pnl-breakdown__row strong.cost-negative,
+  .pnl-breakdown-total.cost-negative strong { color: #f6465d; }
+  .pnl-breakdown__row strong.cost-neutral,
+  .pnl-breakdown-total.cost-neutral strong { color: #64748b; }
+  .pnl-breakdown-total.cost-positive { background: rgba(14, 203, 129, 0.07); }
+  .pnl-breakdown-total.cost-negative { background: rgba(246, 70, 93, 0.07); }
+  .grid-order-match {
+    margin-top: 8px;
+    padding: 8px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #f8fafc;
+    p { margin: 0; color: #64748b; font-size: 11px; line-height: 1.55; }
+  }
 }
 
 @media (max-width: 1100px) {
-  .trading-records .cost-summary-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+  .trading-records .cost-summary-grid { grid-auto-columns: minmax(140px, 1fr); }
 }
 </style>
 
 <style lang="less">
+.strategy-pnl-popover {
+  .ant-popover-inner {
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+  }
+  .ant-popover-inner-content { padding: 14px 16px; }
+  .ant-popover-arrow { border-color: #fff; }
+}
+
+.strategy-pnl-popover--dark {
+  .ant-popover-inner {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: #17191d;
+    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.48);
+  }
+  .ant-popover-inner-content { color: #e4e7ec; }
+  .ant-popover-arrow { border-color: #17191d; }
+  .pnl-breakdown {
+    .pnl-breakdown__header {
+      border-bottom-color: rgba(255, 255, 255, 0.09);
+      strong { color: #eef0f3; }
+      p { color: #8f98a6; }
+    }
+    .pnl-breakdown__badge {
+      border-color: color-mix(in srgb, var(--primary-color, #1890ff) 32%, transparent);
+      background: color-mix(in srgb, var(--primary-color, #1890ff) 10%, transparent);
+    }
+    .pnl-breakdown__row,
+    .pnl-breakdown-total {
+      span { color: #8f98a6; }
+      strong { color: #eef0f3; }
+    }
+    .pnl-breakdown-total {
+      border-top-color: rgba(255, 255, 255, 0.09);
+      background: rgba(255, 255, 255, 0.025);
+    }
+    .pnl-breakdown__row strong.cost-positive,
+    .pnl-breakdown-total.cost-positive strong { color: #49c292; }
+    .pnl-breakdown__row strong.cost-negative,
+    .pnl-breakdown-total.cost-negative strong { color: #ff6b7a; }
+    .pnl-breakdown__row strong.cost-neutral,
+    .pnl-breakdown-total.cost-neutral strong { color: #8f98a6; }
+    .pnl-breakdown-total.cost-positive { background: rgba(73, 194, 146, 0.1); }
+    .pnl-breakdown-total.cost-negative { background: rgba(255, 107, 122, 0.1); }
+    .grid-order-match {
+      border-color: rgba(255, 255, 255, 0.09);
+      background: rgba(255, 255, 255, 0.025);
+      p { color: #8f98a6; }
+    }
+  }
+}
+
 .theme-dark .trading-records {
   ::v-deep .ant-table {
     background: #1c1c1c !important;
@@ -1411,9 +1557,9 @@ body.realdark .trading-records[data-v] .ant-table-wrapper {
   }
 
   ::v-deep .ant-table-thead > tr > th {
-    background: #2a2e39 !important;
+    background: #222222 !important;
     color: #d1d4dc !important;
-    border-bottom-color: #363c4e !important;
+    border-bottom-color: #333333 !important;
   }
 
   ::v-deep .ant-table-tbody {
@@ -1423,7 +1569,7 @@ body.realdark .trading-records[data-v] .ant-table-wrapper {
   ::v-deep .ant-table-tbody > tr > td {
     background: #1c1c1c !important;
     color: #d1d4dc !important;
-    border-bottom-color: #363c4e !important;
+    border-bottom-color: #333333 !important;
   }
 
   ::v-deep .ant-table-tbody > tr > td,
@@ -1434,7 +1580,7 @@ body.realdark .trading-records[data-v] .ant-table-wrapper {
   }
 
   ::v-deep .ant-table-tbody > tr:hover > td {
-    background: #2a2e39 !important;
+    background: #222222 !important;
   }
 
   ::v-deep .ant-table-placeholder {
@@ -1468,7 +1614,7 @@ body.realdark .trading-records[data-v] .ant-table-wrapper {
   ::v-deep .ant-pagination {
     .ant-pagination-item {
       background: #1c1c1c !important;
-      border-color: #363c4e !important;
+      border-color: #333333 !important;
 
       a {
         color: #d1d4dc !important;
@@ -1496,7 +1642,7 @@ body.realdark .trading-records[data-v] .ant-table-wrapper {
     .ant-pagination-next {
       .ant-pagination-item-link {
         background: #1c1c1c !important;
-        border-color: #363c4e !important;
+        border-color: #333333 !important;
         color: #d1d4dc !important;
       }
 
@@ -1510,7 +1656,7 @@ body.realdark .trading-records[data-v] .ant-table-wrapper {
       .ant-select {
         .ant-select-selector {
           background: #1c1c1c !important;
-          border-color: #363c4e !important;
+          border-color: #333333 !important;
           color: #d1d4dc !important;
         }
       }
@@ -1531,9 +1677,9 @@ body.realdark .trading-records {
   }
 
   ::v-deep .ant-table-thead > tr > th {
-    background: #2a2e39 !important;
+    background: #222222 !important;
     color: #d1d4dc !important;
-    border-bottom-color: #363c4e !important;
+    border-bottom-color: #333333 !important;
   }
 
   ::v-deep .ant-table-tbody {
@@ -1543,7 +1689,7 @@ body.realdark .trading-records {
   ::v-deep .ant-table-tbody > tr > td {
     background: #1c1c1c !important;
     color: #d1d4dc !important;
-    border-bottom-color: #363c4e !important;
+    border-bottom-color: #333333 !important;
   }
 
   ::v-deep .ant-table-tbody > tr > td,
@@ -1554,7 +1700,7 @@ body.realdark .trading-records {
   }
 
   ::v-deep .ant-table-tbody > tr:hover > td {
-    background: #2a2e39 !important;
+    background: #222222 !important;
   }
 
   ::v-deep .ant-table-placeholder {
@@ -1588,7 +1734,7 @@ body.realdark .trading-records {
   ::v-deep .ant-pagination {
     .ant-pagination-item {
       background: #1c1c1c !important;
-      border-color: #363c4e !important;
+      border-color: #333333 !important;
 
       a {
         color: #d1d4dc !important;
@@ -1616,7 +1762,7 @@ body.realdark .trading-records {
     .ant-pagination-next {
       .ant-pagination-item-link {
         background: #1c1c1c !important;
-        border-color: #363c4e !important;
+        border-color: #333333 !important;
         color: #d1d4dc !important;
       }
 
@@ -1630,7 +1776,7 @@ body.realdark .trading-records {
       .ant-select {
         .ant-select-selector {
           background: #1c1c1c !important;
-          border-color: #363c4e !important;
+          border-color: #333333 !important;
           color: #d1d4dc !important;
         }
       }
@@ -1657,9 +1803,9 @@ body.realdark .trading-records * {
   }
 
   ::v-deep .ant-table-thead > tr > th {
-    background: #2a2e39 !important;
+    background: #222222 !important;
     color: #d1d4dc !important;
-    border-bottom-color: #363c4e !important;
+    border-bottom-color: #333333 !important;
   }
 
   ::v-deep .ant-table-tbody {
@@ -1669,7 +1815,7 @@ body.realdark .trading-records * {
   ::v-deep .ant-table-tbody > tr > td {
     background: #1c1c1c !important;
     color: #d1d4dc !important;
-    border-bottom-color: #363c4e !important;
+    border-bottom-color: #333333 !important;
   }
 
   ::v-deep .ant-table-tbody > tr > td,
@@ -1725,7 +1871,7 @@ body.realdark .trading-records * {
   }
 
   ::v-deep .ant-table-tbody > tr:hover > td {
-    background: #2a2e39 !important;
+    background: #222222 !important;
   }
 
   ::v-deep .ant-table-placeholder {
@@ -1736,7 +1882,7 @@ body.realdark .trading-records * {
   ::v-deep .ant-pagination {
     .ant-pagination-item {
       background: #1c1c1c !important;
-      border-color: #363c4e !important;
+      border-color: #333333 !important;
 
       a {
         color: #d1d4dc !important;
@@ -1764,7 +1910,7 @@ body.realdark .trading-records * {
     .ant-pagination-next {
       .ant-pagination-item-link {
         background: #1c1c1c !important;
-        border-color: #363c4e !important;
+        border-color: #333333 !important;
         color: #d1d4dc !important;
       }
 
@@ -1778,7 +1924,7 @@ body.realdark .trading-records * {
       .ant-select {
         .ant-select-selector {
           background: #1c1c1c !important;
-          border-color: #363c4e !important;
+          border-color: #333333 !important;
           color: #d1d4dc !important;
         }
       }

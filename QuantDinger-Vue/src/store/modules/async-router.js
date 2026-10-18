@@ -18,16 +18,11 @@ const permission = {
     }
   },
   actions: {
-    GenerateRoutes ({ commit, rootState }, data) {
-      return new Promise((resolve, reject) => {
-        const { token } = data
-        generatorDynamicRouter(token).then(routers => {
-          commit('SET_ROUTERS', routers)
-          resolve()
-        }).catch(e => {
-          reject(e)
-        })
-      })
+    async GenerateRoutes ({ commit, dispatch }, data) {
+      const { token } = data
+      const capabilities = await dispatch('LoadFeatureConfig', { force: true }, { root: true })
+      const routers = await generatorDynamicRouter(token, capabilities)
+      commit('SET_ROUTERS', routers)
     },
     // Reset routes action
     ResetRoutes ({ commit }) {

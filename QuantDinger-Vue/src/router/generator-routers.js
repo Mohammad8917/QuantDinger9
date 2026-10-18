@@ -10,7 +10,7 @@ import { USER_INFO, USER_ROLES } from '@/store/mutation-types'
  * @param {boolean} isAdmin - Whether current user is admin
  * @returns {Array} Filtered routes
  */
-function filterRoutesByPermission (routes, isAdmin) {
+function filterRoutesByPermission (routes, isAdmin, capabilities = {}) {
   const filtered = []
 
   for (const route of routes) {
@@ -20,15 +20,20 @@ function filterRoutesByPermission (routes, isAdmin) {
     // Check if route requires admin permission
     const permissions = clonedRoute.meta?.permission || []
     const requiresAdmin = permissions.includes('admin')
+    const requiredCapability = clonedRoute.meta?.capability
 
     // If requires admin but user is not admin, skip this route
     if (requiresAdmin && !isAdmin) {
       continue
     }
 
+    if (requiredCapability && capabilities[requiredCapability] === false) {
+      continue
+    }
+
     // Recursively filter children
     if (clonedRoute.children && clonedRoute.children.length > 0) {
-      clonedRoute.children = filterRoutesByPermission(clonedRoute.children, isAdmin)
+      clonedRoute.children = filterRoutesByPermission(clonedRoute.children, isAdmin, capabilities)
     }
 
     filtered.push(clonedRoute)
@@ -73,12 +78,12 @@ function checkIsAdmin () {
  * @param {string} token - User token (unused, kept for compatibility)
  * @returns {Promise<Array>} Promise resolving to filtered routes
  */
-export const generatorDynamicRouter = token => {
+export const generatorDynamicRouter = (token, capabilities = {}) => {
   return new Promise((resolve) => {
     const isAdmin = checkIsAdmin()
 
     // Filter routes based on permissions
-    const filteredRoutes = filterRoutesByPermission(asyncRouterMap, isAdmin)
+    const filteredRoutes = filterRoutesByPermission(asyncRouterMap, isAdmin, capabilities)
 
     resolve(filteredRoutes)
   })

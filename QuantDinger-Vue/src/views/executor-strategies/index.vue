@@ -15,11 +15,7 @@
     <main class="executor-workbench">
       <aside class="executor-catalog">
         <div class="panel-title panel-title--between">
-          <span><b class="panel-step">1</b><a-icon type="appstore" />{{ t('executorStrategies.catalog') }}</span>
-          <span v-if="embedded" class="safe-mode-pill">
-            <a-icon type="safety-certificate" />
-            {{ t('executorStrategies.compatibility.badge') }}
-          </span>
+          <span><b class="panel-step">1</b><a-icon v-if="!embedded" type="appstore" />{{ t('executorStrategies.catalog') }}</span>
         </div>
         <button
           v-for="item in executorCatalog"
@@ -34,9 +30,9 @@
           <span class="catalog-icon"><a-icon :type="item.icon" /></span>
           <span class="catalog-copy">
             <strong>{{ t(item.titleKey) }}</strong>
-            <small>{{ t(item.descKey) }}</small>
+            <small v-if="!embedded">{{ t(item.descKey) }}</small>
           </span>
-          <a-tag :color="item.disabled ? 'default' : undefined" :class="{ 'theme-accent-tag': !item.disabled }">
+          <a-tag v-if="!embedded" :color="item.disabled ? 'default' : undefined" :class="{ 'theme-accent-tag': !item.disabled }">
             {{ t(item.badgeKey) }}
           </a-tag>
         </button>
@@ -44,11 +40,11 @@
 
       <section class="executor-config-panel">
         <div class="panel-title panel-title--between">
-          <span><b class="panel-step">2</b><a-icon type="setting" />{{ t('executorStrategies.config') }}</span>
-          <a-tag class="theme-accent-tag">{{ executorTypeText(form.executor_type) }}</a-tag>
+          <span><b class="panel-step">2</b><a-icon v-if="!embedded" type="setting" />{{ t('executorStrategies.config') }}</span>
+          <a-tag v-if="!embedded" class="theme-accent-tag">{{ executorTypeText(form.executor_type) }}</a-tag>
         </div>
 
-        <div class="executor-config-scroll">
+        <div ref="configScroll" class="executor-config-scroll">
           <div class="section-title">{{ t('executorStrategies.section.market') }}</div>
           <div class="market-compact-grid">
             <div class="field-block">
@@ -96,13 +92,13 @@
             </div>
           </div>
           <a-alert
-            v-if="isDca"
+            v-if="isDca && !embedded"
             class="dca-market-notice"
             type="success"
             show-icon
             :message="t('executorStrategies.dcaSpotLongOnly')" />
 
-          <div class="trigger-contract-card">
+          <div v-if="!embedded" class="trigger-contract-card">
             <span class="trigger-contract-card__icon"><a-icon type="thunderbolt" /></span>
             <div>
               <strong>{{ triggerModeTitle }}</strong>
@@ -158,9 +154,9 @@
             <div class="risk-layer-card__header">
               <div>
                 <strong>{{ t('executorStrategies.cycleRiskTitle') }}</strong>
-                <small>{{ t('executorStrategies.cycleRiskHint') }}</small>
+                <small v-if="!embedded">{{ t('executorStrategies.cycleRiskHint') }}</small>
               </div>
-              <span class="risk-scope-badge">{{ t('executorStrategies.cycleRiskScope') }}</span>
+              <span v-if="!embedded" class="risk-scope-badge">{{ t('executorStrategies.cycleRiskScope') }}</span>
             </div>
 
             <div class="profit-exit-mode">
@@ -205,7 +201,7 @@
             <div v-if="cycleProfitMode === 'trailing'" class="trailing-config">
               <div class="trailing-config__intro">
                 <strong>{{ t('executorStrategies.trailingTakeProfit') }}</strong>
-                <small>{{ t('executorStrategies.trailingTakeProfitHint') }}</small>
+                <small v-if="!embedded">{{ t('executorStrategies.trailingTakeProfitHint') }}</small>
               </div>
               <div class="field-grid">
                 <div class="field-block">
@@ -240,9 +236,9 @@
             <div class="risk-layer-card__header">
               <div>
                 <strong>{{ t('executorStrategies.equityRiskTitle') }}</strong>
-                <small>{{ t('executorStrategies.equityRiskHint') }}</small>
+                <small v-if="!embedded">{{ t('executorStrategies.equityRiskHint') }}</small>
               </div>
-              <span class="risk-scope-badge risk-scope-badge--stop">{{ t('executorStrategies.equityRiskScope') }}</span>
+              <span v-if="!embedded" class="risk-scope-badge risk-scope-badge--stop">{{ t('executorStrategies.equityRiskScope') }}</span>
             </div>
             <div class="field-grid">
               <div class="field-block">
@@ -271,7 +267,7 @@
             <div class="risk-layer-card__header equity-trailing-toggle">
               <div>
                 <strong>{{ t('executorStrategies.equityTrailingTitle') }}</strong>
-                <small>{{ t('executorStrategies.equityTrailingHint') }}</small>
+                <small v-if="!embedded">{{ t('executorStrategies.equityTrailingHint') }}</small>
               </div>
               <a-switch v-model="form.equity_trailing_enabled" />
             </div>
@@ -302,7 +298,7 @@
           </div>
 
           <a-alert
-            v-if="isMartingale"
+            v-if="isMartingale && !embedded"
             class="martingale-budget-notice"
             type="info"
             show-icon
@@ -312,7 +308,7 @@
           <div v-if="isMartingale" class="restart-after-stop-card">
             <div>
               <strong>{{ t('executorStrategies.restartAfterStop') }}</strong>
-              <small>{{ t('executorStrategies.restartAfterStopHint') }}</small>
+              <small v-if="!embedded">{{ t('executorStrategies.restartAfterStopHint') }}</small>
             </div>
             <a-switch v-model="form.restart_after_stop" />
           </div>
@@ -321,7 +317,7 @@
           <div v-if="!isDca || form.dca_price_filter_enabled" class="anchor-setting">
             <div>
               <label>{{ t(isDca ? 'executorStrategies.dcaAnchor' : 'executorStrategies.dynamicAnchor') }}</label>
-              <small>{{ t(isDca ? 'executorStrategies.dcaAnchorHint' : 'executorStrategies.dynamicAnchorHint') }}</small>
+              <small v-if="!embedded">{{ t(isDca ? 'executorStrategies.dcaAnchorHint' : 'executorStrategies.dynamicAnchorHint') }}</small>
             </div>
             <a-switch v-model="form.dynamic_anchor" />
           </div>
@@ -419,6 +415,7 @@
 
           <div v-else-if="isDca" class="executor-specific">
             <a-alert
+              v-if="!embedded"
               class="dca-explainer"
               type="info"
               show-icon
@@ -489,6 +486,7 @@
 
           <div v-else-if="form.executor_type === 'layered_martingale'" class="executor-specific">
             <a-alert
+              v-if="!embedded"
               class="layered-explainer"
               type="info"
               show-icon
@@ -665,7 +663,7 @@
             </div>
           </div>
 
-          <a-collapse class="advanced-collapse" :bordered="false" default-active-key="advanced">
+          <a-collapse v-model="advancedKeys" class="advanced-collapse" :bordered="false">
             <a-collapse-panel key="advanced" :header="t('executorStrategies.advanced')">
               <div class="field-grid">
                 <div v-if="!isDca" class="field-block">
@@ -687,7 +685,7 @@
         </div>
 
         <div class="config-actions">
-          <div class="config-actions__status" :class="{ 'has-error': !canCreate }" :title="primaryValidationText">
+          <div v-if="!embedded || !canCreate" class="config-actions__status" :class="{ 'has-error': !canCreate }" :title="primaryValidationText">
             <a-icon :type="canCreate ? 'check-circle' : 'exclamation-circle'" />
             <span>{{ primaryValidationText }}</span>
           </div>
@@ -700,10 +698,10 @@
         </div>
       </section>
 
-      <section class="executor-preview-panel">
+      <section ref="previewPanel" class="executor-preview-panel">
         <div class="panel-title panel-title--between">
-          <span><b class="panel-step">3</b><a-icon type="profile" />{{ t(isDca ? 'executorStrategies.dcaPreviewTitle' : 'executorStrategies.previewTitle') }}</span>
-          <a-tag v-if="preview.executor_type" class="theme-accent-tag">{{ executorTypeText(preview.executor_type) }}</a-tag>
+          <span><b class="panel-step">3</b><a-icon v-if="!embedded" type="profile" />{{ t(isDca ? 'executorStrategies.dcaPreviewTitle' : 'executorStrategies.previewTitle') }}</span>
+          <a-tag v-if="preview.executor_type && !embedded" class="theme-accent-tag">{{ executorTypeText(preview.executor_type) }}</a-tag>
         </div>
 
         <div class="summary-grid">
@@ -738,7 +736,7 @@
           :data-source="levels"
           :pagination="false"
           row-key="level"
-          :scroll="{ x: 860, y: 430 }"
+          :scroll="tableScroll"
         >
           <template slot="level" slot-scope="text">
             <span class="mono">#{{ text }}</span>
@@ -795,6 +793,7 @@ export default {
       credentials: [],
       watchlist: [],
       preview: {},
+      advancedKeys: this.embedded ? [] : ['advanced'],
       form: this.defaultForm()
     }
   },
@@ -855,6 +854,10 @@ export default {
     },
     levels () {
       return (this.preview && this.preview.levels) || []
+    },
+    tableScroll () {
+      if (!this.embedded) return { x: 860, y: 430 }
+      return this.levels.length > 8 ? { y: 430 } : undefined
     },
     previewWarnings () {
       return ((this.preview && this.preview.warnings) || []).map(item => this.warningText(item))
@@ -1047,27 +1050,33 @@ export default {
       set (value) { this.setRatio('inter_spacing_4_pct', value) }
     },
     columns () {
+      const width = (compact, regular) => this.embedded ? compact : regular
       if (this.isDca) {
         return [
-          { title: this.t('executorStrategies.table.order'), dataIndex: 'order_index', width: 90 },
-          { title: this.t('executorStrategies.table.action'), dataIndex: 'action', scopedSlots: { customRender: 'action' }, width: 110 },
-          { title: this.t('executorStrategies.table.side'), dataIndex: 'side', scopedSlots: { customRender: 'side' }, width: 100 },
-          { title: this.t('executorStrategies.table.amount'), dataIndex: 'amount_quote', scopedSlots: { customRender: 'money' }, width: 150 },
-          { title: this.t('executorStrategies.table.scheduledTime'), dataIndex: 'scheduled_offset_minutes', customRender: (value, row) => this.dcaScheduledText(value, row), width: 160 },
-          { title: this.t('executorStrategies.table.cumulativeBudget'), dataIndex: 'cumulative_amount_quote', customRender: value => this.fmtPct(value), width: 170 }
+          { title: this.t('executorStrategies.table.order'), dataIndex: 'order_index', width: width(56, 90) },
+          { title: this.t('executorStrategies.table.action'), dataIndex: 'action', scopedSlots: { customRender: 'action' }, width: width(68, 110) },
+          { title: this.t('executorStrategies.table.side'), dataIndex: 'side', scopedSlots: { customRender: 'side' }, width: width(64, 100) },
+          { title: this.t('executorStrategies.table.amount'), dataIndex: 'amount_quote', scopedSlots: { customRender: 'money' }, width: width(92, 150) },
+          { title: this.t('executorStrategies.table.scheduledTime'), dataIndex: 'scheduled_offset_minutes', customRender: (value, row) => this.dcaScheduledText(value, row), width: width(112, 160) },
+          { title: this.t('executorStrategies.table.cumulativeBudget'), dataIndex: 'cumulative_amount_quote', customRender: value => this.fmtPct(value), width: width(108, 170) }
         ]
       }
-      return [
-        { title: this.t('executorStrategies.table.level'), dataIndex: 'level', scopedSlots: { customRender: 'level' }, width: 80 },
-        { title: this.t('executorStrategies.table.layer'), dataIndex: 'layer_index', width: 90 },
-        { title: this.t('executorStrategies.table.order'), dataIndex: 'order_index', width: 90 },
-        { title: this.t('executorStrategies.table.action'), dataIndex: 'action', scopedSlots: { customRender: 'action' }, width: 110 },
-        { title: this.t('executorStrategies.table.side'), dataIndex: 'side', scopedSlots: { customRender: 'side' }, width: 100 },
-        { title: this.t('executorStrategies.table.price'), dataIndex: 'price', scopedSlots: { customRender: 'price' }, width: 140 },
-        { title: this.t('executorStrategies.table.amount'), dataIndex: 'amount_quote', scopedSlots: { customRender: 'money' }, width: 140 },
-        { title: this.t(this.supportsTrailingTakeProfit && this.form.trailing_take_profit_enabled ? 'executorStrategies.table.trailingActivation' : 'executorStrategies.table.takeProfit'), dataIndex: 'take_profit_price', scopedSlots: { customRender: 'price' }, width: 150 },
-        { title: this.t('executorStrategies.table.trigger'), dataIndex: 'trigger_pct', scopedSlots: { customRender: 'pct' }, width: 130 }
+      const rows = [
+        { title: this.t('executorStrategies.table.level'), dataIndex: 'level', scopedSlots: { customRender: 'level' }, width: width(54, 80) },
+        { title: this.t('executorStrategies.table.layer'), dataIndex: 'layer_index', width: width(54, 90) },
+        { title: this.t('executorStrategies.table.order'), dataIndex: 'order_index', width: width(54, 90) },
+        { title: this.t('executorStrategies.table.action'), dataIndex: 'action', scopedSlots: { customRender: 'action' }, width: width(68, 110) },
+        { title: this.t('executorStrategies.table.side'), dataIndex: 'side', scopedSlots: { customRender: 'side' }, width: width(62, 100) },
+        { title: this.t('executorStrategies.table.price'), dataIndex: 'price', scopedSlots: { customRender: 'price' }, width: width(90, 140) },
+        { title: this.t('executorStrategies.table.amount'), dataIndex: 'amount_quote', scopedSlots: { customRender: 'money' }, width: width(88, 140) },
+        { title: this.t(this.supportsTrailingTakeProfit && this.form.trailing_take_profit_enabled ? 'executorStrategies.table.trailingActivation' : 'executorStrategies.table.takeProfit'), dataIndex: 'take_profit_price', scopedSlots: { customRender: 'price' }, width: width(96, 150) },
+        { title: this.t('executorStrategies.table.trigger'), dataIndex: 'trigger_pct', scopedSlots: { customRender: 'pct' }, width: width(84, 130) }
       ]
+      if (!this.embedded) return rows
+      if (this.form.executor_type === 'layered_martingale') {
+        return rows.filter(column => column.dataIndex !== 'level')
+      }
+      return rows.filter(column => !['layer_index', 'order_index'].includes(column.dataIndex))
     }
   },
   watch: {
@@ -1201,6 +1210,17 @@ export default {
       if (type !== 'grid' && this.form.side === 'neutral') this.form.side = 'long'
       this.applyTypeDefaults()
       this.enforceDcaConstraints()
+      if (this.embedded) this.advancedKeys = []
+      this.$nextTick(() => {
+        if (this.$refs.configScroll) this.$refs.configScroll.scrollTop = 0
+        const previewPanel = this.$refs.previewPanel
+        if (!previewPanel) return
+        previewPanel.scrollTop = 0
+        previewPanel.querySelectorAll('.ant-table-body').forEach(element => {
+          element.scrollTop = 0
+          element.scrollLeft = 0
+        })
+      })
     },
     applyTypeDefaults () {
       const template = this.templateForType(this.form.executor_type)
@@ -1474,7 +1494,7 @@ export default {
 }
 
 .is-embedded .executor-workbench {
-  height: calc(100% - 64px);
+  height: 100%;
   grid-template-rows: auto minmax(0, 1fr);
   align-items: stretch;
 }
@@ -1505,13 +1525,17 @@ export default {
 
 .is-embedded .executor-config-panel,
 .is-embedded .executor-preview-panel {
-  height: auto;
+  height: 100%;
   min-height: 0;
   overflow: hidden;
 }
 
 .is-embedded .executor-preview-panel {
-  overflow-y: auto;
+  overflow: hidden;
+}
+
+.is-embedded .panel-step {
+  display: none;
 }
 
 .panel-title {
@@ -1910,24 +1934,225 @@ export default {
 }
 
 .is-embedded .executor-config-scroll {
-  padding-right: 2px;
-}
-
-.is-embedded .section-title {
-  margin: 6px 0 4px;
+  padding-right: 6px;
 }
 
 .is-embedded .field-block {
-  margin-bottom: 6px;
+  margin-bottom: 0;
 }
 
 .is-embedded .field-block label {
-  margin-bottom: 3px;
+  margin-bottom: 6px;
 }
 
 .is-embedded .field-grid,
 .is-embedded .market-compact-grid {
-  gap: 6px;
+  column-gap: 10px;
+  row-gap: 12px;
+}
+
+.is-embedded .executor-workbench {
+  grid-template-columns: minmax(540px, 580px) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.is-embedded .executor-catalog,
+.is-embedded .executor-config-panel,
+.is-embedded .executor-preview-panel {
+  padding: 14px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.is-embedded .executor-catalog {
+  gap: 10px;
+}
+
+.is-embedded .executor-catalog .panel-title {
+  margin-bottom: 2px;
+}
+
+.is-embedded .catalog-item {
+  display: flex;
+  min-height: 44px;
+  gap: 9px;
+  padding: 10px 12px;
+  border-color: #e5e7eb;
+  background: #fff;
+}
+
+.is-embedded .catalog-icon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border-radius: 6px;
+  color: var(--primary-color, #1890ff);
+  background: color-mix(in srgb, var(--primary-color, #1890ff) 10%, transparent);
+}
+
+.is-embedded .catalog-item.active {
+  border-color: var(--primary-color, #1890ff);
+  background: #fff;
+  box-shadow: none;
+}
+
+.is-embedded .catalog-copy strong {
+  font-size: 13px;
+}
+
+.is-embedded .executor-config-panel > .panel-title,
+.is-embedded .executor-preview-panel > .panel-title {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.is-embedded .section-title {
+  margin: 18px 0 10px;
+  color: #344054;
+  font-size: 13px;
+  text-transform: none;
+}
+
+.is-embedded .executor-config-scroll > .section-title:first-child {
+  margin-top: 4px;
+}
+
+.is-embedded .executor-specific > .field-grid + .field-grid,
+.is-embedded .executor-specific > .field-block + .field-block {
+  margin-top: 12px;
+}
+
+.is-embedded .executor-specific > .field-block {
+  margin-top: 12px;
+}
+
+.is-embedded /deep/ .ant-input,
+.is-embedded /deep/ .ant-input-number,
+.is-embedded /deep/ .ant-select-selection {
+  min-height: 34px;
+}
+
+.is-embedded /deep/ .ant-input-number-input {
+  height: 32px;
+}
+
+.is-embedded /deep/ .ant-select-selection__rendered {
+  line-height: 32px;
+}
+
+.is-embedded .executor-config-scroll small {
+  display: none;
+}
+
+.is-embedded .risk-layer-card {
+  margin: 0;
+  padding: 14px 0;
+  border: 0;
+  border-bottom: 1px solid #e5e7eb;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.is-embedded .risk-layer-card__header {
+  align-items: center;
+}
+
+.is-embedded .risk-layer-card .field-grid {
+  margin-top: 12px;
+}
+
+.is-embedded .profit-exit-mode {
+  margin-top: 10px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.is-embedded .trailing-config {
+  padding: 10px 0 0;
+  border-top: 1px solid #e5e7eb;
+  border-radius: 0;
+  background: transparent;
+}
+
+.is-embedded .anchor-setting,
+.is-embedded .restart-after-stop-card {
+  margin: 0;
+  padding: 13px 0;
+  border: 0;
+  border-bottom: 1px solid #e5e7eb;
+  border-radius: 0;
+  background: transparent;
+}
+
+.is-embedded .advanced-collapse {
+  margin-top: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.is-embedded .advanced-collapse /deep/ .ant-collapse-header {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  padding: 10px 12px 10px 36px !important;
+  line-height: 20px;
+}
+
+.is-embedded .advanced-collapse /deep/ .ant-collapse-arrow {
+  top: 50% !important;
+  left: 14px !important;
+  transform: translateY(-50%);
+}
+
+.is-embedded .advanced-collapse /deep/ .ant-collapse-content {
+  border-top: 1px solid #e5e7eb;
+  background: transparent;
+}
+
+.is-embedded .advanced-collapse /deep/ .ant-collapse-content-box {
+  padding: 12px 14px 14px !important;
+}
+
+.is-embedded .config-actions {
+  justify-content: flex-end;
+  margin: 0 -14px -14px;
+  padding: 10px 14px;
+}
+
+.is-embedded .summary-grid {
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.is-embedded .summary-cell {
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.is-embedded .executor-level-table {
+  margin-top: 2px;
+}
+
+.is-embedded .executor-level-table /deep/ .ant-table-body {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(102, 112, 133, 0.42) transparent;
+}
+
+.is-embedded .executor-level-table /deep/ .ant-table-body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.is-embedded .executor-level-table /deep/ .ant-table-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.is-embedded .executor-level-table /deep/ .ant-table-body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(102, 112, 133, 0.42);
 }
 
 .executor-live-account {
@@ -2042,7 +2267,7 @@ export default {
 }
 
 .theme-dark.executor-page {
-  background: #0e0f11;
+  background: #080808;
   color: #f3f4f6;
 }
 
@@ -2063,34 +2288,35 @@ export default {
 .theme-dark .executor-catalog,
 .theme-dark .executor-config-panel,
 .theme-dark .executor-preview-panel {
-  background: #17191c;
-  border-color: #262a2f;
+  background: #111111;
+  border-color: #2a2a2a;
   box-shadow: none;
 }
 
 .theme-dark .catalog-item,
 .theme-dark .summary-cell {
-  background: #111315;
-  border-color: #2a2f35;
+  background: #171717;
+  border-color: #2a2a2a;
 }
 
 .theme-dark .catalog-item.active {
-  background: color-mix(in srgb, var(--primary-color, #1890ff) 14%, #111315);
+  background: #1b1b1b;
   border-color: var(--primary-color, #1890ff);
+  box-shadow: inset 3px 0 0 var(--primary-color, #1890ff);
 }
 
 .theme-dark .catalog-icon {
-  background: #0f1113;
+  background: #1b1b1b;
 }
 
 .theme-dark .anchor-setting {
-  border-color: #2a2f35;
-  background: #111315;
+  border-color: #2a2a2a;
+  background: #171717;
 }
 
 .theme-dark .risk-layer-card {
-  border-color: #343a40;
-  background: #151719;
+  border-color: #2a2a2a;
+  background: #171717;
 }
 
 .theme-dark .risk-layer-card__header strong,
@@ -2099,11 +2325,11 @@ export default {
 }
 
 .theme-dark .equity-risk-card {
-  background: #111315;
+  background: #171717;
 }
 
 .theme-dark .trailing-config {
-  background: #0f1113;
+  background: #111111;
 }
 
 .theme-dark .profit-exit-mode {
@@ -2125,8 +2351,8 @@ export default {
 }
 
 .theme-dark .trigger-contract-card {
-  border-color: #343a40;
-  background: #111315;
+  border-color: #2a2a2a;
+  background: #171717;
 }
 
 .theme-dark .dca-market-notice {
@@ -2164,8 +2390,8 @@ export default {
 }
 
 .theme-dark .config-actions {
-  border-color: #262a2f;
-  background: #17191c;
+  border-color: #2a2a2a;
+  background: #111111;
 }
 
 .theme-dark .safe-mode-pill {
@@ -2178,6 +2404,76 @@ export default {
   border-color: color-mix(in srgb, var(--primary-color, #1890ff) 34%, #262a2f);
   color: var(--primary-color, #1890ff);
   background: color-mix(in srgb, var(--primary-color, #1890ff) 12%, #111315);
+}
+
+.theme-dark .compact-segmented /deep/ .ant-radio-button-wrapper {
+  border-color: #2a2a2a;
+  color: rgba(255, 255, 255, 0.72);
+  background: #1b1b1b;
+  box-shadow: none;
+}
+
+.theme-dark .compact-segmented /deep/ .ant-radio-button-wrapper:hover {
+  color: var(--primary-color, #1890ff);
+}
+
+.theme-dark .compact-segmented /deep/ .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) {
+  border-color: var(--primary-color, #1890ff);
+  color: #fff;
+  background: var(--primary-color, #1890ff);
+  box-shadow: -1px 0 0 0 var(--primary-color, #1890ff);
+}
+
+.theme-dark .compact-segmented /deep/ .ant-radio-button-wrapper-disabled {
+  border-color: #242424;
+  color: rgba(255, 255, 255, 0.3);
+  background: #141414;
+}
+
+.theme-dark /deep/ .ant-input,
+.theme-dark /deep/ .ant-input-number,
+.theme-dark /deep/ .ant-input-number-input,
+.theme-dark /deep/ .ant-select-selection {
+  border-color: #2a2a2a;
+  color: rgba(255, 255, 255, 0.82);
+  background: #0c0c0c;
+}
+
+.theme-dark.is-embedded .catalog-item,
+.theme-dark.is-embedded .summary-cell {
+  border-color: #2a2a2a;
+  background: #151515;
+}
+
+.theme-dark.is-embedded .catalog-item.active {
+  border-color: var(--primary-color, #1890ff);
+  background: #151515;
+  box-shadow: none;
+}
+
+.theme-dark.is-embedded .catalog-icon {
+  color: var(--primary-color, #1890ff);
+  background: color-mix(in srgb, var(--primary-color, #1890ff) 14%, transparent);
+}
+
+.theme-dark.is-embedded .executor-config-panel > .panel-title,
+.theme-dark.is-embedded .executor-preview-panel > .panel-title,
+.theme-dark.is-embedded .risk-layer-card,
+.theme-dark.is-embedded .anchor-setting,
+.theme-dark.is-embedded .restart-after-stop-card,
+.theme-dark.is-embedded .trailing-config,
+.theme-dark.is-embedded .advanced-collapse {
+  border-color: #2a2a2a;
+  background: transparent;
+  box-shadow: none;
+}
+
+.theme-dark.is-embedded .section-title {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.theme-dark.is-embedded .advanced-collapse /deep/ .ant-collapse-content {
+  border-color: #2a2a2a;
 }
 
 @media (max-width: 1500px) {

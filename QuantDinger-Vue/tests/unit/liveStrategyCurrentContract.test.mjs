@@ -18,10 +18,11 @@ test('live strategy creation validates with the current compiler', () => {
 
 test('live strategy direction is contract-driven with a legacy fallback', () => {
   assert.match(source, /manifestDirectionMode/)
-  assert.match(source, /directionModeDetectedHint/)
   assert.match(source, /requiresDirectionFallback/)
+  assert.match(source, /model\.executionMode === 'live' && requiresDirectionFallback/)
   assert.match(source, /directionMode: this\.requiresDirectionMode \? this\.effectiveDirectionMode/)
   assert.doesNotMatch(source, /v-model="model\.positionSide"/)
+  assert.doesNotMatch(source, /directionModeDetectedHint/)
   assert.match(source, /value="one_way"/)
   assert.match(source, /new Set\(\['long_only', 'short_only', 'one_way', 'both', 'neutral'\]\)/)
 })
@@ -41,6 +42,9 @@ test('live capital exposes the source quote currency', () => {
   assert.match(source, /capitalCurrency \(\)/)
   assert.match(source, /strategyV2\.capitalCurrencyHint/)
   assert.match(source, /symbol\.split\('\/'\)\.pop\(\)/)
+  assert.match(source, /USStock: 'USD'/)
+  assert.match(source, /HKStock: 'HKD'/)
+  assert.match(source, /CNStock: 'CNY'/)
 })
 
 test('deployment setup edits only source-declared runtime fields and saves them back to source', () => {
@@ -70,21 +74,42 @@ test('perpetual leverage is automatic without shared-account risk controls', () 
   assert.match(source, /this\.model\.leverageEnabled = true/)
   assert.doesNotMatch(source, /v-model="model\.leverageEnabled"/)
   assert.match(source, /leverageAutoTitle/)
+  assert.match(source, /const PLATFORM_MAX_LEVERAGE = 100/)
+  assert.match(source, /:max="platformMaxLeverage"/)
   assert.doesNotMatch(source, /accountRisk/)
 })
 
-test('final deployment step uses card-sized mode, safety, account, and notification controls', () => {
+test('deployment setup keeps execution choices prominent and consent lightweight', () => {
   assert.match(source, /class="execution-mode-grid"/)
   assert.match(source, /class="execution-mode-card"/)
-  assert.match(source, /class="live-risk-card"/)
   assert.match(source, /class="live-connection-grid"/)
+  assert.match(source, /class="deployment-consent-row"/)
+  assert.match(source, /trading-assistant\.liveDisclaimer\.view/)
+  assert.match(source, /deployment-disclaimer-popover/)
   assert.match(source, /class="notification-card"/)
   assert.match(source, /notificationIcon \(channel\)/)
   assert.match(source, /openBrokerAccounts \(\)/)
   assert.match(source, /this\.\$router\.push\(\{ name: 'BrokerAccounts' \}\)/)
-  assert.match(source, /\.editor-steps \.ant-steps-item-finish[\s\S]*var\(--primary-color/)
+  assert.doesNotMatch(source, /class="live-risk-card"/)
+  assert.doesNotMatch(source, /class="editor-steps"/)
   assert.match(source, /\.execution-mode-card[\s\S]*white-space: normal/)
   assert.match(source, /\.notification-card[\s\S]*white-space: normal/)
   assert.doesNotMatch(source, /<router-link :to="\{ path: '\/broker-accounts' \}">/)
   assert.doesNotMatch(source, /class="disclaimer-check"/)
+})
+
+test('deployment setup exposes strategy-level profit and loss limits', () => {
+  assert.match(source, /strategyCenter\.editor\.strategyEquityRiskTitle/)
+  assert.match(source, /v-model="model\.equityStopLossEnabled"/)
+  assert.match(source, /v-model="model\.equityTakeProfitEnabled"/)
+  assert.match(source, /equityStopLossPct: this\.model\.equityStopLossEnabled/)
+  assert.match(source, /equityTakeProfitPct: this\.model\.equityTakeProfitEnabled/)
+  assert.match(source, /deploymentRisk\.equity_stop_loss_pct/)
+  assert.match(source, /deploymentRisk\.equity_take_profit_pct/)
+})
+
+test('new robot deployments inherit source equity defaults before saving an override', () => {
+  assert.match(source, /const sourceRuntime = this\.sourceRuntimeContract\.config \|\| \{\}/)
+  assert.match(source, /this\.model\.equityStopLossEnabled = sourceStopLoss > 0/)
+  assert.match(source, /this\.model\.equityTakeProfitEnabled = sourceTakeProfit > 0/)
 })

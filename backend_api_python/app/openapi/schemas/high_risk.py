@@ -80,11 +80,6 @@ class CredentialCreateRequestSchema(Schema):
             raise ValidationError("secret_key is required", field_name="secret_key")
 
 
-class CredentialRenameRequestSchema(Schema):
-    id = fields.Integer(required=True, validate=validate.Range(min=1))
-    name = fields.String(required=True, validate=validate.Length(max=128))
-
-
 class BillingOrderRequestSchema(Schema):
     plan = fields.String(
         required=True,
@@ -133,7 +128,6 @@ class QuickTradeOrderRequestSchema(Schema):
     source = fields.String(load_default="manual", validate=validate.Length(max=64))
     margin_mode = fields.String(load_default="", validate=validate.Length(max=16))
     marginMode = fields.String(load_default="", validate=validate.Length(max=16))
-    ai_decision_filter = fields.Boolean(load_default=False)
     instrument_id = fields.String(load_default="", validate=validate.Length(max=128))
     product_type = fields.String(load_default="", validate=validate.Length(max=64))
     api_family = fields.String(load_default="", validate=validate.Length(max=64))
@@ -218,16 +212,6 @@ class LoginResponseSchema(Schema):
     code = fields.Integer(required=True)
     msg = fields.String(required=True)
     data = fields.Nested(LoginDataSchema, allow_none=True)
-
-
-class StrategyStatusDataSchema(Schema):
-    status = fields.String(allow_none=True)
-
-
-class StrategyStatusResponseSchema(Schema):
-    code = fields.Integer(required=True)
-    msg = fields.String(required=True)
-    data = fields.Nested(StrategyStatusDataSchema, allow_none=True)
 
 
 class CredentialCreatedDataSchema(Schema):

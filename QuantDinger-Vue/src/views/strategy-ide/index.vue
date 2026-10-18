@@ -70,7 +70,7 @@
                   </a-button>
                   <div slot="overlay" class="strategy-source-overlay" @mousedown.stop @click.stop>
                     <div class="strategy-source-overlay-hint">{{ $t('strategyIde.marketPicker.selectorHint') }}</div>
-                    <button type="button" class="strategy-source-market-entry" @click="openStrategyMarketPicker">
+                    <button v-if="marketplaceEnabled" type="button" class="strategy-source-market-entry" @click="openStrategyMarketPicker">
                       <span><a-icon type="shop" /> {{ text.marketPickerOpen }}</span>
                       <a-icon type="right" />
                     </button>
@@ -124,7 +124,7 @@
                     <a-icon type="copy" />
                   </a-button>
                 </a-tooltip>
-                <a-tooltip v-if="currentSourceId" :title="text.publishScript">
+                <a-tooltip v-if="currentSourceId && marketplaceEnabled" :title="text.publishScript">
                   <a-button
                     class="ide-icon-btn"
                     :loading="savingScriptMode === 'publish' || publishingScript"
@@ -245,7 +245,7 @@
                       <a-icon type="loading" spin />
                       <span>{{ aiWorkspaceText.loading }}</span>
                     </div>
-                    <div v-else-if="!aiMessages.length" class="strategy-ai-empty">
+                    <div v-else-if="!displayedAiMessages.length" class="strategy-ai-empty">
                       <a-icon type="message" />
                       <strong>{{ aiWorkspaceText.emptyTitle }}</strong>
                       <span>{{ currentAssetType === 'portfolio_strategy' ? aiWorkspaceText.portfolioEmptyDesc : aiWorkspaceText.ctaEmptyDesc }}</span>
@@ -260,7 +260,7 @@
                     </div>
 
                     <div
-                      v-for="messageItem in aiMessages"
+                      v-for="messageItem in displayedAiMessages"
                       :key="messageItem.localId || messageItem.id"
                       :class="[
                         'strategy-ai-message',
@@ -352,7 +352,7 @@
     <a-modal
       :visible="showPublishModal"
       :title="text.publishModalTitle"
-      :width="620"
+      :width="760"
       :confirmLoading="publishingScript"
       :ok-text="text.publishConfirm"
       :cancel-text="text.cancel"
@@ -370,7 +370,7 @@
             <div class="publish-summary-label">{{ text.publishModalTitle }}</div>
             <div class="publish-summary-name">{{ publishForm.name || deriveScriptName() }}</div>
           </div>
-          <a-tag class="publish-summary-tag" color="red">{{ text.marketTag }}</a-tag>
+          <a-tag class="publish-summary-tag">{{ text.marketTag }}</a-tag>
         </div>
 
         <div class="publish-note">
@@ -477,6 +477,8 @@
       :confirmLoading="indicatorConvertLoading"
       :ok-text="text.indicatorConvertConfirm"
       :cancel-text="text.cancel"
+      :width="560"
+      :ok-button-props="{ props: { disabled: !indicatorConvertContext || !indicatorConvertContext.code || indicatorConvertContext.codeHidden } }"
       :wrap-class-name="isDarkTheme ? 'indicator-convert-modal indicator-convert-modal--dark' : 'indicator-convert-modal'"
       @ok="confirmIndicatorToStrategy"
       @cancel="closeIndicatorConvertModal"
@@ -518,17 +520,10 @@
           </small>
         </div>
 
-        <a-alert
-          v-else
-          type="info"
-          show-icon
-          :message="text.indicatorConvertSelectFirst"
-        />
-
         <label class="field-label field-label--spaced">{{ text.indicatorConvertInstruction }}</label>
         <a-textarea
           v-model="indicatorConvertInstruction"
-          :auto-size="{ minRows: 5, maxRows: 8 }"
+          :auto-size="{ minRows: 3, maxRows: 5 }"
           :placeholder="text.indicatorConvertPlaceholder"
         />
         <div class="indicator-convert-note">
@@ -574,12 +569,11 @@
     <a-drawer
       :visible="showRobotBuilder"
       :title="text.robotTemplates"
-      width="min(1540px, 96vw)"
+      width="min(1280px, 92vw)"
       :destroy-on-close="true"
       :wrap-class-name="isDarkTheme ? 'robot-builder-drawer robot-builder-drawer--dark' : 'robot-builder-drawer'"
       @close="showRobotBuilder = false"
     >
-      <div class="robot-builder-intro">{{ text.robotTemplatesDesc }}</div>
       <executor-strategies embedded @generated="applyGeneratedRobot" />
     </a-drawer>
 
@@ -588,7 +582,7 @@
       :title="text.versionHistory"
       :width="640"
       :wrap-class-name="isDarkTheme ? 'script-version-drawer script-version-drawer--dark' : 'script-version-drawer'"
-      @close="showVersionDrawer = false"
+      @close="closeVersionDrawer"
     >
       <a-spin :spinning="scriptVersionLoading">
         <div class="code-version-toolbar">
@@ -606,6 +600,7 @@
             <div class="code-version-item__actions">
               <a-button
                 size="small"
+                :loading="previewingScriptVersionId === item.id"
                 :disabled="scriptCodeHidden || item.code_hidden || item.hidden_source"
                 @click="previewScriptVersion(item)"
               >
@@ -624,20 +619,43 @@
           </div>
         </div>
       </a-spin>
+    </a-drawer>
 
+    <a-modal
+      :visible="!!scriptVersionPreview"
+      :footer="null"
+      :width="'min(880px, 92vw)'"
+      :destroy-on-close="true"
+      :wrap-class-name="isDarkTheme ? 'script-version-preview-modal script-version-preview-modal--dark' : 'script-version-preview-modal'"
+      @cancel="closeScriptVersionPreview"
+    >
+      <template slot="title">
+        <span class="code-version-preview__title">
+          <a-icon type="code" />
+          {{ scriptVersionPreview ? text.versionPreviewTitle.replace('{version}', scriptVersionPreview.version_no) : text.versionPreview }}
+        </span>
+      </template>
       <div v-if="scriptVersionPreview" class="code-version-preview">
-        <div class="code-version-preview__head">
-          <strong>{{ text.versionPreviewTitle.replace('{version}', scriptVersionPreview.version_no) }}</strong>
-          <a-button size="small" icon="close" @click="scriptVersionPreview = null" />
+        <div class="code-version-preview__meta">
+          <div>
+            <span class="code-version-preview__badge">{{ text.versionNo }}</span>
+            <strong>{{ scriptVersionPreview.name || currentSourceName }}</strong>
+          </div>
+          <span class="code-version-preview__time">{{ formatTime(scriptVersionPreview.created_at) }}</span>
         </div>
         <div v-if="scriptVersionPreview.code_hidden || scriptVersionPreview.hidden_source" class="code-version-hidden">
           <a-icon type="lock" />
           <strong>{{ text.hiddenScriptTitle }}</strong>
           <span>{{ text.versionHiddenBlocked }}</span>
         </div>
-        <pre v-else>{{ scriptVersionPreview.code }}</pre>
+        <div v-else class="code-version-viewer">
+          <div v-for="(line, index) in scriptVersionPreviewLines" :key="index" class="code-version-viewer__line">
+            <span class="code-version-viewer__number">{{ index + 1 }}</span>
+            <code>{{ line || ' ' }}</code>
+          </div>
+        </div>
       </div>
-    </a-drawer>
+    </a-modal>
   </div>
 </template>
 
@@ -735,6 +753,7 @@ export default {
       scriptVersionLoading: false,
       scriptVersions: [],
       scriptVersionPreview: null,
+      previewingScriptVersionId: null,
       restoringScriptVersionId: null,
       showFactorLibrary: false,
       showUniverseLibrary: false,
@@ -773,6 +792,9 @@ export default {
     ...mapState({
       navTheme: state => state.app.theme
     }),
+    marketplaceEnabled () {
+      return this.$store.state.features.config.marketplace_enabled !== false
+    },
     isDarkTheme () {
       const body = typeof document !== 'undefined' ? document.body : null
       return this.navTheme === 'dark' ||
@@ -808,6 +830,23 @@ export default {
       const metaSchema = this.parseObject(metadata.param_schema)
       if (Array.isArray(metaSchema.params) && metaSchema.params.length) return metaSchema
       return direct
+    },
+    displayedAiMessages () {
+      const messages = Array.isArray(this.aiMessages) ? this.aiMessages : []
+      let latestAppliedCandidateIndex = -1
+      messages.forEach((item, index) => {
+        if (item && item.role !== 'user' && item.message_type === 'candidate' && item.change_status === 'applied') {
+          latestAppliedCandidateIndex = index
+        }
+      })
+      return messages.filter((item, index) => {
+        if (!item || item.role === 'user' || item.message_type !== 'candidate' || item.change_status !== 'applied') return true
+        return index === latestAppliedCandidateIndex
+      })
+    },
+    scriptVersionPreviewLines () {
+      const code = this.scriptVersionPreview && this.scriptVersionPreview.code
+      return String(code || '').replace(/\r\n/g, '\n').split('\n')
     },
     allScriptOptions () {
       return (this.scriptSources || []).map(item => {
@@ -2443,16 +2482,29 @@ export default {
         this.$message.info(this.text.versionHiddenBlocked)
         return
       }
+      this.previewingScriptVersionId = item.id
       try {
         const res = await getScriptSourceVersion(item.id)
+        if (this.previewingScriptVersionId !== item.id) return
         if (res && res.code === 1) {
           this.scriptVersionPreview = res.data || null
         } else {
           this.$message.error((res && res.msg) || this.text.versionLoadFailed)
         }
       } catch (e) {
+        if (this.previewingScriptVersionId !== item.id) return
         this.$message.error(e.backendMessage || e.message || this.text.versionLoadFailed)
+      } finally {
+        if (this.previewingScriptVersionId === item.id) this.previewingScriptVersionId = null
       }
+    },
+    closeScriptVersionPreview () {
+      this.scriptVersionPreview = null
+    },
+    closeVersionDrawer () {
+      this.showVersionDrawer = false
+      this.previewingScriptVersionId = null
+      this.closeScriptVersionPreview()
     },
     confirmRestoreScriptVersion (item) {
       if (!item || !item.id) return
@@ -2773,6 +2825,17 @@ export default {
   overflow: hidden;
 }
 
+.strategy-ide-shell.theme-dark {
+  --ide-bg: #080808;
+  --ide-surface: #111111;
+  --ide-surface-raised: #171717;
+  --ide-control: #1b1b1b;
+  --ide-control-hover: #222222;
+  --ide-border: #2a2a2a;
+  --ide-text: rgba(255, 255, 255, 0.9);
+  --ide-text-muted: rgba(255, 255, 255, 0.58);
+}
+
 .adapted-backtest-alert {
   flex: 0 0 auto;
   margin-bottom: 10px;
@@ -2813,12 +2876,12 @@ export default {
 }
 
 .script-panel ::v-deep .editor-layout--split {
-  grid-template-columns: minmax(280px, 18%) minmax(520px, 1fr) minmax(340px, 29%);
+  grid-template-columns: minmax(260px, 17%) minmax(620px, 1fr) minmax(300px, 24%);
   grid-template-rows: minmax(0, 1fr);
 }
 
 .script-panel ::v-deep .editor-layout--split.editor-layout--split-no-params {
-  grid-template-columns: minmax(520px, 1fr) minmax(340px, 29%);
+  grid-template-columns: minmax(620px, 1fr) minmax(300px, 24%);
 }
 
 .script-panel ::v-deep .editor-layout--split-no-params .code-col {
@@ -2863,8 +2926,8 @@ export default {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  gap: 12px;
-  padding: 10px 12px;
+  gap: 10px;
+  padding: 8px 10px;
   border-bottom: 1px solid #e1e4e8;
   background: #f9fafb;
 }
@@ -2873,16 +2936,22 @@ export default {
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
 .toolbar-left {
   flex: 1 1 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+
+.toolbar-left::-webkit-scrollbar { display: none; }
 
 .toolbar-right {
   flex: 0 0 auto;
+  padding-left: 8px;
+  border-left: 1px solid #e5e7eb;
 }
 
 .strategy-workspace-switcher {
@@ -2901,7 +2970,7 @@ export default {
 
 .strategy-workspace-copy {
   display: flex;
-  width: 150px;
+  width: 132px;
   min-width: 0;
   flex-direction: column;
   line-height: 1.25;
@@ -2945,7 +3014,7 @@ export default {
 }
 
 .script-select {
-  width: 280px;
+  width: clamp(210px, 18vw, 280px);
 }
 
 .ide-icon-btn {
@@ -3241,16 +3310,38 @@ export default {
 
 .theme-dark {
   color: rgba(255, 255, 255, 0.82);
-  background: #101010;
+  background: var(--ide-bg, #080808);
 
   .script-panel {
-    border-color: #2c2c2c;
-    background: #171717;
+    border-color: var(--ide-border, #2a2a2a);
+    background: var(--ide-surface, #111111);
   }
 
   .ide-toolbar {
-    border-bottom-color: #2c2c2c;
-    background: #1b1b1b;
+    border-bottom-color: var(--ide-border, #2a2a2a);
+    background: var(--ide-surface, #111111);
+  }
+
+  .toolbar-right {
+    border-left-color: var(--ide-border, #2a2a2a);
+  }
+
+  .ide-toolbar ::v-deep .ant-btn:not(.ant-btn-primary),
+  .ide-toolbar ::v-deep .ant-select-selection,
+  .strategy-source-dropdown-trigger {
+    border-color: var(--ide-border, #2a2a2a) !important;
+    color: rgba(255, 255, 255, 0.74) !important;
+    background: var(--ide-control, #1b1b1b) !important;
+    box-shadow: none !important;
+  }
+
+  .ide-toolbar ::v-deep .ant-btn:not(.ant-btn-primary):hover,
+  .ide-toolbar ::v-deep .ant-btn:not(.ant-btn-primary):focus,
+  .strategy-source-dropdown-trigger:hover,
+  .strategy-source-dropdown-trigger:focus {
+    border-color: rgba(255, 255, 255, 0.24) !important;
+    color: var(--ide-text, rgba(255, 255, 255, 0.9)) !important;
+    background: var(--ide-control-hover, #222222) !important;
   }
 
   .script-select-label {
@@ -3272,7 +3363,7 @@ export default {
   .strategy-workspace-switcher /deep/ .ant-radio-button-wrapper {
     border-color: rgba(255, 255, 255, 0.12);
     color: rgba(255, 255, 255, 0.68);
-    background: #202020;
+    background: var(--ide-control, #1b1b1b);
   }
 
   .strategy-workspace-switcher /deep/ .ant-radio-button-wrapper-checked {
@@ -3293,13 +3384,13 @@ export default {
 
   .strategy-ai-workspace,
   .strategy-ai-composer {
-    border-color: #303030;
-    background: #191919;
+    border-color: var(--ide-border, #2a2a2a);
+    background: var(--ide-surface, #111111);
   }
 
   .strategy-ai-header {
-    border-bottom-color: #303030;
-    background: #202020;
+    border-bottom-color: var(--ide-border, #2a2a2a);
+    background: var(--ide-surface-raised, #171717);
   }
 
   .strategy-ai-header__title strong,
@@ -3308,19 +3399,25 @@ export default {
   }
 
   .strategy-ai-conversation {
-    border-color: #2b2b2b;
-    background: #131313;
+    border-color: var(--ide-border, #2a2a2a);
+    background: var(--ide-bg, #080808);
   }
 
   .strategy-ai-message__content {
-    color: rgba(255, 255, 255, 0.76);
-    background: #242424;
+    color: rgba(255, 255, 255, 0.78);
+    background: var(--ide-surface-raised, #171717);
   }
 
   .strategy-ai-message--user .strategy-ai-message__content {
-    border-color: rgba(82, 196, 26, 0.28);
-    color: #d9f7be;
-    background: rgba(82, 196, 26, 0.12);
+    border-color: color-mix(in srgb, var(--primary-color, #ff5b21) 34%, transparent);
+    color: rgba(255, 255, 255, 0.84);
+    background: color-mix(in srgb, var(--primary-color, #ff5b21) 10%, #111111);
+  }
+
+  .strategy-ai-candidate {
+    border-color: color-mix(in srgb, var(--primary-color, #ff5b21) 34%, transparent);
+    color: color-mix(in srgb, var(--primary-color, #ff5b21) 72%, white);
+    background: #171717;
   }
 
   .strategy-ai-message__badge--error {
@@ -3337,7 +3434,22 @@ export default {
   .strategy-ai-quick-prompts button {
     border-color: rgba(255, 255, 255, 0.13);
     color: rgba(255, 255, 255, 0.62);
-    background: #1f1f1f;
+    background: var(--ide-control, #1b1b1b);
+  }
+
+  .script-panel ::v-deep .CodeMirror .cm-comment {
+    color: #8b8b8b !important;
+  }
+
+  .strategy-ai-contract-badge,
+  .strategy-ai-message__badge {
+    color: color-mix(in srgb, var(--primary-color, #ff5b21) 74%, white);
+    background: color-mix(in srgb, var(--primary-color, #ff5b21) 14%, transparent);
+  }
+
+  .strategy-ai-memory-badge {
+    color: rgba(255, 255, 255, 0.68);
+    background: rgba(255, 255, 255, 0.07);
   }
 
 }
@@ -3493,11 +3605,11 @@ export default {
   justify-content: space-between;
   margin: 0 8px 8px;
   padding: 0 10px;
-  border: 1px solid rgba(82, 196, 26, 0.26);
+  border: 1px solid color-mix(in srgb, var(--primary-color, #ff5b21) 28%, transparent);
   border-radius: 6px;
   outline: none;
-  background: rgba(82, 196, 26, 0.08);
-  color: #389e0d;
+  background: color-mix(in srgb, var(--primary-color, #ff5b21) 8%, transparent);
+  color: var(--primary-color, #ff5b21);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -3510,8 +3622,8 @@ export default {
 
   &:hover,
   &:focus-visible {
-    border-color: rgba(82, 196, 26, 0.48);
-    background: rgba(82, 196, 26, 0.14);
+    border-color: color-mix(in srgb, var(--primary-color, #ff5b21) 52%, transparent);
+    background: color-mix(in srgb, var(--primary-color, #ff5b21) 14%, transparent);
   }
 }
 
@@ -3557,11 +3669,11 @@ export default {
   }
 
   &.active {
-    color: #389e0d;
+    color: var(--primary-color, #ff5b21);
     font-weight: 600;
 
     .anticon {
-      color: #52c41a;
+      color: var(--primary-color, #ff5b21);
     }
   }
 }
@@ -3569,8 +3681,8 @@ export default {
 .strategy-source-dropdown--dark {
   .ant-dropdown-menu,
   .strategy-source-overlay {
-    border-color: #363636;
-    background: #1f1f1f;
+    border-color: #2a2a2a;
+    background: #171717;
   }
 
   .strategy-source-overlay-hint,
@@ -3579,14 +3691,14 @@ export default {
   }
 
   .strategy-source-market-entry {
-    border-color: rgba(82, 196, 26, 0.28);
-    background: rgba(82, 196, 26, 0.1);
-    color: #73d13d;
+    border-color: color-mix(in srgb, var(--primary-color, #ff5b21) 32%, transparent);
+    background: color-mix(in srgb, var(--primary-color, #ff5b21) 10%, transparent);
+    color: color-mix(in srgb, var(--primary-color, #ff5b21) 78%, white);
 
     &:hover,
     &:focus-visible {
-      border-color: rgba(82, 196, 26, 0.52);
-      background: rgba(82, 196, 26, 0.17);
+      border-color: color-mix(in srgb, var(--primary-color, #ff5b21) 54%, transparent);
+      background: color-mix(in srgb, var(--primary-color, #ff5b21) 16%, transparent);
     }
   }
 
@@ -3598,7 +3710,7 @@ export default {
     }
 
     &.active {
-      color: #73d13d;
+      color: color-mix(in srgb, var(--primary-color, #ff5b21) 78%, white);
     }
   }
 }
@@ -3706,6 +3818,11 @@ export default {
 }
 
 .script-publish-modal {
+  .ant-modal {
+    top: 36px;
+    padding-bottom: 36px;
+  }
+
   .ant-modal-content {
     overflow: hidden;
     border-radius: 12px;
@@ -3718,6 +3835,8 @@ export default {
 
   .ant-modal-body {
     padding: 18px 24px 20px;
+    max-height: calc(100vh - 190px);
+    overflow-y: auto;
     background: #f6f7f9;
   }
 
@@ -3730,15 +3849,15 @@ export default {
   .publish-form {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
   }
 
   .publish-summary-card {
     display: flex;
     align-items: center;
     gap: 12px;
-    min-height: 74px;
-    padding: 14px;
+    min-height: 62px;
+    padding: 11px 12px;
     border: 1px solid rgba(255, 77, 79, 0.22);
     border-radius: 10px;
     background: linear-gradient(135deg, rgba(255, 77, 79, 0.1) 0%, #fff 72%);
@@ -3936,7 +4055,7 @@ export default {
 
   .publish-section,
   .publish-option-card {
-    padding: 14px;
+    padding: 12px;
     border: 1px solid #e5e7eb;
     border-radius: 10px;
     background: #fff;
@@ -4021,17 +4140,21 @@ export default {
 }
 
 .indicator-convert-modal {
+  .ant-modal {
+    top: 12vh;
+  }
+
   .indicator-convert-box {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 12px;
   }
 
   .indicator-convert-selector {
-    padding: 12px;
-    border: 1px solid rgba(239, 68, 68, 0.18);
+    padding: 0;
+    border: 0;
     border-radius: 8px;
-    background: rgba(239, 68, 68, 0.06);
+    background: transparent;
   }
 
   .field-label {
@@ -4050,10 +4173,10 @@ export default {
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 14px 16px;
-    border: 1px solid rgba(239, 68, 68, 0.18);
+    padding: 11px 12px;
+    border: 1px solid #e5e7eb;
     border-radius: 8px;
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.12), rgba(255, 255, 255, 0.96));
+    background: #fafafa;
   }
 
   .indicator-convert-current span {
@@ -4081,9 +4204,9 @@ export default {
     gap: 8px;
     align-items: flex-start;
     padding: 10px 12px;
-    border: 1px solid rgba(59, 130, 246, 0.16);
+    border: 1px solid #e5e7eb;
     border-radius: 6px;
-    background: rgba(59, 130, 246, 0.06);
+    background: #fafafa;
     color: #475569;
     font-size: 13px;
     line-height: 1.55;
@@ -4091,7 +4214,7 @@ export default {
 
   .indicator-convert-note .anticon {
     margin-top: 3px;
-    color: #2563eb;
+    color: var(--primary-color, #ff5b21);
   }
 }
 
@@ -4149,31 +4272,144 @@ export default {
 }
 
 .code-version-preview {
-  margin-top: 16px;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
 }
 
-.code-version-preview__head {
+.code-version-preview__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.code-version-preview__title .anticon {
+  color: var(--primary-color, #ff5b21);
+}
+
+.code-version-preview__meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
+  gap: 16px;
+  min-height: 52px;
+  padding: 10px 14px;
   border-bottom: 1px solid #e5e7eb;
-  background: #f8fafc;
+  background: #f7f8fa;
+  color: #64748b;
+  font-size: 12px;
 }
 
-.code-version-preview pre {
-  max-height: 360px;
-  margin: 0;
-  padding: 12px;
+.code-version-preview__meta > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.code-version-preview__meta strong {
+  overflow: hidden;
+  color: #111827;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code-version-preview__badge {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--primary-color, #ff5b21) 30%, #e5e7eb);
+  border-radius: 999px;
+  color: var(--primary-color, #ff5b21);
+  background: color-mix(in srgb, var(--primary-color, #ff5b21) 7%, #fff);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.code-version-preview__time {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.code-version-viewer {
+  max-height: calc(100vh - 260px);
+  min-height: 420px;
   overflow: auto;
-  background: #0f172a;
-  color: #e2e8f0;
-  font-size: 12px;
-  line-height: 1.6;
+  padding: 10px 0 14px;
+  background: #15171b;
+  color: #d8dee9;
+  font-size: 13px;
+  line-height: 1.65;
+  scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
+  scrollbar-width: thin;
+  tab-size: 2;
+}
+
+.code-version-viewer::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.code-version-viewer::-webkit-scrollbar-thumb {
+  border: 3px solid #15171b;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.code-version-viewer__line {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  min-height: 21px;
+}
+
+.code-version-viewer__line:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.code-version-viewer__number {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: 0 0 50px;
+  padding-right: 13px;
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.3);
+  background: #15171b;
+  text-align: right;
+  user-select: none;
+}
+
+.code-version-viewer code {
+  display: block;
+  padding: 0 18px;
+  color: inherit;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-weight: 400;
+  white-space: pre;
+}
+
+.script-version-preview-modal .ant-modal {
+  top: 44px;
+  padding-bottom: 44px;
+}
+
+.script-version-preview-modal .ant-modal-content {
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+}
+
+.script-version-preview-modal .ant-modal-header {
+  padding: 16px 20px;
+}
+
+.script-version-preview-modal .ant-modal-body {
+  padding: 14px;
+  background: #f3f4f6;
 }
 
 .code-version-hidden {
@@ -4206,12 +4442,12 @@ export default {
   .ant-modal-footer,
   .ant-drawer-content,
   .ant-drawer-header {
-    background: #181818;
-    border-color: rgba(255, 255, 255, 0.08);
+    background: #111111;
+    border-color: #2a2a2a;
   }
 
   .ant-modal-body {
-    background: #141414;
+    background: #111111;
   }
 
   .ant-modal-title,
@@ -4227,8 +4463,8 @@ export default {
 
   .publish-summary-card,
   .indicator-convert-current {
-    border-color: rgba(255, 77, 79, 0.32);
-    background: linear-gradient(135deg, rgba(255, 77, 79, 0.18) 0%, #1c1c1c 72%);
+    border-color: #2a2a2a;
+    background: #171717;
   }
 
   .publish-summary-name,
@@ -4246,6 +4482,12 @@ export default {
     color: rgba(255, 255, 255, 0.52);
   }
 
+  .publish-summary-tag {
+    border-color: color-mix(in srgb, var(--primary-color, #ff4d4f) 38%, #2a2a2a);
+    color: var(--primary-color, #ff4d4f);
+    background: color-mix(in srgb, var(--primary-color, #ff4d4f) 12%, #171717);
+  }
+
   .publish-note,
   .publish-backtest-gate,
   .publish-section,
@@ -4254,14 +4496,19 @@ export default {
   .indicator-convert-note,
   .code-version-item,
   .code-version-preview {
-    border-color: rgba(255, 255, 255, 0.1);
-    background: #1f1f1f;
+    border-color: #2a2a2a;
+    background: #171717;
+  }
+
+  .publish-note,
+  .indicator-convert-note {
+    color: rgba(255, 255, 255, 0.62);
   }
 
   .publish-backtest-gate {
-    &.is-checking { background: rgba(22, 119, 255, 0.12); }
-    &.is-passed { background: rgba(82, 196, 26, 0.12); }
-    &.is-required { background: rgba(250, 173, 20, 0.12); }
+    &.is-checking { border-color: rgba(255, 255, 255, 0.14); background: #171717; }
+    &.is-passed { border-color: rgba(82, 196, 26, 0.34); background: #171717; }
+    &.is-required { border-color: rgba(250, 173, 20, 0.38); background: #171717; }
 
     &__copy strong { color: rgba(255, 255, 255, 0.88); }
     &__copy span { color: rgba(255, 255, 255, 0.58); }
@@ -4269,12 +4516,114 @@ export default {
 
   .publish-option-card.active {
     border-color: var(--primary-color, #ff4d4f);
-    background: linear-gradient(135deg, rgba(255, 77, 79, 0.16) 0%, #1f1f1f 78%);
+    background: #171717;
+    box-shadow: inset 3px 0 0 var(--primary-color, #ff4d4f);
   }
 
-  .code-version-preview__head {
+  .publish-contract-preview {
+    border-color: #2a2a2a;
+    background: #171717;
+
+    &__grid span {
+      background: #1b1b1b;
+    }
+
+    &__grid small,
+    p { color: rgba(255, 255, 255, 0.52); }
+    &__grid b { color: rgba(255, 255, 255, 0.86); }
+  }
+
+  .publish-pricing-group .ant-radio-button-wrapper {
+    border-color: #2a2a2a;
+    color: rgba(255, 255, 255, 0.72);
+    background: #1b1b1b;
+  }
+
+  .publish-pricing-group .ant-radio-button-wrapper-checked {
+    border-color: var(--primary-color, #ff4d4f);
+    color: #fff;
+    background: var(--primary-color, #ff4d4f);
+    box-shadow: none;
+  }
+
+  .ant-input,
+  .ant-input-number,
+  .ant-input-number-input,
+  .ant-select-selection,
+  textarea.ant-input {
+    border-color: #2a2a2a;
+    color: rgba(255, 255, 255, 0.86);
+    background: #0c0c0c;
+  }
+
+  .code-version-preview__meta {
     border-color: rgba(255, 255, 255, 0.08);
     background: #141414;
+    color: rgba(255, 255, 255, 0.52);
+  }
+
+  .code-version-preview__meta strong {
+    color: rgba(255, 255, 255, 0.88);
+  }
+}
+
+.script-version-preview-modal--dark {
+  .ant-modal-content,
+  .ant-modal-header {
+    border-color: #2a2a2a;
+    background: #171717;
+  }
+
+  .ant-modal-title,
+  .ant-modal-close {
+    color: rgba(255, 255, 255, 0.86);
+  }
+
+  .code-version-preview {
+    border-color: #2a2a2a;
+    background: #171717;
+    box-shadow: 0 20px 64px rgba(0, 0, 0, 0.42);
+  }
+
+  .code-version-preview__meta {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: #141414;
+    color: rgba(255, 255, 255, 0.52);
+  }
+
+  .code-version-preview__meta strong {
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .code-version-preview__badge {
+    border-color: color-mix(in srgb, var(--primary-color, #ff5b21) 34%, #2a2a2a);
+    background: color-mix(in srgb, var(--primary-color, #ff5b21) 9%, #171717);
+  }
+
+  .ant-modal-body {
+    background: #101010;
+  }
+}
+
+@media (max-width: 720px) {
+  .script-version-preview-modal .ant-modal {
+    top: 16px;
+    padding-bottom: 16px;
+  }
+
+  .script-version-preview-modal .ant-modal-body {
+    padding: 8px;
+  }
+
+  .code-version-preview__meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .code-version-viewer {
+    min-height: 320px;
+    max-height: calc(100vh - 210px);
   }
 }
 </style>

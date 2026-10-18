@@ -951,7 +951,7 @@ export default {
         {
           key: 'core',
           title: this.tOr('settings.nav.core', 'Core setup'),
-          keys: ['auth', 'ai', 'trading', 'market_modules']
+          keys: ['features', 'auth', 'ai', 'trading', 'market_modules']
         },
         {
           key: 'research',
@@ -1818,6 +1818,7 @@ export default {
 
     getGroupIcon (groupKey) {
       const icons = {
+        features: 'control',
         brand: 'crown',
         contact: 'customer-service',
         social: 'team',
@@ -2069,6 +2070,12 @@ export default {
               this.showRestartTip = true
             }
             this.loadSettings()
+            const featureKeys = ['BILLING_ENABLED', 'MARKETPLACE_ENABLED', 'ENABLE_REGISTRATION']
+            const updatedKeys = (res.data && res.data.updated_keys) || []
+            if (updatedKeys.some(key => featureKeys.includes(key))) {
+              await this.$store.dispatch('LoadFeatureConfig', { force: true }).catch(() => {})
+              window.setTimeout(() => window.location.reload(), 250)
+            }
             // Brand / contact / social / legal live under the same .env. Refresh
             // the global brand store so logo / footer / version label reflect
             // the change without a hard reload.
@@ -2105,7 +2112,13 @@ export default {
   }
 
   .settings-header {
-    margin-bottom: 24px;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    margin: -16px -16px 16px;
+    padding: 16px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
 
     .page-title {
       font-size: 24px;
@@ -2678,6 +2691,9 @@ export default {
     }
 
     .settings-header {
+      background: #101010;
+      border-bottom-color: #262626;
+
       .page-title {
         color: #e0e6ed;
       }

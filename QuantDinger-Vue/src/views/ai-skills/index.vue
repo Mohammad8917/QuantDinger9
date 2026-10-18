@@ -1,12 +1,14 @@
 <template>
   <div class="ai-skill-center qd-workspace-page qd-page-frame">
-    <div class="skill-hero">
-      <div>
-        <div class="eyebrow">{{ text.heroEyebrow }}</div>
-        <h1>{{ text.title }}</h1>
-        <p>{{ text.subtitle }}</p>
+    <div class="page-header">
+      <div class="page-header-copy">
+        <h2 class="page-title">
+          <a-icon type="robot" />
+          <span>{{ text.title }}</span>
+        </h2>
+        <p class="page-desc">{{ text.subtitle }}</p>
       </div>
-      <div class="hero-actions">
+      <div class="page-actions">
         <a-button icon="reload" :loading="loading" @click="loadAll">{{ text.refresh }}</a-button>
         <a-button type="primary" icon="plus" @click="activeTab = 'install'">{{ text.install }}</a-button>
       </div>
@@ -163,7 +165,6 @@ export default {
     text () {
       const t = key => this.$t(`aiSkills.${key}`)
       return {
-        heroEyebrow: t('heroEyebrow'),
         title: t('title'),
         subtitle: t('subtitle'),
         refresh: t('refresh'),
@@ -332,47 +333,45 @@ export default {
 <style lang="less" scoped>
 .ai-skill-center {
   min-height: calc(100vh - 104px);
-  padding: 24px;
+  padding: 16px;
   color: var(--text-color, #10213d);
 }
 
-.skill-hero {
+.page-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
-  padding: 24px;
-  border: 1px solid rgba(62, 112, 255, 0.14);
-  border-radius: 18px;
-  background:
-    radial-gradient(circle at 12% 18%, rgba(47, 128, 237, 0.18), transparent 26%),
-    radial-gradient(circle at 86% 22%, rgba(18, 194, 233, 0.14), transparent 24%),
-    rgba(255, 255, 255, 0.78);
-  box-shadow: 0 18px 46px rgba(28, 47, 90, 0.08);
-  backdrop-filter: blur(18px);
+  gap: 16px;
+  margin-bottom: 24px;
 
-  h1 {
-    margin: 6px 0;
-    font-size: 30px;
-    font-weight: 800;
-  }
-
-  p {
-    margin: 0;
+  .page-header-copy {
     max-width: 720px;
+  }
+
+  .page-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 8px;
+    color: #1e3a5f;
+    font-size: 24px;
+    font-weight: 700;
+
+    .anticon {
+      color: var(--primary-color, #1890ff);
+      font-size: 28px;
+    }
+  }
+
+  .page-desc {
+    margin: 0;
     color: #64748b;
+    font-size: 14px;
+    line-height: 1.6;
   }
 }
 
-.eyebrow {
-  color: var(--primary-color, #2f6bff);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.hero-actions {
+.page-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -382,7 +381,7 @@ export default {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
-  margin: 18px 0;
+  margin: 0 0 18px;
 }
 
 .stat-card {
@@ -535,7 +534,6 @@ export default {
     color: rgba(255, 255, 255, 0.88);
   }
 
-  .skill-hero,
   .stat-card,
   .skill-tabs,
   .install-panel,
@@ -546,7 +544,7 @@ export default {
     box-shadow: none;
   }
 
-  .skill-hero p,
+  .page-header .page-desc,
   .stat-card small,
   .stat-card .stat-label,
   .tool-card p,
@@ -641,7 +639,6 @@ export default {
     color: #e5e7eb;
   }
 
-  .skill-hero,
   .stat-card,
   .skill-tabs,
   .install-panel,
@@ -651,7 +648,7 @@ export default {
     box-shadow: none;
   }
 
-  .skill-hero p,
+  .page-header .page-desc,
   .stat-card small,
   .stat-card .stat-label,
   .tool-card p,
@@ -687,7 +684,7 @@ export default {
     padding: 14px;
   }
 
-  .skill-hero,
+  .page-header,
   .toolbar {
     align-items: flex-start;
     flex-direction: column;
@@ -708,25 +705,15 @@ body.dark .ai-skill-center,
   color: rgba(255, 255, 255, 0.88) !important;
 }
 
-body.dark .ai-skill-center .skill-hero,
-.basic-layout-wrapper.dark .ai-skill-center .skill-hero {
-  border-color: rgba(255, 255, 255, 0.1) !important;
-  background:
-    radial-gradient(circle at 16% 0%, rgba(24, 144, 255, 0.14), transparent 30%),
-    radial-gradient(circle at 92% 16%, rgba(20, 184, 166, 0.1), transparent 28%),
-    linear-gradient(135deg, rgba(18, 18, 18, 0.98), rgba(13, 13, 13, 0.98)) !important;
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42) !important;
-}
-
-body.dark .ai-skill-center .skill-hero h1,
-.basic-layout-wrapper.dark .ai-skill-center .skill-hero h1,
+body.dark .ai-skill-center .page-title,
+.basic-layout-wrapper.dark .ai-skill-center .page-title,
 body.dark .ai-skill-center .stat-card strong,
 .basic-layout-wrapper.dark .ai-skill-center .stat-card strong {
   color: rgba(255, 255, 255, 0.94) !important;
 }
 
-body.dark .ai-skill-center .skill-hero p,
-.basic-layout-wrapper.dark .ai-skill-center .skill-hero p,
+body.dark .ai-skill-center .page-desc,
+.basic-layout-wrapper.dark .ai-skill-center .page-desc,
 body.dark .ai-skill-center .stat-card small,
 .basic-layout-wrapper.dark .ai-skill-center .stat-card small,
 body.dark .ai-skill-center .stat-card .stat-label,

@@ -667,8 +667,8 @@ export default {
 
   &.theme-dark .ownership-toolbar {
     color: #aeb7c4;
-    border-color: #363c4e;
-    background: #20232b;
+    border-color: #333333;
+    background: #181818;
   }
 
   ::v-deep .ant-table {
@@ -724,15 +724,15 @@ export default {
     }
 
     ::v-deep .ant-table-thead > tr > th {
-      background: #2a2e39 !important;
+      background: #222222 !important;
       color: #d1d4dc !important;
-      border-bottom-color: #363c4e !important;
+      border-bottom-color: #333333 !important;
     }
 
     ::v-deep .ant-table-tbody > tr > td {
       background: #1c1c1c !important;
       color: #d1d4dc !important;
-      border-bottom-color: #363c4e !important;
+      border-bottom-color: #333333 !important;
     }
   }
 

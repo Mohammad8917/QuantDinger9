@@ -97,6 +97,14 @@ test('backtest and factor workspaces open settings by default and align the shar
   assert.doesNotMatch(source, /grid-column: 1 \/ -1/)
 })
 
+test('sticky research controls use an opaque surface and cover the seam while scrolling', () => {
+  assert.match(source, /\.command-bar \{[^}]*background: #fff;/)
+  assert.match(source, /box-shadow: 0 -10px 0 #f1f3f5/)
+  assert.match(source, /\.theme-dark \.command-bar \{[^}]*background: #111111;/)
+  assert.match(source, /box-shadow: 0 -10px 0 #080808/)
+  assert.doesNotMatch(source, /\.command-bar \{[^}]*backdrop-filter:/)
+})
+
 test('saved backtest details expose an in-drawer loading state', () => {
   assert.match(source, /v-if="historyDetailLoading" class="drawer-detail-loading"/)
   assert.match(source, /this\.historyDetailLoading = true/)
@@ -181,7 +189,7 @@ test('partial benchmark metrics stay visible and review-only chart hides inactiv
   assert.match(portfolioResultSource, /value: this\.hasBenchmarkMetrics \? this\.formatPercent\(this\.result\.benchmarkTotalReturn\) : '-'/)
   assert.match(portfolioResultSource, /:show-indicator-toolbar="false"/)
   assert.match(klineChartSource, /showIndicatorToolbar: \{[\s\S]*?default: true/)
-  assert.match(klineChartSource, /v-if="showIndicatorToolbar" class="indicator-toolbar"/)
+  assert.match(klineChartSource, /v-if="showIndicatorToolbar && \(showIndicatorLibraryTrigger \|\| activePresetIndicators\.length\)"[\s\S]*?class="indicator-toolbar"/)
 })
 
 test('backtests default to the latest completed date and reject today in the picker', () => {

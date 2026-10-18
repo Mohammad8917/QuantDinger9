@@ -50,10 +50,3 @@ export function logout () {
     }
   })
 }
-
-export function getCurrentUserNav () {
-  return request({
-    url: userApi.UserMenu,
-    method: 'get'
-  })
-}

@@ -16,13 +16,15 @@
         </a-menu-item>
       </a-menu>
     </a-dropdown>
-    <span class="account-credits" @click.stop="handleCredits">
-      <a-icon type="wallet" />
-      <strong>{{ formattedCredits }}</strong>
-    </span>
-    <a-button size="small" type="primary" class="account-recharge" @click.stop="handleBilling">
-      <span>{{ $t('profile.credits.rechargeShort') || '充值' }}</span>
-    </a-button>
+    <template v-if="billingEnabled">
+      <span class="account-credits" @click.stop="handleCredits">
+        <a-icon type="wallet" />
+        <strong>{{ formattedCredits }}</strong>
+      </span>
+      <a-button size="small" type="primary" class="account-recharge" @click.stop="handleBilling">
+        <span>{{ $t('profile.credits.rechargeShort') }}</span>
+      </a-button>
+    </template>
   </span>
   <span v-else>
     <a-spin size="small" :style="{ marginLeft: 8, marginRight: 8 }" />
@@ -62,6 +64,9 @@ export default {
     }
   },
   computed: {
+    billingEnabled () {
+      return this.$store.state.features.config.billing_enabled !== false
+    },
     formattedCredits () {
       const value = this.credits !== null && typeof this.credits !== 'undefined'
         ? this.credits
@@ -70,11 +75,11 @@ export default {
     }
   },
   mounted () {
-    this.loadCredits(true)
+    if (this.billingEnabled) this.loadCredits(true)
     this.$root.$on('credits-updated', this.handleCreditsUpdated)
     window.addEventListener('focus', this.handleWindowFocus)
     document.addEventListener('visibilitychange', this.handleVisibilityChange)
-    this.creditsRefreshTimer = window.setInterval(this.refreshVisibleCredits, 60 * 1000)
+    if (this.billingEnabled) this.creditsRefreshTimer = window.setInterval(this.refreshVisibleCredits, 60 * 1000)
   },
   beforeDestroy () {
     this.$root.$off('credits-updated', this.handleCreditsUpdated)
@@ -103,6 +108,7 @@ export default {
       if (document.visibilityState === 'visible') this.loadCredits(true)
     },
     async loadCredits (force = false) {
+      if (!this.billingEnabled) return
       if (this.creditsLoading) return
       if (!force && Date.now() - this.lastCreditsLoadAt < 10 * 1000) return
       this.creditsLoading = true

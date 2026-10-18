@@ -2,55 +2,68 @@
   <a-modal
     :visible="visible"
     :title="$t('factorLibrary.title')"
-    :width="1080"
+    :width="1180"
     :footer="null"
     :destroy-on-close="false"
     :wrap-class-name="isDark ? 'factor-library-modal factor-library-modal--dark' : 'factor-library-modal'"
     @cancel="$emit('close')"
   >
-    <div class="factor-library-intro">
-      <div>
-        <strong>{{ $t('factorLibrary.subtitle') }}</strong>
-        <span>{{ $t('factorLibrary.description') }}</span>
-      </div>
-      <a-tag color="green">{{ currentScopeSummary }}</a-tag>
-    </div>
-
-    <a-alert
-      class="factor-library-scope-alert"
-      type="info"
-      show-icon
-      :message="scopeNotice"
-    />
-
     <a-alert v-if="typeFilter === 'fundamental' || (selectedFactor && selectedFactor.factor_type === 'fundamental')" type="warning" show-icon :message="$t('fundamentalSync.factorNotice')" />
     <div class="factor-library-tools">
-      <a-input
-        v-model="search"
-        allow-clear
-        class="factor-library-search"
-        :placeholder="$t('factorLibrary.searchPlaceholder')"
-      >
-        <a-icon slot="prefix" type="search" />
-      </a-input>
-      <a-radio-group v-model="typeFilter" button-style="solid">
-        <a-radio-button value="all">{{ $t('factorLibrary.all') }}</a-radio-button>
-        <a-radio-button value="technical">{{ $t('factorLibrary.technical') }}</a-radio-button>
-        <a-radio-button value="fundamental">{{ $t('factorLibrary.fundamental') }}</a-radio-button>
-      </a-radio-group>
-      <a-select
-        v-model="scopeFilter"
-        class="factor-library-scope-select"
-        :dropdown-class-name="isDark ? 'factor-library-dropdown factor-library-dropdown--dark' : 'factor-library-dropdown'"
-      >
-        <a-select-option value="current">{{ $t('factorLibrary.scope.current') }}</a-select-option>
-        <a-select-option value="all">{{ $t('factorLibrary.scope.all') }}</a-select-option>
-        <a-select-option value="cta">{{ $t('factorLibrary.scope.cta') }}</a-select-option>
-        <a-select-option value="portfolio">{{ $t('factorLibrary.scope.portfolio') }}</a-select-option>
-      </a-select>
-      <a-button icon="reload" :loading="loading" @click="loadFactors">
-        {{ $t('factorLibrary.refresh') }}
-      </a-button>
+      <div class="factor-library-tools__main">
+        <a-input
+          v-model="search"
+          allow-clear
+          class="factor-library-search"
+          :placeholder="$t('factorLibrary.searchPlaceholder')"
+        >
+          <a-icon slot="prefix" type="search" />
+        </a-input>
+        <a-radio-group v-model="typeFilter" button-style="solid" class="factor-library-type-filter">
+          <a-radio-button value="all">{{ $t('factorLibrary.all') }}</a-radio-button>
+          <a-radio-button value="technical">{{ $t('factorLibrary.technical') }}</a-radio-button>
+          <a-radio-button value="fundamental">{{ $t('factorLibrary.fundamental') }}</a-radio-button>
+        </a-radio-group>
+        <a-button class="factor-library-refresh" icon="reload" :loading="loading" @click="loadFactors">
+          {{ $t('factorLibrary.refresh') }}
+        </a-button>
+      </div>
+
+      <div class="factor-library-filterbar">
+        <div class="factor-library-filterbar__group">
+          <span class="factor-library-filterbar__label">{{ $t('factorLibrary.family') }}</span>
+          <div class="factor-library-filterbar__options" role="group" :aria-label="$t('factorLibrary.family')">
+            <button
+              v-for="option in familyOptions"
+              :key="option.value"
+              type="button"
+              class="factor-library-filter-chip"
+              :class="{ 'factor-library-filter-chip--active': familyFilter === option.value }"
+              :aria-pressed="familyFilter === option.value"
+              @click="familyFilter = option.value"
+            >
+              {{ option.label }}
+              <span>{{ familyCounts[option.value] || 0 }}</span>
+            </button>
+          </div>
+        </div>
+        <div class="factor-library-filterbar__group">
+          <span class="factor-library-filterbar__label">{{ $t('factorLibrary.scopeLabel') }}</span>
+          <div class="factor-library-filterbar__options" role="group" :aria-label="$t('factorLibrary.scopeLabel')">
+            <button
+              v-for="option in scopeOptions"
+              :key="option.value"
+              type="button"
+              class="factor-library-filter-chip"
+              :class="{ 'factor-library-filter-chip--active': scopeFilter === option.value }"
+              :aria-pressed="scopeFilter === option.value"
+              @click="scopeFilter = option.value"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <a-spin :spinning="loading">
@@ -71,12 +84,13 @@
           >
             <span class="factor-card__top">
               <span class="factor-card__name">{{ factorName(factor) }}</span>
-              <a-tag :color="factor.factor_type === 'fundamental' ? 'purple' : 'blue'">
-                {{ typeLabel(factor.factor_type) }}
-              </a-tag>
+              <span class="factor-card__family">{{ familyLabel(factor) }}</span>
             </span>
-            <span class="factor-card__id">{{ factor.factor_id }}</span>
-            <span class="factor-card__desc">{{ factorDescription(factor) }}</span>
+            <span v-if="factorName(factor) !== factor.factor_id" class="factor-card__id">{{ factor.factor_id }}</span>
+            <span
+              v-if="factorDescription(factor) && factorDescription(factor) !== factor.factor_id && factorDescription(factor) !== factorName(factor)"
+              class="factor-card__desc"
+            >{{ factorDescription(factor) }}</span>
             <span class="factor-card__meta">
               <span>{{ categoryLabel(factor.category) }}</span>
               <span :class="{ 'factor-card__unsupported': !supportsCurrent(factor) }">
@@ -85,7 +99,7 @@
             </span>
           </button>
           <div class="factor-library-list__spacer" :style="{ height: `${virtualBottomSpacer}px` }"></div>
-          <a-empty v-if="!filteredFactors.length" :description="$t('factorLibrary.empty')" />
+          <div v-if="!filteredFactors.length" class="factor-library-empty">{{ emptyDescription }}</div>
         </div>
 
         <div v-if="selectedFactor" class="factor-detail">
@@ -93,7 +107,9 @@
             <div>
               <span class="factor-detail__eyebrow">{{ selectedFactor.factor_id }} · v{{ selectedFactor.version }}</span>
               <h3>{{ factorName(selectedFactor) }}</h3>
-              <p>{{ factorDescription(selectedFactor) }}</p>
+              <p v-if="factorDescription(selectedFactor) && factorDescription(selectedFactor) !== selectedFactor.factor_id && factorDescription(selectedFactor) !== factorName(selectedFactor)">
+                {{ factorDescription(selectedFactor) }}
+              </p>
             </div>
             <a-button icon="copy" :disabled="!supportsCurrent(selectedFactor)" @click="copyText(factorCall(selectedFactor))">
               {{ $t('factorLibrary.copyCall') }}
@@ -102,22 +118,51 @@
 
           <div class="factor-detail__facts">
             <div>
-              <span>{{ $t('factorLibrary.type') }}</span>
-              <strong>{{ typeLabel(selectedFactor.factor_type) }}</strong>
+              <span>{{ $t('factorLibrary.provider') }}</span>
+              <strong>{{ familyLabel(selectedFactor) }}</strong>
             </div>
             <div>
               <span>{{ $t('factorLibrary.category') }}</span>
               <strong>{{ categoryLabel(selectedFactor.category) }}</strong>
             </div>
             <div>
-              <span>{{ $t('factorLibrary.direction') }}</span>
-              <strong>{{ directionLabel(selectedFactor.direction_hint) }}</strong>
+              <span>{{ $t('factorLibrary.usageMode') }}</span>
+              <strong>{{ usageModeLabel(selectedFactor) }}</strong>
             </div>
             <div>
               <span>{{ $t('factorLibrary.runtime') }}</span>
               <strong>{{ runtimeLabel(selectedFactor) }}</strong>
             </div>
           </div>
+
+          <div class="factor-detail__insights">
+            <article>
+              <a-icon type="line-chart" />
+              <strong>{{ $t('factorLibrary.whatItMeasures') }}</strong>
+              <p>{{ factorMeaning(selectedFactor) }}</p>
+            </article>
+            <article>
+              <a-icon type="bulb" />
+              <strong>{{ $t('factorLibrary.howToUse') }}</strong>
+              <p>{{ factorInterpretation(selectedFactor) }}</p>
+            </article>
+            <article>
+              <a-icon type="safety" />
+              <strong>{{ $t('factorLibrary.watchOut') }}</strong>
+              <p>{{ factorCaution(selectedFactor) }}</p>
+            </article>
+          </div>
+
+          <section v-if="selectedFactor.expression" class="factor-detail__section factor-detail__formula">
+            <div class="factor-detail__section-head">
+              <h4>{{ $t('factorLibrary.formula') }}</h4>
+              <a :href="selectedFactor.source_url" target="_blank" rel="noopener noreferrer">
+                {{ $t('factorLibrary.sourceReference') }}
+                <a-icon type="export" />
+              </a>
+            </div>
+            <code>{{ selectedFactor.expression }}</code>
+          </section>
 
           <a-alert
             v-if="!supportsCurrent(selectedFactor)"
@@ -197,14 +242,21 @@
                 {{ $t('factorLibrary.copyExample') }}
               </a-button>
             </div>
-            <pre>{{ strategySnippet(selectedFactor) }}</pre>
+            <div class="factor-detail__code-block">
+              <span>{{ $t('factorLibrary.callExample') }}</span>
+              <pre>{{ factorCall(selectedFactor) }}</pre>
+            </div>
+            <div class="factor-detail__code-block">
+              <span>{{ $t('factorLibrary.fullExample') }}</span>
+              <pre>{{ strategySnippet(selectedFactor) }}</pre>
+            </div>
             <p v-if="selectedFactor.direction_hint === 'neutral'" class="factor-detail__muted">
               {{ $t('factorLibrary.neutralHint') }}
             </p>
           </section>
         </div>
 
-        <a-empty v-else class="factor-detail-empty" :description="$t('factorLibrary.selectHint')" />
+        <div v-else class="factor-detail-empty">{{ $t('factorLibrary.selectHint') }}</div>
       </div>
     </a-spin>
   </a-modal>
@@ -233,36 +285,65 @@ export default {
     return {
       loading: false,
       loaded: false,
+      rawFactors: [],
       factors: [],
       selectedId: '',
       selectedFactor: null,
       search: '',
       typeFilter: 'all',
+      familyFilter: 'all',
       scopeFilter: 'current',
       parameterValues: {},
       listScrollTop: 0,
-      factorRowHeight: 133,
-      factorWindowSize: 18,
+      factorRowHeight: 121,
+      factorWindowSize: 14,
+      scrollFrameHandle: null,
+      pendingScrollTop: 0,
       preloadHandle: null,
       preloadHandleType: ''
     }
   },
   computed: {
+    familyOptions () {
+      return [
+        { value: 'all', label: this.$t('factorLibrary.family.allShort') },
+        { value: 'native', label: this.$t('factorLibrary.family.native') },
+        { value: 'talib', label: this.$t('factorLibrary.family.talib') },
+        { value: 'alpha158', label: this.$t('factorLibrary.family.alpha158') },
+        { value: 'alpha360', label: this.$t('factorLibrary.family.alpha360') }
+      ]
+    },
+    scopeOptions () {
+      return [
+        { value: 'current', label: this.$t('factorLibrary.scope.current') },
+        { value: 'all', label: this.$t('factorLibrary.scope.all') },
+        { value: 'cta', label: this.$t('factorLibrary.scope.cta') },
+        { value: 'portfolio', label: this.$t('factorLibrary.scope.portfolio') }
+      ]
+    },
+    familyCounts () {
+      return this.factors.reduce((counts, factor) => {
+        counts.all += 1
+        counts[factor._family] = (counts[factor._family] || 0) + 1
+        return counts
+      }, { all: 0, native: 0, talib: 0, alpha158: 0, alpha360: 0 })
+    },
+    emptyDescription () {
+      if (['alpha158', 'alpha360'].includes(this.familyFilter) && !this.familyCounts[this.familyFilter]) {
+        return this.$t('factorLibrary.qlibUnavailable')
+      }
+      return this.$t('factorLibrary.empty')
+    },
     filteredFactors () {
       const query = String(this.search || '').trim().toLowerCase()
       return this.factors.filter(factor => {
         if (this.typeFilter !== 'all' && factor.factor_type !== this.typeFilter) return false
+        if (this.familyFilter !== 'all' && factor._family !== this.familyFilter) return false
         const contexts = factor.supported_contexts || []
         const requestedScope = this.scopeFilter === 'current' ? this.currentContext : this.scopeFilter
         if (requestedScope !== 'all' && !contexts.includes(requestedScope)) return false
         if (!query) return true
-        return [
-          factor.factor_id,
-          factor.category,
-          this.factorName(factor),
-          this.factorDescription(factor),
-          ...(factor.required_fields || [])
-        ].some(value => String(value || '').toLowerCase().includes(query))
+        return factor._searchText.includes(query)
       })
     },
     virtualStartIndex () {
@@ -283,20 +364,6 @@ export default {
     },
     currentContext () {
       return this.assetType === 'portfolio_strategy' ? 'portfolio' : 'cta'
-    },
-    compatibleCount () {
-      return this.factors.filter(factor => this.supportsCurrent(factor)).length
-    },
-    currentScopeSummary () {
-      const label = this.currentContext === 'cta'
-        ? this.$t('factorLibrary.scope.cta')
-        : this.$t('factorLibrary.scope.portfolio')
-      return this.$t('factorLibrary.availableCount', { scope: label, count: this.compatibleCount })
-    },
-    scopeNotice () {
-      return this.currentContext === 'cta'
-        ? this.$t('factorLibrary.ctaNotice')
-        : this.$t('factorLibrary.portfolioNotice')
     }
   },
   watch: {
@@ -313,8 +380,14 @@ export default {
     typeFilter () {
       this.handleFactorFilterChange()
     },
+    familyFilter () {
+      this.handleFactorFilterChange()
+    },
     search () {
       this.handleFactorFilterChange()
+    },
+    '$i18n.locale' () {
+      this.relocalizeFactors()
     }
   },
   mounted () {
@@ -322,6 +395,10 @@ export default {
   },
   beforeDestroy () {
     this.cancelPreload()
+    if (this.scrollFrameHandle !== null && typeof window !== 'undefined') {
+      window.cancelAnimationFrame(this.scrollFrameHandle)
+      this.scrollFrameHandle = null
+    }
   },
   methods: {
     schedulePreload () {
@@ -356,12 +433,14 @@ export default {
       try {
         const res = await getFactorCatalog()
         if (!(res && res.code === 1)) throw new Error((res && res.msg) || this.$t('factorLibrary.loadFailed'))
-        this.factors = Array.isArray(res.data) ? res.data : []
+        this.rawFactors = Array.isArray(res.data) ? res.data : []
+        this.factors = this.rawFactors.map(this.prepareFactor)
         this.loaded = true
         this.resetVirtualList()
         const preferred = this.filteredFactors.find(item => item.factor_id === this.selectedId) || this.filteredFactors[0]
         if (preferred) this.selectFactor(preferred)
       } catch (error) {
+        this.rawFactors = []
         this.factors = []
         if (!options.silent || this.visible) {
           this.$message.error(error.backendMessage || error.message || this.$t('factorLibrary.loadFailed'))
@@ -376,8 +455,20 @@ export default {
       this.selectedFactor = factor
       this.resetParameters(factor)
     },
+    relocalizeFactors () {
+      if (!this.rawFactors.length) return
+      const selectedId = this.selectedId
+      this.factors = this.rawFactors.map(this.prepareFactor)
+      this.selectedFactor = this.factors.find(item => item.factor_id === selectedId) || null
+      this.ensureVisibleSelection()
+    },
     handleListScroll (event) {
-      this.listScrollTop = Math.max(0, Number(event && event.target && event.target.scrollTop) || 0)
+      this.pendingScrollTop = Math.max(0, Number(event && event.target && event.target.scrollTop) || 0)
+      if (this.scrollFrameHandle !== null || typeof window === 'undefined') return
+      this.scrollFrameHandle = window.requestAnimationFrame(() => {
+        this.listScrollTop = this.pendingScrollTop
+        this.scrollFrameHandle = null
+      })
     },
     resetVirtualList () {
       this.listScrollTop = 0
@@ -410,17 +501,115 @@ export default {
         : ''
       return english || fallback
     },
+    factorFamily (factor) {
+      if (factor && factor.provider === 'microsoft-qlib') return String(factor.family || '').toLowerCase()
+      if (factor && factor.provider === 'ta-lib') return 'talib'
+      return 'native'
+    },
+    prepareFactor (factor) {
+      const prepared = { ...factor }
+      prepared._family = this.factorFamily(prepared)
+      if (prepared.provider === 'microsoft-qlib') {
+        const spec = prepared.feature_spec || {}
+        const operation = this.translation(
+          `factorLibrary.operation.${spec.operation}`,
+          this.$t('factorLibrary.operation.default')
+        )
+        prepared._displayName = this.$t('factorLibrary.qlibFeatureName', {
+          family: this.$t(`factorLibrary.family.${prepared._family}`),
+          feature: prepared.library_id
+        })
+        prepared._displayDescription = this.$t('factorLibrary.qlibFeatureDescription', {
+          family: this.$t(`factorLibrary.family.${prepared._family}`),
+          feature: prepared.library_id,
+          field: this.factorFieldLabel(spec.field || (prepared.required_fields || []).join(', ')),
+          window: spec.window || prepared.default_warmup_bars || 1,
+          operation
+        })
+      } else {
+        prepared._displayName = this.translation(prepared.name_i18n_key, prepared.display_name || prepared.factor_id)
+        prepared._displayDescription = this.translation(prepared.description_i18n_key, '')
+        if (!prepared._displayDescription && prepared.provider === 'ta-lib') {
+          prepared._displayDescription = this.$t('factorLibrary.talibFeatureDescription', {
+            name: prepared._displayName,
+            category: this.categoryLabel(prepared.category)
+          })
+        }
+        if (!prepared._displayDescription) {
+          prepared._displayDescription = this.factorCategoryExplanation(prepared)
+        }
+      }
+      prepared._searchText = [
+        prepared.factor_id,
+        prepared.library_id,
+        prepared.category,
+        prepared._displayName,
+        prepared._displayDescription,
+        prepared.provider,
+        prepared.family,
+        ...(prepared.required_fields || [])
+      ].map(value => String(value || '').toLowerCase()).join(' ')
+      return prepared
+    },
     factorName (factor) {
-      return this.translation(factor.name_i18n_key, factor.factor_id)
+      return factor && (factor._displayName || factor.display_name || factor.factor_id)
     },
     factorDescription (factor) {
-      return this.translation(factor.description_i18n_key, factor.factor_id)
+      return factor && factor._displayDescription
+    },
+    factorFieldLabel (value) {
+      return String(value || '').replace(/\bohlcv\b/gi, 'OHLCV')
+    },
+    sentenceStart (value) {
+      const text = String(value || '')
+      return text ? text.charAt(0).toLocaleUpperCase(this.$i18n.locale) + text.slice(1) : text
+    },
+    factorCategoryExplanation (factor) {
+      const categoryKey = `factorLibrary.explain.category.${factor && factor.category}`
+      const categoryExplanation = this.translation(categoryKey, '')
+      if (categoryExplanation) return categoryExplanation
+      return factor && factor.factor_type === 'fundamental'
+        ? this.$t('factorLibrary.explain.fundamental')
+        : this.$t('factorLibrary.explain.technical')
+    },
+    familyLabel (factor) {
+      return this.$t(`factorLibrary.family.${this.factorFamily(factor)}`)
+    },
+    usageModeLabel (factor) {
+      return factor && factor.usage_mode === 'model_feature'
+        ? this.$t('factorLibrary.usageMode.feature')
+        : this.$t('factorLibrary.usageMode.signal')
+    },
+    factorMeaning (factor) {
+      if (this.factorDescription(factor)) return this.factorDescription(factor)
+      if (factor && factor.usage_mode === 'model_feature') return this.$t('factorLibrary.explain.modelFeature')
+      return this.factorCategoryExplanation(factor)
+    },
+    factorInterpretation (factor) {
+      const direction = factor && factor.direction_hint
+      const directionText = direction === 'higher_is_bullish'
+        ? this.$t('factorLibrary.interpret.higher')
+        : direction === 'lower_is_bullish'
+          ? this.$t('factorLibrary.interpret.lower')
+          : this.$t('factorLibrary.interpret.neutral')
+      const operation = factor && factor.feature_spec && factor.feature_spec.operation
+      if (!operation) return directionText
+      const key = `factorLibrary.operation.${operation}`
+      const label = this.translation(key, this.$t('factorLibrary.operation.default'))
+      return `${this.sentenceStart(label)}. ${directionText}`
+    },
+    factorCaution (factor) {
+      if (factor && factor.usage_mode === 'model_feature') return this.$t('factorLibrary.caution.modelFeature')
+      return factor && factor.factor_type === 'fundamental'
+        ? this.$t('factorLibrary.caution.fundamental')
+        : this.$t('factorLibrary.caution.technical')
     },
     typeLabel (value) {
       return this.$t(`factorLibrary.type.${value}`)
     },
     categoryLabel (value) {
-      return this.$t(`factorLibrary.category.${value}`)
+      const key = `factorLibrary.category.${value}`
+      return this.translation(key, value)
     },
     directionLabel (value) {
       return this.$t(`factorLibrary.direction.${value}`)
@@ -496,6 +685,9 @@ export default {
       const call = this.factorCall(factor)
       if (this.currentContext === 'cta') {
         const warmup = this.estimatedWarmup(factor)
+        const commentKey = factor.usage_mode === 'model_feature'
+          ? 'factorLibrary.snippet.modelFeatureComment'
+          : 'factorLibrary.snippet.ruleComment'
         return [
           'def initialize(context):',
           '    context.set_universe(["USStock:SPY"])',
@@ -506,7 +698,7 @@ export default {
           `    value = ${call}`,
           '    if value != value:',
           '        return',
-          '    # Combine the factor value with explicit entry, exit, sizing and risk rules.'
+          `    # ${this.$t(commentKey)}`
         ].join('\n')
       }
       const lines = [
@@ -518,7 +710,7 @@ export default {
       } else if (factor.direction_hint === 'higher_is_bullish') {
         lines.push('    selected = list(values.sort_values(ascending=False).head(10).index)')
       } else {
-        lines.push('    # Define the ranking direction for this strategy before selecting Top-N.')
+        lines.push(`    # ${this.$t('factorLibrary.snippet.rankingComment')}`)
         lines.push('    selected = []')
       }
       lines.push('    weight = 1.0 / len(selected) if selected else 0.0')
@@ -572,8 +764,6 @@ export default {
   }
 }
 
-.factor-library-intro,
-.factor-library-tools,
 .factor-detail__heading,
 .factor-detail__section-head {
   display: flex;
@@ -582,51 +772,118 @@ export default {
   gap: 12px;
 }
 
-.factor-library-intro {
-  margin-bottom: 14px;
-  padding: 14px 16px;
-  border: 1px solid #e6e9ef;
-  border-radius: 10px;
-  background: #fafbfc;
-}
-
-.factor-library-intro strong,
-.factor-library-intro span {
-  display: block;
-}
-
-.factor-library-intro strong {
-  margin-bottom: 4px;
-  color: #172033;
-  font-size: 15px;
-}
-
-.factor-library-intro span {
-  color: #6b7280;
-  font-size: 13px;
-}
-
-.factor-library-scope-alert {
-  margin-bottom: 14px;
-}
-
 .factor-library-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
   margin-bottom: 14px;
-  justify-content: flex-start;
+}
+
+.factor-library-tools__main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.factor-library-type-filter {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.factor-library-type-filter ::v-deep .ant-radio-button-wrapper {
+  float: none;
+  flex: 0 0 auto;
 }
 
 .factor-library-search {
   width: 320px;
+  flex: 0 0 320px;
 }
 
-.factor-library-scope-select {
-  width: 170px;
+.factor-library-refresh {
+  flex: 0 0 auto;
+}
+
+.factor-library-filterbar {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 22px;
+  padding: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.factor-library-filterbar::-webkit-scrollbar {
+  display: none;
+}
+
+.factor-library-filterbar__label {
+  flex: 0 0 auto;
+  color: #7b8494;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.factor-library-filterbar__group {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.factor-library-filterbar__options {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.factor-library-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #596274;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 26px;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.factor-library-filter-chip > span {
+  color: #98a1b2;
+  font-size: 10px;
+}
+
+.factor-library-filter-chip:hover {
+  color: var(--primary-color, #fa541c);
+}
+
+.factor-library-filter-chip--active {
+  border-color: rgba(250, 84, 28, 0.24);
+  color: var(--primary-color, #fa541c);
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+}
+
+.factor-library-filter-chip--active > span {
+  color: inherit;
 }
 
 .factor-library-workspace {
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  height: min(620px, calc(100vh - 292px));
+  grid-template-columns: 330px minmax(0, 1fr);
+  height: min(650px, calc(100vh - 270px));
   min-height: 390px;
   overflow: hidden;
   border: 1px solid #e6e9ef;
@@ -638,8 +895,28 @@ export default {
   padding: 12px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  contain: strict;
   border-right: 1px solid #e6e9ef;
   background: #f7f8fa;
+  scrollbar-color: #c8ced8 transparent;
+  scrollbar-width: thin;
+}
+
+.factor-library-list::-webkit-scrollbar,
+.factor-detail::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.factor-library-list::-webkit-scrollbar-track,
+.factor-detail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.factor-library-list::-webkit-scrollbar-thumb,
+.factor-detail::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #c8ced8;
 }
 
 .factor-library-list__spacer {
@@ -647,13 +924,26 @@ export default {
   pointer-events: none;
 }
 
+.factor-library-empty,
+.factor-detail-empty {
+  display: flex;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: #8a94a6;
+  font-size: 13px;
+  text-align: center;
+}
+
 .factor-card {
   box-sizing: border-box;
-  display: block;
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  height: 124px;
+  height: 112px;
   margin: 0 0 9px;
-  padding: 12px;
+  padding: 11px 12px;
   overflow: hidden;
   border: 1px solid #e2e6ec;
   border-radius: 8px;
@@ -661,21 +951,31 @@ export default {
   text-align: left;
   background: #fff;
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  contain: layout paint style;
+  transform: translateZ(0);
+  transition: border-color 0.15s;
 }
 
 .factor-card:hover,
 .factor-card--active {
   border-color: var(--primary-color, #faad14);
-  box-shadow: 0 0 0 2px rgba(250, 173, 20, 0.1);
+  box-shadow: inset 3px 0 0 var(--primary-color, #faad14);
 }
 
 .factor-card__top,
 .factor-card__meta {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.factor-card__family {
+  flex: 0 0 auto;
+  color: var(--primary-color, #fa541c);
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .factor-card__unsupported {
@@ -683,9 +983,13 @@ export default {
 }
 
 .factor-card__name {
+  min-width: 0;
+  overflow: hidden;
   color: #172033;
   font-size: 14px;
   font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .factor-card__id,
@@ -695,20 +999,27 @@ export default {
   font-size: 11px;
 }
 
+.factor-card__id {
+  line-height: 17px;
+}
+
 .factor-card__desc {
   display: -webkit-box;
-  margin: 8px 0 10px;
+  flex: 0 0 auto;
+  margin: 4px 0;
   overflow: hidden;
   color: #667085;
   font-size: 12px;
   line-height: 1.5;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
 }
 
 .factor-card__meta {
+  margin-top: auto;
   color: #7b8494;
   font-size: 11px;
+  line-height: 16px;
 }
 
 .factor-detail {
@@ -717,6 +1028,8 @@ export default {
   overflow-y: auto;
   overscroll-behavior: contain;
   background: #fff;
+  scrollbar-color: #c8ced8 transparent;
+  scrollbar-width: thin;
 }
 
 .factor-detail__heading {
@@ -741,6 +1054,50 @@ export default {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin: 20px 0;
+}
+
+.factor-detail__insights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 20px;
+}
+
+.factor-detail__insights article {
+  min-height: 118px;
+  padding: 13px;
+  border: 1px solid #e7eaf0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.factor-detail__insights .anticon {
+  margin-right: 7px;
+  color: var(--primary-color, #fa541c);
+}
+
+.factor-detail__insights strong {
+  color: #273044;
+  font-size: 12px;
+}
+
+.factor-detail__insights p {
+  margin: 9px 0 0;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.factor-detail__formula code {
+  display: block;
+  padding: 11px 12px;
+  overflow-x: auto;
+  border: 1px solid #e7eaf0;
+  border-radius: 7px;
+  color: #344054;
+  background: #f7f8fa;
+  font-family: Consolas, Monaco, monospace;
+  white-space: nowrap;
 }
 
 .factor-detail__facts > div {
@@ -825,6 +1182,17 @@ export default {
   margin-right: 5px;
 }
 
+.factor-detail__code-block + .factor-detail__code-block {
+  margin-top: 10px;
+}
+
+.factor-detail__code-block > span {
+  display: block;
+  margin-bottom: 6px;
+  color: #8a94a6;
+  font-size: 11px;
+}
+
 .factor-detail__code-section pre {
   margin: 0;
   padding: 15px;
@@ -842,21 +1210,16 @@ export default {
   font-size: 12px;
 }
 
-.factor-detail-empty {
-  margin-top: 180px;
-}
-
 .factor-library-modal--dark {
   .ant-modal-content,
   .ant-modal-header,
   .ant-modal-body {
     border-color: rgba(255, 255, 255, 0.08);
-    background: #141414;
+    background: #111111;
   }
 
   .ant-modal-title,
   .ant-modal-close,
-  .factor-library-intro strong,
   .factor-card__name,
   .factor-detail__heading h3,
   .factor-detail__section h4,
@@ -864,38 +1227,83 @@ export default {
     color: rgba(255, 255, 255, 0.9);
   }
 
-  .factor-library-intro,
+  .factor-detail__insights strong {
+    color: rgba(255, 255, 255, 0.88);
+  }
+
   .factor-library-workspace,
   .factor-library-list,
   .factor-card,
   .factor-detail,
   .factor-detail__facts > div,
-  .factor-param-grid > div {
+  .factor-param-grid > div,
+  .factor-detail__insights article,
+  .factor-detail__formula code {
     border-color: rgba(255, 255, 255, 0.09);
   }
 
-  .factor-library-intro,
   .factor-library-list,
   .factor-detail__facts > div,
   .factor-param-grid > div {
-    background: #181818;
+    background: #171717;
+  }
+
+  .factor-library-filter-chip--active {
+    border-color: rgba(255, 255, 255, 0.09);
+  }
+
+  .factor-library-filterbar__label,
+  .factor-library-filter-chip {
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  .factor-library-filter-chip--active {
+    color: var(--primary-color, #ff5b21);
+    background: #242424;
+    box-shadow: none;
+  }
+
+  .factor-library-list,
+  .factor-detail {
+    scrollbar-color: #444 transparent;
+  }
+
+  .factor-library-list::-webkit-scrollbar-thumb,
+  .factor-detail::-webkit-scrollbar-thumb {
+    background: #444;
+  }
+
+  .factor-detail__insights article,
+  .factor-detail__formula code {
+    background: #151515;
   }
 
   .factor-card,
   .factor-detail {
-    background: #1d1d1d;
+    background: #111111;
+  }
+
+  .factor-card:hover,
+  .factor-card--active {
+    border-color: var(--primary-color, #ff5b21);
+    background: #1b1b1b;
+    box-shadow: inset 3px 0 0 var(--primary-color, #ff5b21);
   }
 
   .factor-library-list {
     border-right-color: rgba(255, 255, 255, 0.09);
   }
 
-  .factor-library-intro span,
   .factor-card__desc,
   .factor-card__meta,
   .factor-detail__heading p,
   .factor-detail__muted {
     color: rgba(255, 255, 255, 0.52);
+  }
+
+  .factor-detail__insights p,
+  .factor-detail__formula code {
+    color: rgba(255, 255, 255, 0.62);
   }
 
   .factor-param-grid code,
@@ -912,7 +1320,7 @@ export default {
   .ant-btn:not(.ant-btn-primary) {
     border-color: rgba(255, 255, 255, 0.12);
     color: rgba(255, 255, 255, 0.82);
-    background: #202020;
+    background: #1b1b1b;
   }
 
   .ant-input::placeholder {
@@ -922,7 +1330,7 @@ export default {
   .ant-radio-button-wrapper {
     border-color: rgba(255, 255, 255, 0.12);
     color: rgba(255, 255, 255, 0.65);
-    background: #202020;
+    background: #1b1b1b;
   }
 
   .ant-radio-button-wrapper:not(:first-child)::before {
@@ -949,12 +1357,6 @@ export default {
     border-color: rgba(255, 255, 255, 0.12);
     color: rgba(255, 255, 255, 0.72);
     background: #242424;
-  }
-
-  .factor-library-intro > .ant-tag {
-    border-color: rgba(82, 196, 26, 0.32);
-    color: #b7eb8f;
-    background: rgba(82, 196, 26, 0.14);
   }
 
   .factor-detail__warning {
