@@ -1,0 +1,43 @@
+name: One-time exact upstream mirror
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/one-time-exact-mirror.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: quantdinger-exact-mirror
+  cancel-in-progress: false
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+      - name: Fetch current upstream snapshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/OpenByteInc/QuantDinger.git /tmp/qd-backend
+          git clone --depth 1 https://github.com/OpenByteInc/QuantDinger-Vue.git /tmp/qd-frontend
+          echo "Backend SHA: $(git -C /tmp/qd-backend rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Frontend SHA: $(git -C /tmp/qd-frontend rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Mirror source trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          rsync -a --delete --exclude='.git' --exclude='.github' --exclude='QuantDinger-Vue' /tmp/qd-backend/ "$GITHUB_WORKSPACE/"
+          mkdir -p "$GITHUB_WORKSPACE/QuantDinger-Vue"
+          rsync -a --delete --exclude='.git' /tmp/qd-frontend/ "$GITHUB_WORKSPACE/QuantDinger-Vue/"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "chore(sync): mirror latest QuantDinger backend and frontend"
+            git push origin HEAD:main
+          else
+            echo "Already matches current upstream files." >> "$GITHUB_STEP_SUMMARY"
+          fi
