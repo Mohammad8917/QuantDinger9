@@ -35,6 +35,14 @@ jobs:
           rsync -a --delete --exclude='.git' --exclude='.github' --exclude='QuantDinger-Vue' /tmp/qd-backend/ "$GITHUB_WORKSPACE/"
           mkdir -p "$GITHUB_WORKSPACE/QuantDinger-Vue"
           rsync -a --delete --exclude='.git' /tmp/qd-frontend/ "$GITHUB_WORKSPACE/QuantDinger-Vue/"
+          rsync -ainc --delete --out-format='%i %n%L' --exclude='.git' --exclude='.github' --exclude='QuantDinger-Vue' /tmp/qd-backend/ "$GITHUB_WORKSPACE/" > /tmp/backend-diff.txt
+          rsync -ainc --delete --out-format='%i %n%L' --exclude='.git' /tmp/qd-frontend/ "$GITHUB_WORKSPACE/QuantDinger-Vue/" > /tmp/frontend-diff.txt
+          if [[ -s /tmp/backend-diff.txt || -s /tmp/frontend-diff.txt ]]; then
+            echo "::error::Source/destination checksum or path-set mismatch."
+            cat /tmp/backend-diff.txt /tmp/frontend-diff.txt
+            exit 1
+          fi
+          echo "PASS: backend and frontend path sets and file checksums match current upstream snapshots." >> "$GITHUB_STEP_SUMMARY"
           git add -A
           if ! git diff --cached --quiet; then
             git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "chore(sync): mirror latest QuantDinger backend and frontend"
