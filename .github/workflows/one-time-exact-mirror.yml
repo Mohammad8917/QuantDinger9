@@ -1,5 +1,5 @@
 name: One-time exact upstream mirror
-# Refresh trigger: 2026-10-18, mirror current upstream HEADs.
+# Refresh trigger: 2026-10-18T12:30Z, mirror current upstream HEADs including frontend 6322e79e8ded9e6de7a05cb2e296aa50b4017d55.
 on:
   push:
     branches: [main]
