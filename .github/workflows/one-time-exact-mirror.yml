@@ -1,5 +1,5 @@
 name: One-time exact upstream mirror
-# Refresh trigger: 2026-10-18T12:30Z, mirror current upstream HEADs including frontend 6322e79e8ded9e6de7a05cb2e296aa50b4017d55.
+# Refresh trigger: 2026-10-18T15:05Z, force-add ignored upstream source files for exact mirror.
 on:
   push:
     branches: [main]
@@ -43,7 +43,7 @@ jobs:
             exit 1
           fi
           echo "PASS: backend and frontend path sets and file checksums match current upstream snapshots." >> "$GITHUB_STEP_SUMMARY"
-          git add -A
+          git add -A -f
           if ! git diff --cached --quiet; then
             git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "chore(sync): mirror latest QuantDinger backend and frontend"
             git push origin HEAD:main
