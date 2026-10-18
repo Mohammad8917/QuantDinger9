@@ -1,0 +1,141 @@
+.quick-trade-shell.quick-trade-embedded.qt-console {
+  --qtc-bg: #fff;
+  --qtc-muted-bg: #f1f5f9;
+  --qtc-border: #e2e8f0;
+  --qtc-input-border: #d3d9e2;
+  --qtc-text: #17243b;
+  --qtc-muted: #71819b;
+  --qtc-green: #079c45;
+  --qtc-red: #ef233c;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  color: var(--qtc-text);
+  background: var(--qtc-bg);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+
+  &.theme-dark {
+    --qtc-bg: #191919;
+    --qtc-muted-bg: #262626;
+    --qtc-border: #343434;
+    --qtc-input-border: #454545;
+    --qtc-text: #ededed;
+    --qtc-muted: #aaa;
+    --qtc-green: #57d18a;
+    --qtc-red: #ff6b7b;
+  }
+  .qt-console-content { min-height: 0; }
+  .ide-quick-float__modes { background: var(--qtc-muted-bg); }
+  .ide-quick-float__modes button { color: var(--qtc-muted); }
+  .ide-quick-float__modes button.active { color: var(--primary-color); }
+  .qtc-positive { color: var(--qtc-green); }
+  .qtc-negative { color: var(--qtc-red); }
+  .qtc-account-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--qtc-border);
+    > .ant-select { flex: 1 1 170px; min-width: 120px; }
+    ::v-deep .ant-select-selection { border-color: transparent; }
+  }
+  .qtc-icon-button { flex: 0 0 28px; width: 28px; height: 28px; padding: 0; border-radius: 6px; }
+  .qtc-balance {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    white-space: nowrap;
+    font-size: 12px;
+    color: var(--qtc-muted);
+    & + .qtc-balance { border-left: 1px solid var(--qtc-border); padding-left: 10px; }
+    strong { color: var(--qtc-text); font-size: 13px; }
+    .qtc-positive { color: var(--qtc-green); }
+  }
+  .qtc-ticket { padding: 10px 12px; }
+  .qtc-quotes { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(130px, 1fr) minmax(0, 1.4fr); align-items: center; gap: 10px; margin-bottom: 9px; }
+  .qtc-quote { min-width: 0; display: flex; justify-content: space-between; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid; border-radius: 8px; font-size: 13px; font-weight: 600; strong { font-size: 18px; font-weight: 600; } }
+  .qtc-quote-buy { color: var(--qtc-green); border-color: color-mix(in srgb, var(--qtc-green) 35%, transparent); background: color-mix(in srgb, var(--qtc-green) 7%, var(--qtc-bg)); }
+  .qtc-quote-sell { color: var(--qtc-red); border-color: color-mix(in srgb, var(--qtc-red) 35%, transparent); background: color-mix(in srgb, var(--qtc-red) 6%, var(--qtc-bg)); }
+  .qtc-order-type { display: flex; width: 100%; ::v-deep .ant-radio-button-wrapper { flex: 1; height: 34px; line-height: 32px; text-align: center; font-size: 13px; padding: 0 5px; } }
+  .qtc-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 9px; }
+  .qtc-field-column { min-width: 0; display: flex; flex-direction: column; gap: 8px; & + .qtc-field-column { border-left: 1px solid var(--qtc-border); padding-left: 14px; } }
+  .qtc-field { display: flex; flex-direction: column; min-width: 0; gap: 5px; margin: 0; color: var(--qtc-muted); font-size: 12px; font-weight: 400; > .ant-input-number, > .ant-select { width: 100%; } }
+  .qtc-settings { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; }
+  .qtc-notional-field { flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; > span { min-width: 0; } }
+  .qtc-notional { display: flex; align-items: center; min-height: 28px; padding: 0 8px; background: var(--qtc-muted-bg); color: var(--qtc-green); border-radius: 4px; font-size: 13px; font-weight: 500; }
+  .qtc-percentages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; button { height: 28px; padding: 0; border: 1px solid var(--qtc-input-border); border-radius: 4px; background: var(--qtc-bg); color: var(--qtc-text); cursor: pointer; &:hover:not(:disabled) { color: var(--primary-color); border-color: var(--primary-color); } &:disabled { opacity: .4; cursor: not-allowed; } } }
+  .qtc-protection { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; border-top: 1px solid var(--qtc-border); padding-top: 11px; margin-top: 9px; > div { display: flex; align-items: center; gap: 8px; min-width: 0; } .ant-checkbox-wrapper { flex: 0 0 auto; color: var(--qtc-text); font-size: 13px; } .ant-input-number { width: 100%; min-width: 0; } }
+  .qtc-submit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 9px; .ant-btn { height: 36px; border-radius: 8px; font-size: 14px; font-weight: 600; color: #fff; border: 0; box-shadow: none; } .qtc-buy { background: #40b90a; } .qtc-sell { background: #f51d35; } .ant-btn[disabled] { opacity: .48; color: #fff; cursor: not-allowed; } .ant-btn:not([disabled]):hover { filter: brightness(1.08); } }
+  .qtc-spot-price { margin-bottom: 9px; }
+  .qtc-spot-label { display: flex; align-items: center; justify-content: space-between; gap: 6px; ::v-deep .ant-radio-button-wrapper { font-size: 12px; padding: 0 8px; } }
+  .qtc-error { color: var(--qtc-red); padding: 6px 14px; font-size: 12px; }
+  .qtc-conflict { display: flex; align-items: flex-start; gap: 7px; padding: 7px 12px; color: #b86a00; background: color-mix(in srgb, #faad14 10%, var(--qtc-bg)); border-bottom: 1px solid color-mix(in srgb, #faad14 32%, var(--qtc-border)); font-size: 12px; line-height: 1.45; .anticon { margin-top: 2px; flex: 0 0 auto; } }
+
+  ::v-deep .ant-input-number, ::v-deep .ant-select-selection, .qtc-icon-button { background: var(--qtc-bg); color: var(--qtc-text); border-color: var(--qtc-input-border); }
+  ::v-deep .ant-input-number { height: 32px; border-radius: 5px; }
+  ::v-deep .ant-input-number-input { height: 30px; padding: 0 10px; font-size: 14px; color: var(--qtc-text); }
+  ::v-deep .ant-input-number-handler-wrap { opacity: 1; background: var(--qtc-bg); border-color: var(--qtc-input-border); }
+  ::v-deep .ant-input-number-handler { border-color: var(--qtc-input-border); }
+  ::v-deep .ant-input-number-handler-up-inner, ::v-deep .ant-input-number-handler-down-inner { color: var(--qtc-muted); }
+  ::v-deep .ant-input-number-disabled { background: var(--qtc-muted-bg); opacity: .65; }
+  ::v-deep .ant-select-selection--single { height: 32px; border-radius: 5px; }
+  ::v-deep .ant-select-selection__rendered { line-height: 30px; }
+  ::v-deep .ant-select-arrow { color: var(--qtc-muted); }
+  .qtc-account-row ::v-deep .ant-select-selection--single { height: 28px; }
+  .qtc-account-row ::v-deep .ant-select-selection__rendered { line-height: 26px; margin-left: 0; }
+  .qtc-account-row ::v-deep .ant-select-selection-selected-value { font-size: 12px; font-weight: 500; }
+  .qtc-settings ::v-deep .ant-select-selection-selected-value { font-size: 13px; }
+  ::v-deep .ant-radio-button-wrapper { color: var(--qtc-text); background: var(--qtc-bg); border-color: var(--qtc-input-border); }
+  ::v-deep .ant-radio-button-wrapper-checked { color: var(--primary-color); border-color: var(--primary-color); }
+  .qtc-order-type ::v-deep .ant-radio-button-wrapper-checked { color: #fff; background: var(--primary-color); }
+  ::v-deep .ant-checkbox-inner { background: var(--qtc-bg); border-color: var(--qtc-input-border); }
+  ::v-deep .ant-checkbox-checked .ant-checkbox-inner { background: var(--primary-color); border-color: var(--primary-color); }
+  .qt-embedded-split--cols { display: block; min-height: 0; overflow: visible; padding: 0; gap: 0; }
+  .qt-embedded-split--cols .qt-embedded-col-right { width: 100%; max-height: none; overflow: visible; padding: 0; margin: 0; border: 0; background: transparent; }
+  .qt-dock-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) 24px; gap: 0; min-height: 36px; overflow: hidden; padding: 0 14px; border-top: 1px solid var(--qtc-border); border-bottom: 1px solid var(--qtc-border); background: var(--qtc-bg); button { height: 36px; min-width: 0; padding: 0 4px; color: var(--qtc-muted); background: transparent; font-size: 13px; font-weight: 600; border: 0; border-radius: 0; cursor: pointer; &::after { display: none; content: none; } &.active { color: var(--primary-color); box-shadow: inset 0 -2px var(--primary-color); } span { font-size: 12px; background: var(--qtc-muted-bg); margin-left: 5px; padding: 1px 5px; border-radius: 12px; } } .qt-floating-activity-toggle { width: 30px; margin: 0; &.is-expanded { color: var(--primary-color); } } }
+  .qt-position-section, .qt-history-section { padding: 0 12px 10px; margin: 0; max-height: 280px; overflow: auto; background: var(--qtc-bg); border: 0; }
+  .qt-dock-tabs { padding: 0 12px; }
+  .qtc-entry-protection { border-top: 1px solid var(--qtc-border); padding-top: 7px; margin-top: 8px; color: var(--qtc-muted); summary { cursor: pointer; font-size: 12px; line-height: 22px; .anticon, span { margin-left: 6px; } } .qtc-protection { padding: 5px 0 0; margin: 0; border: 0; } }
+  .qt-position-empty { display: flex; flex-direction: row; justify-content: center; align-items: center; gap: 8px; min-height: 80px; padding: 12px; margin: 0; border: 0; background: transparent; color: var(--qtc-muted); .qt-empty-icon { font-size: 14px; margin: 0; } }
+
+  .qtc-table-scroll { overflow-x: auto; }
+  .qtc-positions { width: 100%; border-collapse: collapse; font-size: 12px; th { font-weight: 400; color: var(--qtc-muted); text-align: left; white-space: nowrap; } td, th { padding: 9px 6px; border-bottom: 1px solid var(--qtc-border); } td { white-space: nowrap; } td:first-child { font-weight: 600; } td:last-child, th:last-child { text-align: right; } .ant-tag { margin: 0; } }
+  .qtc-close { min-width: 60px; height: 28px; font-size: 12px; color: var(--primary-color); border-color: var(--primary-color); background: transparent; }
+  .qt-trade-list { min-width: 480px; }
+  .qtc-record-item { padding: 0; border: 0; border-bottom: 1px solid var(--qtc-border); background: transparent; border-radius: 0; }
+  .qtc-record-grid { display: grid; grid-template-columns: 76px 70px minmax(70px, 1fr) minmax(65px, .9fr) minmax(90px, 1.2fr) 24px; align-items: center; gap: 8px; padding: 8px 0; font-size: 12px; line-height: 1.5; > * { min-width: 0; overflow-wrap: anywhere; } > :nth-child(n+3):nth-child(-n+6) { text-align: right; } strong { font-weight: 500; } }
+  .qtc-record-head { position: sticky; top: 0; z-index: 1; background: var(--qtc-bg); border-bottom: 1px solid var(--qtc-border); color: var(--qtc-muted); font-size: 12px; white-space: nowrap; }
+  .qtc-record-row { min-height: 40px; color: var(--qtc-text); time { color: var(--qtc-muted); font-size: 12px; } .is-profit { color: var(--qtc-green); } .is-loss { color: var(--qtc-red); } }
+  .qtc-record-action { display: flex; flex-direction: column; gap: 2px; small { color: var(--qtc-muted); font-size: 12px; } }
+  .qt-trade-detail-toggle { display: flex; align-items: center; justify-content: center; width: 26px; height: 30px; padding: 0; background: transparent; border: 0; border-radius: 4px; color: var(--qtc-muted); cursor: pointer; &:hover { background: var(--qtc-muted-bg); color: var(--primary-color); } }
+  .qtc-leverage { position: relative; padding-bottom: 22px; .ant-input-number { width: 100%; } .ant-slider { position: absolute; bottom: 0; left: 4px; right: 4px; margin: 5px 2px; } ::v-deep .ant-slider-rail { background: var(--qtc-input-border); } }
+  .qtc-record-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 24px; padding: 0 0 12px; margin: 0; font-size: 12px; line-height: 1.6; > div { display: flex; align-items: baseline; gap: 12px; min-width: 0; } span { color: var(--qtc-muted); flex-shrink: 0; } strong { color: var(--qtc-text); font-size: 12px; font-weight: 400; overflow-wrap: anywhere; } .qt-trade-detail-wide { grid-column: ~"1 / -1"; } .qtc-record-context { padding-bottom: 4px; justify-content: space-between; strong { color: var(--qtc-muted); } } .qt-trade-detail-error strong { color: var(--qtc-red); } }
+  .qtc-record-details { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 12px; padding: 7px 10px; margin-bottom: 8px; background: var(--qtc-muted-bg); border-radius: 4px; > div { flex-wrap: wrap; gap: 2px 6px; } .qtc-record-context { padding: 0; } }
+  .qtc-position-actions { display: inline-flex; align-items: center; gap: 4px; }
+  .qtc-more { padding: 0; width: 26px; height: 28px; color: var(--qtc-muted); border-color: var(--qtc-input-border); background: transparent; }
+  .qtc-positions td:first-child, .qtc-positions th:first-child { padding-left: 0; }
+  .qtc-positions td:last-child, .qtc-positions th:last-child { padding-right: 0; }
+  .qtc-exit-editor { border-top: 1px solid var(--qtc-border); padding: 8px 0; font-size: 12px; small { display: block; margin-top: 6px; color: var(--qtc-muted); } }
+  .qtc-exit-editor-heading, .qtc-exit-editor-fields { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .qtc-exit-editor-heading strong { font-weight: 500; }
+  .qtc-exit-editor-fields .ant-input-number { flex: 1; width: auto; min-width: 80px; }
+  @media (max-width: 700px) {
+    .qtc-account-row { flex-wrap: wrap; }
+    .qtc-balance { font-size: 10px; strong { font-size: 12px; } }
+    .qtc-quotes { grid-template-columns: 1fr 110px 1fr; gap: 6px; }
+    .qtc-quote { padding: 0 8px; font-size: 12px; strong { font-size: 14px; } }
+    .qtc-order-type ::v-deep .ant-radio-button-wrapper { font-size: 12px; }
+  }
+  @media (max-width: 480px) {
+    .qtc-quotes { grid-template-columns: 1fr 1fr; }
+    .qtc-order-type { grid-row: 2; grid-column: ~"1 / -1"; }
+    .qtc-fields, .qtc-protection { grid-template-columns: 1fr; }
+    .qtc-field-column + .qtc-field-column { padding-left: 0; border-left: 0; }
+    .qtc-submit .ant-btn { font-size: 13px; }
+    .qt-trade-card-head { flex-wrap: wrap; }
+  }
+}
