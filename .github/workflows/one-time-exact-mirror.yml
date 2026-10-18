@@ -1,5 +1,5 @@
 name: One-time exact upstream mirror
-# Refresh trigger: 2026-10-18T15:05Z, force-add ignored upstream source files for exact mirror.
+# Refresh trigger: 2026-10-18T15:10Z, validate CI against fully mirrored upstream tree fd6144cbf944965d702b8c39984a65b5a6077a08.
 on:
   push:
     branches: [main]
