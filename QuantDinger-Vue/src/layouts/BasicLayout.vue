@@ -395,11 +395,9 @@ export default {
       if (val) {
         this.settings.primaryColor = val
         document.documentElement.style.setProperty('--primary-color', val)
-        if (process.env.NODE_ENV !== 'production' || process.env.VUE_APP_PREVIEW === 'true') {
-          updateTheme(val, this.isInitialThemeColorLoad)
-          if (this.isInitialThemeColorLoad) {
-            this.isInitialThemeColorLoad = false
-          }
+        updateTheme(val, this.isInitialThemeColorLoad)
+        if (this.isInitialThemeColorLoad) {
+          this.isInitialThemeColorLoad = false
         }
       }
     }, { immediate: true })

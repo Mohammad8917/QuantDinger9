@@ -13,7 +13,7 @@
         var accent = '#ff5a1f'
         try {
           var storedTheme = window.localStorage.getItem('nav_theme')
-          var storedAccent = window.localStorage.getItem('color')
+          var storedAccent = window.localStorage.getItem('qd-ui-primary-color') || window.localStorage.getItem('color')
           theme = storedTheme ? JSON.parse(storedTheme) : theme
           accent = storedAccent ? JSON.parse(storedAccent) : accent
         } catch (error) {}

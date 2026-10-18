@@ -74,54 +74,37 @@
           </div>
 
           <div v-if="isStrategyAsset && strategyContract" class="section strategy-contract-section">
-            <div class="section-heading-row">
-              <div>
-                <h3>{{ $t('community.strategyContract') }}</h3>
-                <p>{{ $t('community.strategyContractHint') }}</p>
-              </div>
-              <div class="section-heading-actions">
-                <span class="source-controlled-badge">
-                  <a-icon type="safety-certificate" />
-                  {{ $t('community.sourceControlled') }}
-                </span>
-                <a-tag :color="bindingMode === 'parameterized' ? 'green' : bindingMode === 'fixed' ? 'orange' : 'blue'">
+            <div class="section-heading-row strategy-contract-heading">
+              <h3>{{ $t('community.strategyContract') }}</h3>
+              <div v-if="bindingMode !== 'unknown'" class="section-heading-actions">
+                <a-tag :color="bindingMode === 'parameterized' ? 'green' : 'orange'">
                   {{ $t(`community.binding.${bindingMode}`) }}
                 </a-tag>
               </div>
             </div>
 
-            <div class="contract-grid">
-              <div v-for="item in strategyContractItems" :key="item.key" class="contract-card">
-                <div class="contract-card__icon"><a-icon :type="item.icon" /></div>
-                <div class="contract-card__body">
-                  <span>{{ item.label }}</span>
-                  <strong>{{ item.value }}</strong>
-                  <small v-if="item.hint">{{ item.hint }}</small>
-                </div>
+            <div v-if="strategyContractItems.length" class="strategy-contract-summary">
+              <div v-for="item in strategyContractItems" :key="item.key" class="strategy-contract-summary__item">
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
               </div>
             </div>
 
-            <div class="contract-logic-grid">
-              <div class="contract-logic-card">
-                <span class="contract-logic-card__label"><a-icon type="branches" />{{ $t('community.contractSignals') }}</span>
+            <div v-if="hasStrategyContractMetadata" class="strategy-contract-metadata">
+              <div v-if="strategyDependencies.length" class="strategy-contract-metadata__item">
+                <span>{{ $t('community.contractSignals') }}</span>
                 <div class="contract-tags">
                   <a-tag v-for="name in strategyDependencies" :key="`dep-${name}`">{{ name }}</a-tag>
-                  <span v-if="!strategyDependencies.length" class="contract-empty contract-empty--meaningful">
-                    <a-icon type="check-circle" />{{ $t('community.noExternalSignalDependencies') }}
-                  </span>
                 </div>
               </div>
-              <div class="contract-logic-card">
-                <span class="contract-logic-card__label"><a-icon type="database" />{{ $t('community.contractData') }}</span>
+              <div v-if="(strategyContract.data_fields || []).length" class="strategy-contract-metadata__item">
+                <span>{{ $t('community.contractData') }}</span>
                 <div class="contract-tags">
                   <a-tag v-for="name in (strategyContract.data_fields || [])" :key="`field-${name}`">{{ name.toUpperCase() }}</a-tag>
-                  <span v-if="!(strategyContract.data_fields || []).length" class="contract-empty contract-empty--meaningful">
-                    <a-icon type="info-circle" />{{ $t('community.noDeclaredMarketData') }}
-                  </span>
                 </div>
               </div>
-              <div class="contract-logic-card contract-logic-card--warmup">
-                <span class="contract-logic-card__label"><a-icon type="hourglass" />{{ $t('community.contractWarmup') }}</span>
+              <div v-if="Number(strategyContract.warmup_bars || 0) > 0" class="strategy-contract-metadata__item strategy-contract-metadata__item--warmup">
+                <span>{{ $t('community.contractWarmup') }}</span>
                 <strong>{{ $t('community.contractWarmupBars', { count: strategyContract.warmup_bars || 0 }) }}</strong>
               </div>
             </div>
@@ -163,10 +146,7 @@
 
           <div class="section strategy-performance-section" v-if="isStrategyAsset">
             <div class="section-heading-row evidence-heading">
-              <div>
-                <h3>{{ $t('community.backtestEvidence') }}</h3>
-                <p>{{ $t('community.backtestEvidenceHint') }}</p>
-              </div>
+              <h3>{{ $t('community.backtestEvidence') }}</h3>
             </div>
             <div v-if="performance && Number(performance.sample_size || 0) > 0">
               <div v-if="performance.best_run_meta" class="evidence-context">
@@ -500,64 +480,57 @@ export default {
       if (!this.strategyContract) return []
       const contract = this.strategyContract
       const instruments = contract.instruments || []
-      const instrumentValue = instruments.length
-        ? instruments.map(item => item.symbol || item.instrument_id).filter(Boolean).join(' · ')
-        : (contract.universe_reference || this.$t('community.dynamicUniverse'))
-      const markets = [...new Set(instruments.map(item => item.market).filter(Boolean))]
+      const instrumentValue = instruments.map(item => item.symbol || item.instrument_id).filter(Boolean).join(' · ') || contract.universe_reference
       const marketTypes = [...new Set(instruments.map(item => item.market_type).filter(Boolean))]
-      const strategyTypeKey = contract.strategy_type === 'portfolio' ? 'portfolio' : 'cta'
-      return [
-        {
+      const executionFrequency = contract.execution_frequency || contract.primary_frequency
+      const cadence = [this.formatExecutionMode(contract.execution_mode), executionFrequency].filter(value => value && value !== '—').join(' · ')
+      const confirmationFrequencies = Array.isArray(contract.confirmation_frequencies)
+        ? contract.confirmation_frequencies.filter(Boolean)
+        : []
+      const items = []
+
+      if (instrumentValue) {
+        items.push({
           key: 'instrument',
-          icon: 'global',
           label: this.$t('community.contractInstrument'),
-          value: instrumentValue,
-          hint: markets.join(' · ') || this.$t(`community.strategyType.${strategyTypeKey}`)
-        },
-        {
+          value: instrumentValue
+        })
+      }
+      if (marketTypes.length) {
+        items.push({
           key: 'marketType',
-          icon: 'bank',
           label: this.$t('community.contractMarketType'),
-          value: marketTypes.length
-            ? marketTypes.map(value => this.formatMarketType(value)).join(' · ')
-            : this.$t('community.marketTypeUnspecified'),
-          hint: this.$t(`community.strategyType.${strategyTypeKey}`)
-        },
-        {
-          key: 'executionMode',
-          icon: 'clock-circle',
-          label: this.$t('community.executionMode'),
-          value: this.formatExecutionMode(contract.execution_mode),
-          hint: this.$t('community.marketplaceMetadataOnly')
-        },
-        {
-          key: 'executionFrequency',
-          icon: 'play-circle',
+          value: marketTypes.map(value => this.formatMarketType(value)).join(' · ')
+        })
+      }
+      if (cadence) {
+        items.push({
+          key: 'cadence',
           label: this.$t('community.executionFrequency'),
-          value: contract.execution_frequency || contract.primary_frequency || '—',
-          hint: this.$t('community.sourceControlled')
-        },
-        {
+          value: cadence
+        })
+      }
+      if (confirmationFrequencies.length) {
+        items.push({
           key: 'confirmationFrequencies',
-          icon: 'check-circle',
           label: this.$t('community.confirmationFrequencies'),
-          value: Array.isArray(contract.confirmation_frequencies) && contract.confirmation_frequencies.length
-            ? contract.confirmation_frequencies.join(' · ')
-            : this.$t('community.noConfirmationFrequency'),
-          hint: this.$t('community.sourceControlled')
-        },
-        {
+          value: confirmationFrequencies.join(' · ')
+        })
+      }
+      items.push({
           key: 'leverage',
-          icon: 'dashboard',
           label: this.$t('community.contractLeverage'),
           value: contract.leverage_allowed
             ? this.$t('community.contractMaxLeverage', { value: this.formatLeverage(contract.max_leverage) })
-            : this.$t('community.contractNoLeverage'),
-          hint: contract.leverage_allowed
-            ? this.$t('community.leverageDeclared')
-            : this.$t('community.spotRiskBoundary')
-        }
-      ]
+            : this.$t('community.contractNoLeverage')
+      })
+      return items
+    },
+    hasStrategyContractMetadata () {
+      if (!this.strategyContract) return false
+      return this.strategyDependencies.length > 0 ||
+        (this.strategyContract.data_fields || []).length > 0 ||
+        Number(this.strategyContract.warmup_bars || 0) > 0
     },
     purchaseActionLabel () {
       const isFree = this.detail && (this.detail.pricing_type === 'free' || this.detail.price <= 0)
@@ -1510,61 +1483,34 @@ export default {
     }
 
     .strategy-contract-section {
-      padding: 16px;
-      border: 1px solid rgba(24, 144, 255, 0.16);
-      border-radius: 10px;
-      background: linear-gradient(145deg, rgba(24, 144, 255, 0.055), rgba(82, 196, 26, 0.025));
+      padding-top: 2px;
     }
 
-    .source-controlled-badge {
-      flex: 0 0 auto;
-      display: inline-flex;
+    .strategy-contract-heading {
       align-items: center;
-      gap: 6px;
-      padding: 5px 9px;
-      border-radius: 999px;
-      background: rgba(82, 196, 26, 0.1);
-      color: #389e0d;
-      font-size: 12px;
-      font-weight: 600;
-    }
+      margin-bottom: 4px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 
-    .contract-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-    }
-
-    .contract-card {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      min-width: 0;
-      padding: 12px;
-      border: 1px solid rgba(0, 0, 0, 0.06);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.78);
-
-      &__icon {
-        flex: 0 0 30px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 30px;
-        height: 30px;
-        border-radius: 7px;
-        background: rgba(24, 144, 255, 0.1);
-        color: var(--primary-color, #1890ff);
+      h3 {
+        margin: 0;
       }
+    }
 
-      &__body {
+    .strategy-contract-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      column-gap: 22px;
+      row-gap: 12px;
+      padding: 14px 0 4px;
+
+      &__item {
         min-width: 0;
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: 3px;
 
-        span,
-        small {
+        span {
           color: rgba(0, 0, 0, 0.45);
           font-size: 11px;
           line-height: 1.4;
@@ -1572,44 +1518,38 @@ export default {
 
         strong {
           overflow: hidden;
-          color: rgba(0, 0, 0, 0.85);
-          font-size: 14px;
-          line-height: 1.45;
+          color: rgba(0, 0, 0, 0.82);
+          font-size: 13px;
+          line-height: 1.5;
           text-overflow: ellipsis;
         }
       }
     }
 
-    .contract-logic-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) 140px;
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    .contract-logic-card {
+    .strategy-contract-metadata {
       display: flex;
-      min-height: 70px;
-      flex-direction: column;
-      justify-content: center;
-      min-width: 0;
-      padding: 11px 12px;
-      border: 1px solid rgba(0, 0, 0, 0.055);
-      border-radius: 8px;
-      background: rgba(0, 0, 0, 0.025);
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 22px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed rgba(0, 0, 0, 0.08);
 
-      &__label {
-        display: inline-flex;
+      &__item {
+        min-width: 0;
+        display: flex;
         align-items: center;
-        gap: 5px;
-        margin-bottom: 7px;
-        color: rgba(0, 0, 0, 0.48);
-        font-size: 11px;
-      }
+        gap: 8px;
 
-      &--warmup strong {
-        color: rgba(0, 0, 0, 0.82);
-        font-size: 14px;
+        > span {
+          color: rgba(0, 0, 0, 0.45);
+          font-size: 11px;
+        }
+
+        > strong {
+          color: rgba(0, 0, 0, 0.85);
+          font-size: 12px;
+        }
       }
     }
 
@@ -1624,22 +1564,6 @@ export default {
         background: rgba(24, 144, 255, 0.09);
         color: #096dd9;
         font-size: 11px;
-      }
-    }
-
-    .contract-empty {
-      color: rgba(0, 0, 0, 0.3);
-
-      &--meaningful {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        color: rgba(0, 0, 0, 0.55);
-        font-size: 11px;
-
-        .anticon {
-          color: #52c41a;
-        }
       }
     }
 
@@ -2098,49 +2022,33 @@ export default {
     }
 
     .strategy-contract-section {
-      border-color: color-mix(in srgb, var(--primary-color, #1890ff) 24%, #303030);
-      background: #202020;
+      background: transparent;
     }
 
-    .source-controlled-badge {
-      background: color-mix(in srgb, var(--primary-color, #1890ff) 14%, transparent);
-      color: var(--primary-color-hover, #69c0ff);
+    .strategy-contract-heading {
+      border-color: #303030;
     }
 
-    .contract-card,
     .parameter-item {
       border-color: #383838;
       background: #292929;
     }
 
-    .contract-card__body {
-      span,
-      small { color: rgba(255, 255, 255, 0.45); }
+    .strategy-contract-summary__item {
+      span { color: rgba(255, 255, 255, 0.45); }
       strong { color: rgba(255, 255, 255, 0.88); }
     }
 
-    .contract-card__icon {
-      background: color-mix(in srgb, var(--primary-color, #1890ff) 14%, transparent);
-      color: var(--primary-color-hover, #69c0ff);
-    }
-
-    .contract-logic-card,
     .evidence-context {
       border-color: #363636;
       background: #262626;
     }
 
-    .contract-logic-card {
-      &__label { color: rgba(255, 255, 255, 0.48); }
-      &--warmup strong { color: rgba(255, 255, 255, 0.86); }
-    }
+    .strategy-contract-metadata {
+      border-color: #303030;
 
-    .contract-empty--meaningful {
-      color: rgba(255, 255, 255, 0.62);
-
-      .anticon {
-        color: var(--primary-color-hover, #69c0ff);
-      }
+      &__item > span { color: rgba(255, 255, 255, 0.45); }
+      &__item > strong { color: rgba(255, 255, 255, 0.86); }
     }
 
     .contract-tags .ant-tag {
@@ -2360,14 +2268,16 @@ export default {
     }
 
     .detail-body {
-      .contract-grid,
       .performance-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
-      .contract-logic-grid,
       .parameter-grid {
         grid-template-columns: 1fr;
+      }
+
+      .strategy-contract-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .evidence-context {

@@ -28,11 +28,15 @@ test('strategy parameters expose defaults and ranges with progressive disclosure
   assert.match(source, /showAllParameters = !showAllParameters/)
 })
 
-test('strategy contract uses an explicit empty dependency state and balanced layout', () => {
-  assert.match(source, /community\.noExternalSignalDependencies/)
-  assert.match(source, /community\.noDeclaredMarketData/)
-  assert.match(source, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/)
-  assert.match(source, /section-heading-actions/)
+test('strategy contract keeps only declared facts in a flat summary', () => {
+  assert.match(source, /strategy-contract-summary/)
+  assert.match(source, /hasStrategyContractMetadata/)
+  assert.doesNotMatch(source, /community\.noExternalSignalDependencies/)
+  assert.doesNotMatch(source, /community\.noDeclaredMarketData/)
+  assert.doesNotMatch(source, /class="contract-card"/)
+  assert.doesNotMatch(source, /class="contract-logic-card/)
+  assert.doesNotMatch(source, /community\.strategyContractHint/)
+  assert.doesNotMatch(source, /community\.backtestEvidenceHint/)
 })
 
 test('backtest sample and live evidence are contextual signals, not score tiles', () => {

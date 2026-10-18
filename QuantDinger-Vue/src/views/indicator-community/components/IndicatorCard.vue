@@ -79,27 +79,11 @@
           <div class="kpi-value kpi-dd">{{ formatPercent(indicator.max_drawdown) }}</div>
         </div>
       </div>
-      <div v-if="isStrategyAsset" class="strategy-applicability">
-        <div class="strategy-applicability__row">
-          <span>{{ $t('community.boundTo') }}</span>
-          <strong>{{ boundInstrumentLabel }}</strong>
-        </div>
-        <div v-if="testedInstrumentLabel" class="strategy-applicability__row strategy-applicability__row--muted">
-          <span>{{ $t('community.testedOn') }}</span>
-          <strong>{{ testedInstrumentLabel }}</strong>
-        </div>
-        <div class="strategy-applicability__row strategy-applicability__row--muted">
-          <span>{{ $t('community.executionMode') }}</span>
-          <strong>{{ executionModeLabel }}</strong>
-        </div>
-        <div class="strategy-applicability__row strategy-applicability__row--muted">
-          <span>{{ $t('community.executionFrequency') }}</span>
-          <strong>{{ executionFrequencyLabel }}</strong>
-        </div>
-        <div v-if="confirmationFrequencyLabel" class="strategy-applicability__row strategy-applicability__row--muted">
-          <span>{{ $t('community.confirmationFrequencies') }}</span>
-          <strong>{{ confirmationFrequencyLabel }}</strong>
-        </div>
+      <div v-if="isStrategyAsset && strategyCardFacts.length" class="strategy-card-facts">
+        <span v-for="fact in strategyCardFacts" :key="fact.key" :title="fact.label">
+          <a-icon :type="fact.icon" />
+          {{ fact.value }}
+        </span>
       </div>
       <div v-else class="card-tags card-tags--indicator">
         <a-tag class="tag-visibility"><a-icon :type="codeHidden ? 'lock' : 'unlock'" /> {{ visibilityLabel }}</a-tag>
@@ -186,6 +170,36 @@ export default {
       const values = this.indicator.tested_instruments || this.indicator.applicable_symbols || []
       if (!values.length) return ''
       return values.slice(0, 2).join(' · ') + (values.length > 2 ? ` +${values.length - 2}` : '')
+    },
+    strategyCardFacts () {
+      const facts = []
+      const contract = this.strategyContract
+      const boundValues = contract.bound_instruments || []
+      const declaredInstruments = (contract.instruments || [])
+        .map(item => item.symbol || item.instrument_id)
+        .filter(Boolean)
+      const instrument = contract.universe_reference ||
+        (boundValues.length ? boundValues.slice(0, 2).join(' · ') + (boundValues.length > 2 ? ` +${boundValues.length - 2}` : '') : '') ||
+        (declaredInstruments.length ? declaredInstruments.slice(0, 2).join(' · ') + (declaredInstruments.length > 2 ? ` +${declaredInstruments.length - 2}` : '') : '') ||
+        this.testedInstrumentLabel
+      if (instrument) {
+        facts.push({ key: 'instrument', icon: 'global', label: this.$t('community.boundTo'), value: instrument })
+      }
+
+      const frequency = this.executionFrequencyLabel === '—' ? '' : this.executionFrequencyLabel
+      const cadence = [this.executionModeLabel, frequency].filter(Boolean).join(' · ')
+      if (cadence) {
+        facts.push({ key: 'cadence', icon: 'clock-circle', label: this.$t('community.executionFrequency'), value: cadence })
+      }
+      if (this.confirmationFrequencyLabel) {
+        facts.push({
+          key: 'confirmation',
+          icon: 'check-circle',
+          label: this.$t('community.confirmationFrequencies'),
+          value: this.confirmationFrequencyLabel
+        })
+      }
+      return facts.slice(0, 3)
     },
     previewImage () {
       return this.indicator.preview_image && !this.imageError
@@ -736,31 +750,29 @@ export default {
       }
     }
 
-    .strategy-applicability {
-      margin: 2px 0 14px;
-      padding: 7px 8px;
-      border: 1px solid color-mix(in srgb, var(--primary-color, #1890ff) 20%, transparent);
-      border-radius: 6px;
-      background: color-mix(in srgb, var(--primary-color, #1890ff) 5%, transparent);
+    .strategy-card-facts {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      min-height: 20px;
+      margin: 2px 0 12px;
+      color: rgba(0, 0, 0, 0.48);
+      font-size: 11px;
 
-      &__row {
-        display: flex;
+      span {
+        display: inline-flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        font-size: 10px;
+        min-width: 0;
+        gap: 5px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
 
-        span { color: rgba(0, 0, 0, 0.42); }
-        strong {
-          min-width: 0;
-          overflow: hidden;
-          color: rgba(0, 0, 0, 0.72);
-          font-size: 10px;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        &--muted { margin-top: 4px; }
+      .anticon {
+        flex: 0 0 auto;
+        color: var(--primary-color, #1890ff);
       }
     }
 
@@ -919,14 +931,11 @@ export default {
       }
     }
 
-    .strategy-applicability {
-      border-color: color-mix(in srgb, var(--primary-color, #1890ff) 28%, #303030);
-      background: #242424;
-      box-shadow: inset 2px 0 0 var(--primary-color, #1890ff);
+    .strategy-card-facts {
+      color: rgba(255, 255, 255, 0.58);
 
-      &__row {
-        span { color: rgba(255, 255, 255, 0.6); }
-        strong { color: rgba(255, 255, 255, 0.86); }
+      .anticon {
+        color: var(--primary-color-hover, #69c0ff);
       }
     }
 

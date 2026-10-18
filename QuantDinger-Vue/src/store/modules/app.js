@@ -15,6 +15,9 @@ import {
   APP_LANGUAGE
 } from '@/store/mutation-types'
 import { loadLanguageAsync } from '@/locales'
+import { getStoredThemeColor, persistThemeColor } from '@/utils/themePreference'
+
+const DEFAULT_PRIMARY_COLOR = '#52C41A'
 
 const app = {
   state: {
@@ -26,7 +29,7 @@ const app = {
     fixedHeader: false,
     fixedSidebar: false,
     autoHideHeader: false,
-    color: storage.get(TOGGLE_COLOR, '#52C41A'), // 从 localStorage 读取主题色，默认 '#52C41A'
+    color: getStoredThemeColor(DEFAULT_PRIMARY_COLOR),
     weak: false,
     multiTab: true,
     lang: 'en-US',
@@ -65,8 +68,7 @@ const app = {
       storage.set(TOGGLE_HIDE_HEADER, type)
     },
     [TOGGLE_COLOR]: (state, color) => {
-      state.color = color
-      storage.set(TOGGLE_COLOR, color)
+      state.color = persistThemeColor(color, DEFAULT_PRIMARY_COLOR)
     },
     [TOGGLE_WEAK]: (state, mode) => {
       state.weak = mode

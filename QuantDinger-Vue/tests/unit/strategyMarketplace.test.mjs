@@ -82,10 +82,10 @@ test('dark marketplace strategy accents follow the selected theme color', () => 
   const spotlight = read('src/views/indicator-community/components/MarketplaceSpotlight.vue')
   const comments = read('src/views/indicator-community/components/CommentList.vue')
 
-  assert.match(detail, /\.strategy-contract-section \{[\s\S]*?var\(--primary-color, #1890ff\)/)
-  assert.match(detail, /\.contract-card__icon \{[\s\S]*?var\(--primary-color-hover, #69c0ff\)/)
+  assert.match(detail, /\.parameter-count \{[\s\S]*?var\(--primary-color, #1890ff\)/)
+  assert.match(detail, /\.contract-tags \.ant-tag \{[\s\S]*?rgba\(255, 255, 255, 0\.72\)/)
   assert.match(detail, /\.detail-container\.is-dark[\s\S]*?\.strategy-api-badge \{[\s\S]*?var\(--primary-color-hover, #69c0ff\)/)
-  assert.match(card, /\.strategy-applicability \{[\s\S]*?background: #242424;[\s\S]*?box-shadow: inset 2px 0 0 var\(--primary-color, #1890ff\);/)
+  assert.match(card, /\.strategy-card-facts \{[\s\S]*?var\(--primary-color-hover, #69c0ff\)/)
   assert.match(spotlight, /\.marketplace-feature--strategy \.marketplace-feature__shade \{[\s\S]*?var\(--primary-color, #1890ff\)/)
   assert.match(comments, /class="my-comment-hint__icon"/)
   assert.doesNotMatch(comments, /two-tone-color="#52c41a"/)
@@ -95,9 +95,11 @@ test('strategy marketplace separates author metadata from performance metrics', 
   const card = read('src/views/indicator-community/components/IndicatorCard.vue')
   const spotlight = read('src/views/indicator-community/components/MarketplaceSpotlight.vue')
 
-  assert.match(card, /\.strategy-applicability \{\s*margin: 2px 0 14px;/)
+  assert.match(card, /\.strategy-card-facts \{[\s\S]*?margin: 2px 0 12px;/)
+  assert.doesNotMatch(card, /\.strategy-card-facts \{[^}]*border:/)
   assert.match(spotlight, /\.marketplace-feature__footer \{\s*padding-top: 12px;/)
-  assert.match(spotlight, /\.marketplace-hot__item--strategy \.marketplace-hot__meta \{\s*margin-top: 10px;\s*padding-top: 8px;/)
+  assert.match(spotlight, /\.marketplace-hot__item--strategy \.marketplace-hot__meta \{\s*margin-top: 12px;/)
+  assert.doesNotMatch(spotlight, /\.marketplace-hot__item--strategy \.marketplace-hot__meta \{[^}]*border-top:/)
 })
 
 test('desktop strategy cards separate execution and confirmation cadence', () => {

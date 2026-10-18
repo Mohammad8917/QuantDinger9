@@ -165,7 +165,7 @@
 <script>
 import SettingItem from './SettingItem'
 import config from '@/config/defaultSettings'
-import { updateTheme, updateColorWeak, getColorList } from './settingConfig'
+import { updateColorWeak, getColorList } from './settingConfig'
 import { baseMixin } from '@/store/app-mixin'
 
 export default {
@@ -226,10 +226,6 @@ export default {
 
   },
   mounted () {
-    // Apply the saved theme color without showing the loading message.
-    document.documentElement.style.setProperty('--primary-color', this.currentPrimaryColor)
-    updateTheme(this.currentPrimaryColor, true)
-    updateTheme(this.currentPrimaryColor, true)
     if (this.currentColorWeak !== config.colorWeak) {
       updateColorWeak(this.currentColorWeak)
     }
@@ -312,8 +308,6 @@ export default {
     changeColor (color) {
       if (this.currentPrimaryColor !== color) {
         this.$emit('change', { type: 'primaryColor', value: color })
-        document.documentElement.style.setProperty('--primary-color', color)
-        updateTheme(color)
       }
     },
     handleFixedHeader (fixed) {

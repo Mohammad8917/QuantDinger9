@@ -11,20 +11,19 @@ import {
 } from '@/store/mutation-types'
 import { printANSI } from '@/utils/screenLog'
 import defaultSettings from '@/config/defaultSettings'
+import { getStoredThemeColor } from '@/utils/themePreference'
 
 export default function Initializer () {
   printANSI() // 请自行移除该行.  please remove this line
 
-  const legacyDefaultColor = '#13C2C2'
   const savedLayout = storage.get(TOGGLE_LAYOUT, defaultSettings.layout)
   const nextLayout = defaultSettings.layout === 'topmenu' && savedLayout === 'sidemenu'
     ? defaultSettings.layout
     : savedLayout
   const savedTheme = storage.get(TOGGLE_NAV_THEME)
-  const savedColor = storage.get(TOGGLE_COLOR)
   const validThemes = ['light', 'dark', 'realdark']
   const nextTheme = validThemes.includes(savedTheme) ? savedTheme : defaultSettings.navTheme
-  const nextColor = !savedColor || String(savedColor).toUpperCase() === legacyDefaultColor ? defaultSettings.primaryColor : savedColor
+  const nextColor = getStoredThemeColor(defaultSettings.primaryColor)
   store.commit(TOGGLE_LAYOUT, nextLayout)
   store.commit(TOGGLE_FIXED_HEADER, storage.get(TOGGLE_FIXED_HEADER, defaultSettings.fixedHeader))
   store.commit(TOGGLE_FIXED_SIDEBAR, storage.get(TOGGLE_FIXED_SIDEBAR, defaultSettings.fixSiderbar))

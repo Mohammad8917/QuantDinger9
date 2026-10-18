@@ -681,9 +681,7 @@ export default {
 }
 
 .marketplace-hot__item--strategy .marketplace-hot__meta {
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  margin-top: 12px;
 }
 
 .marketplace-badge {
@@ -848,8 +846,7 @@ export default {
     color: rgba(255, 255, 255, 0.48);
   }
 
-  .marketplace-feature--strategy .marketplace-feature__footer,
-  .marketplace-hot__item--strategy .marketplace-hot__meta {
+  .marketplace-feature--strategy .marketplace-feature__footer {
     border-color: color-mix(in srgb, var(--primary-color, #1890ff) 24%, #303030);
   }
 
