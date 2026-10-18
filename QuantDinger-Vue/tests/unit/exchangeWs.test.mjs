@@ -17,7 +17,6 @@ function captureSubscription (exchangeId, symbol, interval, context) {
   return messages[0]
 }
 
-
 test('Gate spot candles use base volume instead of quote turnover', () => {
   const bar = parseGateSpotBar({
     channel: 'spot.candlesticks',
@@ -40,7 +39,6 @@ test('Gate spot candles use base volume instead of quote turnover', () => {
   assert.equal(bar.isClosed, false)
 })
 
-
 test('Gate spot candles read the explicit window-close flag', () => {
   const bar = parseGateSpotBar({
     channel: 'spot.candlesticks',
@@ -61,7 +59,6 @@ test('Gate spot candles read the explicit window-close flag', () => {
   assert.equal(bar.isClosed, true)
 })
 
-
 test('Gate spot candles fail safe when base volume is absent', () => {
   const bar = parseGateSpotBar({
     channel: 'spot.candlesticks',
@@ -80,7 +77,6 @@ test('Gate spot candles fail safe when base volume is absent', () => {
   assert.equal(bar.volume, 0)
   assert.equal(bar.isClosed, false)
 })
-
 
 test('Gate futures candles accept the exchange array notification shape', () => {
   const bar = parseGateSpotBar({
@@ -102,7 +98,6 @@ test('Gate futures candles accept the exchange array notification shape', () => 
   assert.equal(bar.isClosed, true)
 })
 
-
 test('all six exchanges expose venue-scoped spot and swap endpoints', () => {
   const spot = { marketType: 'spot', instrumentId: '' }
   const swap = { marketType: 'swap', instrumentId: '' }
@@ -116,7 +111,6 @@ test('all six exchanges expose venue-scoped spot and swap endpoints', () => {
   assert.equal(EXCHANGE_WS.htx.buildUrl('BTC/USDT', '1min', spot), 'wss://api.huobi.pro/ws')
   assert.equal(EXCHANGE_WS.htx.buildUrl('BTC/USDT', '1min', swap), 'wss://api.hbdm.com/linear-swap-ws')
 })
-
 
 test('subscriptions retain exchange, product type, and native instrument identity', () => {
   const okx = captureSubscription('okx', 'BTC/USDT', '1m', {
@@ -139,6 +133,12 @@ test('subscriptions retain exchange, product type, and native instrument identit
   assert.equal(gate.channel, 'futures.candlesticks')
   assert.deepEqual(gate.payload, ['1m', 'BTC_USDT'])
 
+  const gateCompact = captureSubscription('gate', 'BTC/USDT', '1m', {
+    marketType: 'spot',
+    instrumentId: 'BTCUSDT'
+  })
+  assert.deepEqual(gateCompact.payload, ['1m', 'BTC_USDT'])
+
   const htx = captureSubscription('htx', 'BTC/USDT', '1min', {
     marketType: 'swap',
     instrumentId: 'BTC-USDT'
@@ -151,7 +151,6 @@ test('subscriptions retain exchange, product type, and native instrument identit
   })
   assert.equal(htxSpot.sub, 'market.btcusdt.kline.1min')
 })
-
 
 test('OKX uses the explicit confirm field instead of treating every update as closed', () => {
   const openBar = EXCHANGE_WS.okx.parseBar({
@@ -167,7 +166,6 @@ test('OKX uses the explicit confirm field instead of treating every update as cl
   assert.equal(closedBar.isClosed, true)
 })
 
-
 test('Bitget parses live candles without falsely closing the current interval', () => {
   const now = Date.now()
   const bar = EXCHANGE_WS.bitget.parseBar({
@@ -180,7 +178,6 @@ test('Bitget parses live candles without falsely closing the current interval', 
   assert.equal(bar.isClosed, false)
 })
 
-
 test('HTX candles and aliases are supported', () => {
   assert.equal(resolveExchangeId('huobi'), 'htx')
   const bar = EXCHANGE_WS.htx.parseBar({
@@ -192,7 +189,6 @@ test('HTX candles and aliases are supported', () => {
   assert.equal(bar.volume, 12)
 })
 
-
 test('HTX gzip WebSocket payloads are decoded before parsing', async () => {
   const payload = JSON.stringify({ ping: 1784505600000 })
   const compressed = gzipSync(payload)
@@ -201,7 +197,6 @@ test('HTX gzip WebSocket payloads are decoded before parsing', async () => {
 
   assert.equal(await client._decodeMessage(buffer), payload)
 })
-
 
 test('unsupported native intervals fail closed so the chart keeps same-venue REST polling', () => {
   assert.equal(getExchangeInterval('gate', '3m'), null)
@@ -220,4 +215,31 @@ test('unsupported native intervals fail closed so the chart keeps same-venue RES
   assert.equal(connected, false)
   assert.equal(errors, 1)
   assert.equal(client.currentExchange(), 'gate')
+})
+
+test('rejected subscriptions fall back immediately instead of waiting for the data timeout', async () => {
+  let errors = 0
+  let closed = 0
+  const client = new ExchangeKlineWs()
+  client._closed = false
+  client._exchangeId = 'gate'
+  client._exchangeConf = EXCHANGE_WS.gate
+  client._onError = () => { errors += 1 }
+  client._ws = {
+    onclose: () => {},
+    close () { closed += 1 }
+  }
+
+  await client._handleMessage({
+    data: JSON.stringify({
+      channel: 'spot.candlesticks',
+      event: 'subscribe',
+      error: { code: 2, message: 'unknown currency pair' },
+      result: { status: 'fail' }
+    })
+  })
+
+  assert.equal(closed, 1)
+  assert.equal(errors, 1)
+  assert.equal(client._closed, true)
 })

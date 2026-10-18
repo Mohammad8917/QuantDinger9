@@ -4070,7 +4070,7 @@ const locale = {
   "profile.exchange.whitelistIpLabel": "IP ที่อนุญาตพิเศษสำหรับ API (ขาออกของเซิร์ฟเวอร์)",
   "profile.exchange.whitelistIpRefresh": "รีเฟรช",
   "profile.exchange.whitelistIpv4": "IPv4",
-  "profile.exchange.whitelistIpv6": " แบบ IPv6",
+  "profile.exchange.whitelistIpv6": "IPv6",
   "profile.lastLogin": "เข้าสู่ระบบครั้งล่าสุด",
   "profile.loginLogs.device": "อุปกรณ์",
   "profile.loginLogs.flags": "เตือน",

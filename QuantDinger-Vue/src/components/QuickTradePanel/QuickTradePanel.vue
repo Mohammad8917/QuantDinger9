@@ -5,8 +5,76 @@
       v-bind="containerProps"
       @close="handleClose"
       class="quick-trade-shell"
-      :class="[embedded ? 'quick-trade-embedded' : 'quick-trade-drawer', { 'theme-dark': isDark, 'qt-embedded-ide': embedded && embeddedIde, 'qt-embedded-dock': embedded && embeddedDock, 'qt-embedded-side-dock': embedded && embeddedDock && sideDock, 'qt-floating-console': floatingConsole, 'qt-floating-activity-open': floatingActivityExpanded }]"
+      :class="[embedded ? 'quick-trade-embedded' : 'quick-trade-drawer', { 'theme-dark': isDark, 'qt-embedded-ide': embedded && embeddedIde && !floatingConsole, 'qt-embedded-dock': embedded && embeddedDock && !floatingConsole, 'qt-embedded-side-dock': embedded && embeddedDock && sideDock && !floatingConsole, 'qt-console': floatingConsole, 'qt-floating-activity-open': floatingActivityExpanded }]"
     >
+      <slot v-if="floatingConsole" name="console-header" :trade-mode="tradeMode" :select-trade-mode="selectTradeMode" :connected="Boolean(selectedCredentialId)" />
+      <div v-show="!floatingConsole || !consoleMinimized" :class="{ 'qt-console-content': floatingConsole }">
+      <template v-if="floatingConsole">
+        <div class="qtc-account-row">
+          <a-select v-model="selectedCredentialId" :placeholder="accountPlaceholder" :loading="credLoading" :get-popup-container="qtSelectPopupContainer" :dropdown-class-name="qtSelectDropdownClass" @change="onCredentialChange">
+            <a-select-option v-for="c in credentials" :key="c.id" :value="c.id">{{ formatCredentialOptionLabel(c) }}</a-select-option>
+          </a-select>
+          <a-button class="qtc-icon-button" :title="$t('quickTrade.addAccountInline')" :aria-label="$t('quickTrade.addAccountInline')" @click="handleAddAccountClick"><a-icon type="plus" /></a-button>
+          <div class="qtc-balance"><span>{{ $t('quickTrade.available') }}</span><strong class="qtc-positive">{{ formatPrice(activeBalanceAvailable) }}</strong><span>{{ orderCurrency }}</span></div>
+          <div class="qtc-balance"><span>{{ $t('quickTrade.totalAssets') }}</span><strong>{{ formatPrice(activeBalanceTotal) }}</strong><span>{{ orderCurrency }}</span></div>
+          <a-button class="qtc-icon-button" :title="$t('common.refresh')" :aria-label="$t('common.refresh')" :loading="dockRefreshing" @click="refreshDockData"><a-icon type="reload" /></a-button>
+        </div>
+        <div v-if="balanceErrorMessage" class="qtc-error">{{ balanceErrorMessage }}</div>
+        <div v-if="strategyConflict" class="qtc-conflict" role="alert">
+          <a-icon type="warning" />
+          <span>{{ $t('quickTrade.workflow.strategyConflict', { id: strategyConflict.strategy_id || '-' }) }}</span>
+        </div>
+        <div class="qtc-ticket">
+          <div class="qtc-quotes">
+            <div class="qtc-quote qtc-quote-buy"><span>{{ buyActionText }}</span><strong>{{ currentPrice > 0 ? formatPrice(currentPrice) : '—' }}</strong></div>
+            <a-radio-group v-model="orderType" button-style="solid" class="qtc-order-type">
+              <a-radio-button value="market">{{ $t('quickTrade.market') }}</a-radio-button>
+              <a-radio-button value="limit">{{ $t('quickTrade.limit') }}</a-radio-button>
+            </a-radio-group>
+            <div class="qtc-quote qtc-quote-sell"><span>{{ sellActionText }}</span><strong>{{ currentPrice > 0 ? formatPrice(currentPrice) : '—' }}</strong></div>
+          </div>
+          <div v-if="isSwapMode" class="qtc-fields">
+            <div class="qtc-field-column">
+              <label v-if="orderType === 'limit'" class="qtc-field"><span>{{ $t('quickTrade.limitPrice') }} ({{ orderCurrency }})</span><a-input-number v-model="limitPrice" :disabled="orderType === 'market'" :min="0" :step="priceStep" :precision="pricePrecision" :placeholder="orderType === 'market' ? $t('quickTrade.market') : $t('quickTrade.enterPrice')" /></label>
+              <label class="qtc-field"><span>{{ amountLabel }} ({{ orderCurrency }})</span><a-input-number v-model="amount" :min="1" :step="10" :precision="2" :placeholder="$t('quickTrade.enterAmount')" /></label>
+              <div class="qtc-percentages"><button v-for="percent in [10, 25, 50, 100]" :key="percent" type="button" :disabled="activeBalanceAvailable <= 0" @click="setQuickAmountByPercent(percent, 'buy')">{{ percent }}%</button></div>
+            </div>
+            <div class="qtc-field-column">
+              <div class="qtc-settings">
+                <div class="qtc-field qtc-leverage"><label>{{ $t('quickTrade.leverage') }}</label><a-input-number v-model="leverage" :aria-label="$t('quickTrade.leverage')" :min="1" :max="125" :step="1" :precision="0" :formatter="value => `${value}x`" :parser="value => value.replace(/[^0-9]/g, '')" @blur="normalizeLeverage" /><a-slider v-model="leverage" :min="1" :max="125" :step="1" :tip-formatter="value => `${value}x`" :aria-label="$t('quickTrade.leverage')" /></div>
+                <label class="qtc-field"><span>{{ $t('quickTrade.marginMode') }}</span><a-select v-model="marginMode" :get-popup-container="qtSelectPopupContainer" :dropdown-class-name="qtSelectDropdownClass"><a-select-option value="cross">{{ $t('quickTrade.crossMargin') }}</a-select-option><a-select-option value="isolated">{{ $t('quickTrade.isolatedMargin') }}</a-select-option></a-select></label>
+              </div>
+              <div class="qtc-field qtc-notional-field"><span>{{ $t('quickTrade.floating.notional') }} ({{ orderCurrency }})</span><strong class="qtc-notional">≈ {{ formatPrice(estimatedNotionalUsdt) }} {{ orderCurrency }}</strong></div>
+            </div>
+          </div>
+          <template v-else>
+            <label v-if="orderType === 'limit'" class="qtc-field qtc-spot-price"><span>{{ $t('quickTrade.limitPrice') }} ({{ orderCurrency }})</span><a-input-number v-model="limitPrice" :min="0" :step="priceStep" :precision="pricePrecision" :placeholder="$t('quickTrade.enterPrice')" /></label>
+            <div class="qtc-fields qtc-spot-fields">
+              <div class="qtc-field-column">
+                <div class="qtc-spot-label"><strong class="qtc-positive">{{ buyActionText }}</strong><a-radio-group v-model="spotBuyInputMode" size="small"><a-radio-button value="quantity">{{ $t('quickTrade.byQuantity') }}</a-radio-button><a-radio-button value="amount">{{ $t('quickTrade.byAmount') }}</a-radio-button></a-radio-group></div>
+                <label class="qtc-field"><span>{{ $t(spotBuyInputMode === 'quantity' ? 'quickTrade.buyQuantity' : 'quickTrade.buyAmount') }} ({{ spotBuyInputMode === 'quantity' ? baseAsset : orderCurrency }})</span><a-input-number v-if="spotBuyInputMode === 'quantity'" v-model="buyQuantity" :min="0" :step="0.001" :precision="8" :placeholder="$t('quickTrade.enterBuyQuantity')" /><a-input-number v-else v-model="amount" :min="0" :step="10" :precision="2" :placeholder="$t('quickTrade.enterAmount')" /></label>
+                <div class="qtc-percentages"><button v-for="percent in [25, 50, 75, 100]" :key="percent" type="button" :disabled="activeBalanceAvailable <= 0" @click="setQuickAmountByPercent(percent, 'buy')">{{ percent }}%</button></div>
+              </div>
+              <div class="qtc-field-column">
+                <div class="qtc-spot-label"><strong class="qtc-negative">{{ sellActionText }}</strong><a-radio-group v-model="spotSellInputMode" size="small"><a-radio-button value="quantity">{{ $t('quickTrade.byQuantity') }}</a-radio-button><a-radio-button value="amount">{{ $t('quickTrade.byAmount') }}</a-radio-button></a-radio-group></div>
+                <label class="qtc-field"><span>{{ $t(spotSellInputMode === 'quantity' ? 'quickTrade.sellQuantity' : 'quickTrade.sellAmount') }} ({{ spotSellInputMode === 'quantity' ? baseAsset : orderCurrency }})</span><a-input-number v-if="spotSellInputMode === 'quantity'" v-model="sellQuantity" :min="0" :max="spotSellAvailable" :step="0.001" :precision="8" :placeholder="$t('quickTrade.enterSellQuantity')" /><a-input-number v-else v-model="sellAmount" :min="0" :max="spotSellAvailableValue" :step="10" :precision="2" :placeholder="$t('quickTrade.enterAmount')" /></label>
+                <div class="qtc-percentages"><button v-for="percent in [25, 50, 75, 100]" :key="percent" type="button" :disabled="spotSellAvailable <= 0" @click="setQuickAmountByPercent(percent, 'sell')">{{ percent }}%</button></div>
+              </div>
+            </div>
+          </template>
+          <details v-if="supportsNativeProtection" class="qtc-entry-protection">
+            <summary>{{ $t('quickTrade.workflow.entryProtection') }}<a-tooltip :title="$t('quickTrade.workflow.entryProtectionHint')"><a-icon type="info-circle" /></a-tooltip><span v-if="consoleTpEnabled || consoleSlEnabled" class="qtc-positive">{{ $t('quickTrade.workflow.enabled') }}</span></summary>
+            <div class="qtc-protection">
+            <div><a-checkbox v-model="consoleTpEnabled">{{ $t('quickTrade.floating.tp') }}</a-checkbox><a-input-number v-model="tpPrice" :disabled="!consoleTpEnabled" :min="0" :step="priceStep" :precision="pricePrecision" :placeholder="$t('quickTrade.tpPlaceholder')" /></div>
+            <div><a-checkbox v-model="consoleSlEnabled">{{ $t('quickTrade.floating.sl') }}</a-checkbox><a-input-number v-model="slPrice" :disabled="!consoleSlEnabled" :min="0" :step="priceStep" :precision="pricePrecision" :placeholder="$t('quickTrade.slPlaceholder')" /></div>
+            </div>
+          </details>
+          <div class="qtc-submit">
+            <a-button class="qtc-buy" :loading="submittingSide === 'buy'" :disabled="!canSubmitBuy" @click="handleSubmit('buy')"><a-icon type="arrow-up" />{{ buyActionText }}</a-button>
+            <a-button class="qtc-sell" :loading="submittingSide === 'sell'" :disabled="!canSubmitSell" @click="handleSubmit('sell')"><a-icon type="arrow-down" />{{ sellActionText }}</a-button>
+          </div>
+        </div>
+      </template>
       <!-- Header (hidden in embedded mode since parent tab already shows title) -->
       <div v-if="!embedded" class="qt-header">
         <div class="qt-header-left">
@@ -59,7 +127,7 @@
         </div>
       </div>
 
-      <div v-if="embeddedDock" class="qt-dock-header">
+      <div v-if="embeddedDock && !floatingConsole" class="qt-dock-header">
         <template v-if="sideDock">
           <div class="qt-side-account-block">
             <div class="qt-side-section-heading">
@@ -183,19 +251,8 @@
         </template>
       </div>
 
-      <div v-if="floatingConsole" class="qt-floating-quote-row">
-        <div class="qt-floating-quote qt-floating-quote--buy">
-          <span>{{ buyActionText }}</span>
-          <strong>{{ formatPrice(currentPrice) }}</strong>
-        </div>
-        <div class="qt-floating-quote qt-floating-quote--sell">
-          <span>{{ sellActionText }}</span>
-          <strong>{{ formatPrice(currentPrice) }}</strong>
-        </div>
-      </div>
-
       <div :class="['qt-embedded-split', { 'qt-embedded-split--cols': embedded }]">
-        <div class="qt-embedded-col qt-embedded-col-left">
+        <div v-if="!floatingConsole" class="qt-embedded-col qt-embedded-col-left">
 
           <!-- Credential Selector -->
           <div v-if="!embeddedDock" class="qt-section qt-account-section">
@@ -262,7 +319,7 @@
 
           <div class="qt-order-entry-stack">
             <!-- Order Type -->
-            <div class="qt-section qt-order-type-section">
+            <div v-if="!floatingConsole" class="qt-section qt-order-type-section">
               <a-radio-group v-model="orderType" button-style="solid" size="small" style="width: 100%;">
                 <a-radio-button value="market" style="width: 50%; text-align: center;">
                   {{ $t('quickTrade.market') }}
@@ -289,12 +346,8 @@
             <!-- Amount / quantity -->
             <div class="qt-section qt-amount-block">
               <template v-if="isSpotCashOrder">
-                <div v-if="floatingConsole" class="qt-floating-side-tabs">
-                  <button type="button" :class="{ active: floatingEntrySide === 'buy' }" @click="floatingEntrySide = 'buy'">{{ buyActionText }}</button>
-                  <button type="button" :class="{ active: floatingEntrySide === 'sell' }" @click="floatingEntrySide = 'sell'">{{ sellActionText }}</button>
-                </div>
                 <div class="qt-spot-order-inputs">
-                  <div v-show="!floatingConsole || floatingEntrySide === 'buy'" class="qt-side-amount qt-side-amount--buy">
+                  <div class="qt-side-amount qt-side-amount--buy">
                     <div class="qt-side-heading">
                       <strong class="qt-side-title qt-side-title--buy">
                         <a-icon type="arrow-up" />
@@ -345,7 +398,7 @@
                       >{{ percent }}%</a-button>
                     </div>
                   </div>
-                  <div v-show="!floatingConsole || floatingEntrySide === 'sell'" class="qt-side-amount qt-side-amount--sell">
+                  <div class="qt-side-amount qt-side-amount--sell">
                     <div class="qt-side-heading">
                       <strong class="qt-side-title qt-side-title--sell">
                         <a-icon type="arrow-down" />
@@ -417,21 +470,14 @@
                     })"
                   >≈ {{ formatPrice(estimatedNotionalUsdt) }} {{ orderCurrency }}</span>
                 </div>
-                <a-input-number
-                  v-model="amount"
-                  :min="1"
-                  :step="10"
-                  :precision="2"
-                  style="width: 100%"
-                  :placeholder="$t('quickTrade.enterAmount')"
-                />
+                <a-input-number v-model="amount" :min="1" :step="10" :precision="2" style="width: 100%" :placeholder="$t('quickTrade.enterAmount')" />
                 <div v-if="isSwapMode" class="qt-quick-amounts qt-quick-amounts--swap">
                   <a-button
                     v-for="percent in [10, 25, 50, 100]"
                     :key="`swap-${percent}`"
                     size="small"
                     :disabled="balanceLoading || activeBalanceAvailable <= 0"
-                    @click="setQuickAmountByPercent(percent, floatingEntrySide)"
+                    @click="setQuickAmountByPercent(percent, 'buy')"
                   >{{ percent }}%</a-button>
                 </div>
                 <div v-if="isSwapMode && !embeddedDock" class="qt-notional-summary">
@@ -444,6 +490,7 @@
                 </div>
               </template>
             </div>
+
           </div>
 
           <!-- Mode & Leverage -->
@@ -512,19 +559,18 @@
           </div>
 
           <div
-            v-if="supportsNativeProtection"
             class="qt-risk-action-stack"
-            :class="{ 'is-tpsl-open': embeddedDock && dockTpslEnabled }"
+            :class="{ 'is-tpsl-open': embeddedDock && supportsNativeProtection && dockTpslEnabled }"
           >
             <div
-              v-if="embeddedDock"
+              v-if="embeddedDock && supportsNativeProtection"
               class="qt-dock-tpsl-toggle"
             >
               <a-checkbox v-model="dockTpslEnabled">{{ $t('quickTrade.tpsl') }}</a-checkbox>
               <span>{{ $t('quickTrade.optional') }}</span>
             </div>
             <!-- TP / SL (optional, always expanded) -->
-            <div v-show="!embeddedDock || dockTpslEnabled" class="qt-section qt-card qt-tpsl-card">
+            <div v-if="supportsNativeProtection" v-show="!embeddedDock || dockTpslEnabled" class="qt-section qt-card qt-tpsl-card">
               <div v-if="!embeddedDock" class="qt-section-title-row">
                 <span class="qt-section-title">{{ $t('quickTrade.tpsl') }}</span>
                 <span class="qt-optional-tag">{{ $t('quickTrade.optional') }}</span>
@@ -582,21 +628,9 @@
           </div>
 
         </div>
-        <button
-          v-if="floatingConsole"
-          type="button"
-          class="qt-floating-activity-toggle"
-          :class="{ active: floatingActivityExpanded }"
-          :aria-expanded="floatingActivityExpanded ? 'true' : 'false'"
-          @click="floatingActivityExpanded = !floatingActivityExpanded"
-        >
-          <span><a-icon type="bars" /> {{ $t('quickTrade.floating.activity') }}</span>
-          <span class="qt-floating-activity-count">{{ currentPositions.length + openOrderRows.length }}</span>
-          <a-icon :type="floatingActivityExpanded ? 'up' : 'down'" />
-        </button>
-        <div v-show="!floatingConsole || floatingActivityExpanded" class="qt-embedded-col qt-embedded-col-right">
+        <div class="qt-embedded-col qt-embedded-col-right">
 
-          <div v-if="embeddedDock" class="qt-dock-tabs">
+          <div v-if="embeddedDock" class="qt-dock-tabs" :style="floatingConsole ? { gridTemplateColumns: `repeat(${dockTabItems.length}, minmax(0, 1fr)) 24px` } : null">
             <button
               v-for="tab in dockTabItems"
               :key="tab.key"
@@ -606,21 +640,70 @@
             >
               {{ tab.label }}<span v-if="tab.count">{{ tab.count }}</span>
             </button>
+            <button
+              v-if="floatingConsole"
+              type="button"
+              class="qt-floating-activity-toggle"
+              :class="{ 'is-expanded': floatingActivityExpanded }"
+              :aria-label="$t('quickTrade.floating.activity')"
+              :aria-expanded="floatingActivityExpanded ? 'true' : 'false'"
+              @click="floatingActivityExpanded = !floatingActivityExpanded"
+            >
+              <a-icon :type="floatingActivityExpanded ? 'up' : 'down'" />
+            </button>
           </div>
 
           <!-- Current Positions -->
-          <div v-show="!embeddedDock || activeDockTab === 'positions'" class="qt-position-section">
+          <div v-show="(!floatingConsole || floatingActivityExpanded) && (!embeddedDock || activeDockTab === 'positions')" class="qt-position-section">
             <div v-if="!embeddedDock" class="qt-section-header">
               <a-icon type="wallet" /> {{ $t('quickTrade.currentPosition') }}
               <span v-if="currentPositions.length > 1" class="qt-position-count">({{ currentPositions.length }})</span>
             </div>
-            <template v-if="currentPositions.length > 0">
+            <template v-if="floatingConsole && currentPositions.length > 0">
+
+              <div class="qtc-table-scroll">
+                <table class="qtc-positions">
+                  <thead><tr><th>{{ $t('ai-trading-assistant.table.symbol') }}</th><th>{{ $t('quickTrade.side') }}</th><th>{{ $t('quickTrade.posSize') }}</th><th>{{ $t(isSwapMode ? 'quickTrade.entryPrice' : 'quickTrade.workflow.unitPrice') }}</th><th>{{ $t(isSwapMode ? 'quickTrade.unrealizedPnl' : 'quickTrade.workflow.holdingValue') }} ({{ orderCurrency }})</th><th>{{ $t('common.actions') }}</th></tr></thead>
+                  <tbody><tr v-for="pos in currentPositions" :key="pos.side">
+                    <td>{{ currentSymbol }}</td>
+                    <td><a-tag :color="pos.side === 'long' ? 'green' : 'red'">{{ pos.side === 'long' ? (isSwapMode ? $t('quickTrade.long') : $t('quickTrade.spotHold')) : $t('quickTrade.short') }}</a-tag></td>
+                    <td>{{ formatQuantity(pos.size) }}</td>
+                    <td>{{ isSwapMode ? (pos.entry_price > 0 ? formatPrice(pos.entry_price) : '—') : formatPrice(currentPrice || pos.mark_price) }}</td>
+                    <td :class="isSwapMode ? (pos.unrealized_pnl >= 0 ? 'qtc-positive' : 'qtc-negative') : ''">{{ isSwapMode ? (pos.entry_price > 0 && pos.unrealized_pnl != null ? formatPrice(pos.unrealized_pnl) : '—') : formatPrice(pos.size * (currentPrice || pos.mark_price)) }}</td>
+                    <td><div class="qtc-position-actions">
+                      <a-button size="small" class="qtc-close" :title="$t(isSwapMode ? 'quickTrade.workflow.marketExitHint' : 'quickTrade.workflow.marketSellHint')" :loading="closingPositionSide === pos.side" :disabled="!!closingPositionSide || !!submitting" @click="handleClosePosition(pos)">{{ isSwapMode ? $t('quickTrade.floating.closeAll') : $t('quickTrade.floating.sellAll') }}</a-button>
+                      <a-dropdown v-if="isCryptoMarket" :trigger="['click']" :get-popup-container="qtSelectPopupContainer" :overlay-class-name="qtSelectDropdownClass">
+                        <a-button size="small" class="qtc-more" :disabled="!!closingPositionSide || !!submitting" :aria-label="$t('quickTrade.workflow.moreActions')"><a-icon type="ellipsis" /></a-button>
+                        <a-menu slot="overlay">
+                          <a-menu-item key="limit" @click="openPositionEditor(pos, 'limit')">{{ $t(isSwapMode ? 'quickTrade.workflow.limitClose' : 'quickTrade.workflow.limitSell') }}</a-menu-item>
+                          <a-menu-item v-if="isSwapMode && selectedCredential && ['gate', 'gateio'].includes(selectedCredential.exchange_id)" key="protection" @click="openPositionEditor(pos, 'protection')">{{ $t('quickTrade.workflow.protection') }}</a-menu-item>
+                        </a-menu>
+                      </a-dropdown>
+                    </div></td>
+                  </tr></tbody>
+                </table>
+              </div>
+              <div v-if="positionEditor" class="qtc-exit-editor">
+                <div class="qtc-exit-editor-heading"><strong>{{ $t(positionEditor.mode === 'limit' ? (isSwapMode ? 'quickTrade.workflow.limitClose' : 'quickTrade.workflow.limitSell') : 'quickTrade.workflow.addProtection') }} · {{ $t(isSwapMode ? (positionEditor.side === 'long' ? 'quickTrade.long' : 'quickTrade.short') : 'quickTrade.spotHold') }}</strong><a-button type="link" size="small" @click="positionEditor = null">{{ $t('quickTrade.workflow.cancel') }}</a-button></div>
+                <div class="qtc-exit-editor-fields">
+                  <a-radio-group v-if="positionEditor.mode === 'protection'" v-model="positionEditor.kind" size="small"><a-radio-button value="tp">{{ $t('quickTrade.tp') }}</a-radio-button><a-radio-button value="sl">{{ $t('quickTrade.sl') }}</a-radio-button></a-radio-group>
+                  <a-input-number v-model="positionEditor.price" :min="0" :step="priceStep" :precision="pricePrecision" :placeholder="$t(positionEditor.mode === 'limit' ? 'quickTrade.limitPrice' : 'quickTrade.workflow.triggerPrice')" :aria-label="$t(positionEditor.mode === 'limit' ? 'quickTrade.limitPrice' : 'quickTrade.workflow.triggerPrice')" />
+                  <a-button type="primary" size="small" :disabled="!(positionEditor.price > 0)" :loading="savingProtection || !!closingPositionSide" @click="submitPositionEditor">{{ $t(positionEditor.mode === 'limit' ? (isSwapMode ? 'quickTrade.workflow.submitExit' : 'quickTrade.workflow.submitSell') : 'common.save') }}</a-button>
+                </div>
+                <small v-if="positionEditor.mode === 'protection'">{{ $t('quickTrade.workflow.protectionHint') }}</small>
+              </div>
+            </template>
+            <template v-else-if="currentPositions.length > 0">
               <div v-if="isSwapMode" class="qt-close-scope qt-close-scope-global">
-                <a-radio-group v-model="closeScope" size="small" class="qt-close-scope-radio">
-                  <a-radio-button value="full">{{ $t('quickTrade.closeScopeFull') }}</a-radio-button>
-                  <a-radio-button value="system_tracked">{{ $t('quickTrade.closeScopeSystem') }}</a-radio-button>
-                </a-radio-group>
-                <div class="qt-hint-text">{{ $t('quickTrade.closeScopeSystemHint') }}</div>
+                <div class="qt-close-scope-toolbar">
+                  <a-radio-group v-model="closeScope" size="small" class="qt-close-scope-radio">
+                    <a-radio-button value="full">{{ $t('quickTrade.closeScopeFull') }}</a-radio-button>
+                    <a-radio-button value="system_tracked">{{ $t('quickTrade.closeScopeSystem') }}</a-radio-button>
+                  </a-radio-group>
+                  <a-tooltip :title="$t('quickTrade.closeScopeSystemHint')">
+                    <a-icon type="info-circle" class="qt-close-scope-help" />
+                  </a-tooltip>
+                </div>
               </div>
               <div
                 v-for="(pos, idx) in currentPositions"
@@ -682,50 +765,38 @@
           </div>
 
           <!-- Trade Records -->
-          <div v-if="embeddedDock && ['openOrders', 'tradeRecords'].includes(activeDockTab)" class="qt-history-section qt-dock-history">
+          <div v-if="embeddedDock && ['openOrders', 'tradeRecords'].includes(activeDockTab)" v-show="!floatingConsole || floatingActivityExpanded" class="qt-history-section qt-dock-history">
             <div v-if="dockTradeRows.length" class="qt-trade-list">
-              <div class="qt-trade-item qt-trade-item--dock" v-for="t in dockTradeRows" :key="t.id">
-                <div class="qt-trade-card-head">
+              <div v-if="floatingConsole" class="qtc-record-grid qtc-record-head">
+                <span>{{ $t('quickTrade.floating.time') }}</span>
+                <span>{{ $t('quickTrade.floating.actionStatus') }}</span>
+                <span>{{ $t(activeDockTab === 'openOrders' ? 'quickTrade.requestedPrice' : 'quickTrade.averageFillPrice') }}</span>
+                <span>{{ $t(activeDockTab === 'openOrders' && isStockMarket ? 'quickTrade.requestedQuantityOrValue' : activeDockTab === 'openOrders' ? 'quickTrade.requestedAmount' : 'quickTrade.filledAmount') }}</span>
+                <span>{{ $t(activeDockTab === 'openOrders' ? 'quickTrade.filledAmount' : 'quickTrade.commission') }}</span>
+                <span></span>
+              </div>
+              <div :class="floatingConsole ? 'qtc-record-item' : 'qt-trade-item qt-trade-item--dock'" v-for="t in dockTradeRows" :key="t.id">
+                <div v-if="floatingConsole" class="qtc-record-grid qtc-record-row">
+                  <time :title="formatFullTime(t.created_at)">{{ formatTime(t.created_at) }}</time>
+                  <div class="qtc-record-action"><strong :style="{ color: tradeActionColor(t) }">{{ tradeActionLabel(t) }}</strong><small>{{ tradeStatusLabel(t.status) }}</small><a-button v-if="activeDockTab === 'openOrders' && canCancelTrade(t)" type="link" size="small" :loading="cancellingTradeId === t.id" @click="handleCancelTrade(t)">{{ $t('brokerAccounts.cancelOrder') }}</a-button></div>
+                  <span>{{ activeDockTab === 'openOrders' ? requestedOrderPriceLabel(t) : tradeFillPrice(t) > 0 ? formatPrice(tradeFillPrice(t)) : '—' }}</span>
+                  <span>{{ activeDockTab === 'openOrders' ? formatRequestedOrderSize(t) : t.filled_amount > 0 ? formatQuantity(t.filled_amount) : '—' }}</span>
+                  <span>{{ activeDockTab === 'openOrders' ? formatQuantity(t.filled_amount) : formatTradeCommission(t) }}</span>
+                  <button type="button" class="qt-trade-detail-toggle" :aria-label="$t(isTradeDetailsExpanded(t.id) ? 'quickTrade.hideDetails' : 'quickTrade.details')" :aria-expanded="isTradeDetailsExpanded(t.id)" @click="toggleTradeDetails(t.id)"><a-icon :type="isTradeDetailsExpanded(t.id) ? 'up' : 'down'" /></button>
+                </div>
+                <div v-if="!floatingConsole" class="qt-trade-card-head">
                   <div class="qt-trade-card-identity">
-                    <a-tag :color="t.side === 'buy' ? '#52c41a' : '#f5222d'" size="small">
-                      {{ tradeSideLabel(t) }}
+                    <a-tag :color="tradeActionColor(t)" size="small">
+                      {{ tradeActionLabel(t) }}
                     </a-tag>
                     <span class="qt-trade-symbol">{{ t.symbol }}</span>
                     <span class="qt-trade-order-type">{{ tradeOrderTypeLabel(t) }}</span>
+                    <span v-if="String(t.market_type || '').toLowerCase() === 'swap' && t.leverage" class="qt-trade-inline-meta">{{ t.leverage }}x</span>
+                    <span v-if="t.margin_mode" class="qt-trade-inline-meta">{{ tradeMarginModeLabel(t.margin_mode) }}</span>
                   </div>
                   <div class="qt-trade-card-state">
                     <a-tag :color="tradeStatusColor(t.status)" size="small">{{ tradeStatusLabel(t.status) }}</a-tag>
-                    <span class="qt-trade-time">{{ formatTime(t.created_at) }}</span>
-                  </div>
-                </div>
-
-                <div class="qt-trade-summary-grid">
-                  <div class="qt-trade-metric">
-                    <span>{{ $t('quickTrade.averageFillPrice') }}</span>
-                    <strong>{{ tradeFillPrice(t) > 0 ? `$${formatPrice(tradeFillPrice(t))}` : '--' }}</strong>
-                  </div>
-                  <div class="qt-trade-metric">
-                    <span>{{ $t('quickTrade.filledAmount') }}</span>
-                    <strong>{{ t.filled_amount > 0 ? formatQuantity(t.filled_amount) : '--' }}</strong>
-                  </div>
-                  <div class="qt-trade-metric">
-                    <span>{{ $t('quickTrade.executedValue') }}</span>
-                    <strong>{{ t.display_amount > 0 ? `$${formatPrice(t.display_amount)}` : '--' }}</strong>
-                  </div>
-                  <div class="qt-trade-metric">
-                    <span>{{ $t('quickTrade.commission') }}</span>
-                    <strong>{{ formatTradeCommission(t) }}</strong>
-                  </div>
-                </div>
-
-                <div class="qt-trade-card-footer">
-                  <div class="qt-trade-context">
-                    <span>{{ tradeMarketLabel(t) }}</span>
-                    <span v-if="String(t.market_type || '').toLowerCase() === 'swap' && t.leverage">{{ t.leverage }}x</span>
-                    <span v-if="t.margin_mode">{{ tradeMarginModeLabel(t.margin_mode) }}</span>
-                    <span>{{ tradeSourceLabel(t.source) }}</span>
-                  </div>
-                  <div class="qt-trade-actions">
+                    <span class="qt-trade-time" :title="formatFullTime(t.created_at)">{{ formatTime(t.created_at) }}</span>
                     <a-button
                       v-if="activeDockTab === 'openOrders' && canCancelTrade(t)"
                       type="link"
@@ -734,15 +805,51 @@
                       :loading="cancellingTradeId === t.id"
                       @click="handleCancelTrade(t)"
                     >{{ $t('brokerAccounts.cancelOrder') }}</a-button>
-                    <button type="button" class="qt-trade-detail-toggle" @click="toggleTradeDetails(t.id)">
-                      {{ isTradeDetailsExpanded(t.id) ? $t('quickTrade.hideDetails') : $t('quickTrade.details') }}
-                      <a-icon :type="isTradeDetailsExpanded(t.id) ? 'up' : 'down'" />
-                    </button>
+                    <a-tooltip :title="$t(isTradeDetailsExpanded(t.id) ? 'quickTrade.hideDetails' : 'quickTrade.details')">
+                      <button type="button" class="qt-trade-detail-toggle" @click="toggleTradeDetails(t.id)">
+                        <a-icon :type="isTradeDetailsExpanded(t.id) ? 'up' : 'down'" />
+                      </button>
+                    </a-tooltip>
                   </div>
                 </div>
 
-                <div v-if="isTradeDetailsExpanded(t.id)" class="qt-trade-details">
-                  <div>
+                <div v-if="!floatingConsole" class="qt-trade-summary-grid">
+                  <div class="qt-trade-metric">
+                    <span>{{ $t(t.is_close && tradeEntryPrice(t) > 0 ? 'quickTrade.entryExitPrice' : 'quickTrade.averageFillPrice') }}</span>
+                    <strong class="qt-trade-price-flow">
+                      <template v-if="t.is_close && tradeEntryPrice(t) > 0 && tradeFillPrice(t) > 0">
+                        ${{ formatPrice(tradeEntryPrice(t)) }} → ${{ formatPrice(tradeFillPrice(t)) }}
+                      </template>
+                      <template v-else>{{ tradeFillPrice(t) > 0 ? `$${formatPrice(tradeFillPrice(t))}` : '--' }}</template>
+                    </strong>
+                  </div>
+                  <div class="qt-trade-metric">
+                    <span>{{ $t('quickTrade.filledAmount') }}</span>
+                    <strong>{{ t.filled_amount > 0 ? formatQuantity(t.filled_amount) : '--' }}</strong>
+                  </div>
+                  <div class="qt-trade-metric">
+                    <span>{{ $t('quickTrade.commission') }}</span>
+                    <strong>{{ formatTradeCommission(t) }}</strong>
+                  </div>
+                  <div class="qt-trade-metric qt-trade-metric--pnl" :class="tradePnlTone(t)">
+                    <span>{{ $t('quickTrade.realizedPnl') }}</span>
+                    <strong>{{ formatTradePnl(t) }}</strong>
+                  </div>
+                </div>
+
+                <div v-if="isTradeDetailsExpanded(t.id)" :class="floatingConsole ? 'qtc-record-details' : 'qt-trade-details'">
+                  <div v-if="floatingConsole" class="qt-trade-detail-wide qtc-record-context" :title="tradeSourceLabel(t.source)">
+                    <strong>{{ t.symbol }} · {{ tradeOrderTypeLabel(t) }}<template v-if="t.leverage && !t.is_close"> · {{ t.leverage }}x</template><template v-if="t.margin_mode"> · {{ tradeMarginModeLabel(t.margin_mode) }}</template></strong>
+                  </div>
+                  <div v-if="!floatingConsole || t.display_amount > 0">
+                    <span>{{ $t('quickTrade.executedValue') }}</span>
+                    <strong>{{ t.display_amount > 0 ? `$${formatPrice(t.display_amount)}` : '--' }}</strong>
+                  </div>
+                  <div v-if="!floatingConsole">
+                    <span>{{ $t('quickTrade.sourceLabel') }}</span>
+                    <strong>{{ tradeSourceLabel(t.source) }}</strong>
+                  </div>
+                  <div v-if="!floatingConsole || !t.is_close">
                     <span>{{ $t('quickTrade.inputAmount') }}</span>
                     <strong>{{ formatPrice(t.amount) }} USDT</strong>
                   </div>
@@ -750,7 +857,7 @@
                     <span>{{ $t('quickTrade.requestedAmount') }}</span>
                     <strong>{{ formatQuantity(t.requested_base_qty) }}</strong>
                   </div>
-                  <div v-if="t.price">
+                  <div v-if="t.price && (!floatingConsole || t.order_type === 'limit')">
                     <span>{{ $t('quickTrade.requestedPrice') }}</span>
                     <strong>${{ formatPrice(t.price) }}</strong>
                   </div>
@@ -764,9 +871,9 @@
                   </div>
                   <div v-if="t.exchange_order_id" class="qt-trade-detail-wide">
                     <span>{{ $t('quickTrade.exchangeOrderId') }}</span>
-                    <strong :title="t.exchange_order_id">{{ t.exchange_order_id }}</strong>
+                    <strong :title="t.client_order_id || t.exchange_order_id">{{ t.exchange_order_id }}</strong>
                   </div>
-                  <div v-if="t.client_order_id" class="qt-trade-detail-wide">
+                  <div v-if="t.client_order_id && (!floatingConsole || !t.exchange_order_id)" class="qt-trade-detail-wide">
                     <span>{{ $t('quickTrade.clientOrderId') }}</span>
                     <strong :title="t.client_order_id">{{ t.client_order_id }}</strong>
                   </div>
@@ -777,11 +884,13 @@
                 </div>
               </div>
             </div>
-            <div v-else class="qt-position-empty">
+            <div v-else-if="!showNativeOrderActivity" class="qt-position-empty">
               <a-icon type="inbox" class="qt-empty-icon" />
               <span class="qt-empty-desc">{{ dockEmptyText }}</span>
             </div>
           </div>
+
+          <PositionActivity ref="positionActivity" v-if="floatingConsole && floatingActivityExpanded && selectedCredentialId && (activeDockTab === 'positionHistory' || showNativeOrderActivity)" :credential-id="selectedCredentialId" :symbol="currentSymbol" :market-type="effectiveMarketType" :history="activeDockTab === 'positionHistory'" :show-empty="!dockTradeRows.length" />
 
           <div class="qt-history-section" v-if="!embeddedDock && recentTrades.length > 0">
             <a-collapse :bordered="false" :activeKey="historyCollapsed ? [] : ['history']" @change="handleHistoryCollapse">
@@ -816,6 +925,7 @@
         </div>
       </div>
 
+      </div>
     </component>
     <exchange-account-modal
       :visible.sync="showAddExchangeModal"
@@ -830,16 +940,18 @@ import { mapState } from 'vuex'
 import { listExchangeCredentials } from '@/api/credentials'
 import { formatExchangeCredentialLabel, isQuickTradeExchangeCredential } from '@/utils/exchangeCredential'
 import ExchangeAccountModal from '@/components/ExchangeAccountModal/ExchangeAccountModal.vue'
-import { placeQuickOrder, getQuickTradeBalance, getQuickTradePosition, getQuickTradeHistory, closeQuickTradePosition, cancelQuickTradeOrder } from '@/api/quick-trade'
+import PositionActivity from './PositionActivity.vue'
+import { updateQuickPositionProtection, placeQuickOrder, getQuickTradeBalance, getQuickTradePosition, getQuickTradeHistory, closeQuickTradePosition, cancelQuickTradeOrder } from '@/api/quick-trade'
 import { searchSymbols, getWatchlist } from '@/api/market'
 import { getUserInfo } from '@/api/login'
 import request from '@/utils/request'
 import { createVisibilityPolling } from '@/utils/visibilityPolling'
+import { parseUtcAwareInstant } from '@/utils/utcInstant'
 import { broker } from '@/api/broker'
 
 export default {
   name: 'QuickTradePanel',
-  components: { ExchangeAccountModal },
+  components: { ExchangeAccountModal, PositionActivity },
   props: {
     visible: { type: Boolean, default: false },
     symbol: { type: String, default: '' },
@@ -855,6 +967,7 @@ export default {
     embeddedDock: { type: Boolean, default: false },
     sideDock: { type: Boolean, default: false },
     floatingConsole: { type: Boolean, default: false },
+    consoleMinimized: { type: Boolean, default: false },
     overlayGetContainer: { type: Function, default: null }
   },
   data () {
@@ -864,6 +977,7 @@ export default {
       selectedCredentialId: undefined,
       credLoading: false,
       balanceLoading: false,
+      balanceRequestId: 0,
       balance: {
         available: 0,
         total: 0,
@@ -891,15 +1005,19 @@ export default {
       closingPositionSide: null, // 'long' | 'short' | null
       currentPrice: 0,
       currentPositions: [],
+      strategyConflict: null,
       recentTrades: [],
       historyCollapsed: true,
       activeDockTab: 'positions',
+      positionEditor: null,
+      savingProtection: false,
       dockRefreshing: false,
       cancellingTradeId: null,
       expandedTradeIds: {},
-      floatingEntrySide: 'buy',
-      floatingActivityExpanded: false,
+      floatingActivityExpanded: true,
       dockTpslEnabled: false,
+      consoleTpEnabled: false,
+      consoleSlEnabled: false,
       closeScope: 'full', // full | system_tracked
       // symbol search
       currentSymbol: '',
@@ -1009,6 +1127,30 @@ export default {
     spotSellAvailableValue () {
       return this.spotSellAvailable * this.spotSellReferencePrice
     },
+    spotBuyReferencePrice () {
+      return Number(this.orderType === 'limit' ? this.limitPrice : this.currentPrice) || 0
+    },
+    spotBuyRequestedValue () {
+      if (!this.isSpotCashOrder) return 0
+      if (this.spotBuyInputMode === 'quantity') {
+        return Math.max(0, Number(this.buyQuantity) || 0) * this.spotBuyReferencePrice
+      }
+      return Math.max(0, Number(this.amount) || 0)
+    },
+    buyFundsInsufficient () {
+      if (!this.isSpotCashOrder || this.balanceLoading || !this.selectedCredentialId) return false
+      const requested = Number(this.spotBuyRequestedValue) || 0
+      const available = Math.max(0, Number(this.activeBalanceAvailable) || 0)
+      return requested > 0 && requested > available + 1e-8
+    },
+    buyFundsWarning () {
+      if (!this.buyFundsInsufficient) return ''
+      return this.$t(this.isStockMarket ? 'quickTrade.insufficientBuyingPower' : 'quickTrade.insufficientSpotBalance', {
+        required: this.formatPrice(this.spotBuyRequestedValue),
+        available: this.formatPrice(this.activeBalanceAvailable),
+        currency: this.orderCurrency
+      })
+    },
     activeBalanceAvailable () {
       return this.isSwapMode ? this.swapBalanceAvailable : this.spotBalanceAvailable
     },
@@ -1028,12 +1170,16 @@ export default {
           const averageFillPrice = parseFloat(item.avg_fill_price || item.filled_avg_price || 0) || 0
           const filledAmount = parseFloat(item.filled_amount || item.filled_qty || item.filled || 0) || 0
           const executedNotional = averageFillPrice > 0 && filledAmount > 0 ? averageFillPrice * filledAmount : 0
+          const realizedPnl = item.realized_pnl === null || item.realized_pnl === undefined || item.realized_pnl === ''
+            ? null
+            : Number(item.realized_pnl)
           return {
             ...item,
             price: requestedPrice,
             avg_fill_price: averageFillPrice,
             filled_amount: filledAmount,
-            display_amount: executedNotional
+            display_amount: executedNotional,
+            realized_pnl: Number.isFinite(realizedPnl) ? realizedPnl : null
           }
         })
     },
@@ -1048,11 +1194,15 @@ export default {
     dockEmptyText () {
       return this.$t(this.activeDockTab === 'openOrders' ? 'quickTrade.noOrders' : 'quickTrade.noTradeRecords')
     },
+    showNativeOrderActivity () {
+      return this.floatingConsole && this.activeDockTab === 'openOrders' && this.isSwapMode && this.selectedCredential && ['gate', 'gateio'].includes(this.selectedCredential.exchange_id)
+    },
     dockTabItems () {
       return [
-        { key: 'positions', label: this.$t('quickTrade.currentPosition'), count: this.currentPositions.length },
         { key: 'openOrders', label: this.$t('quickTrade.openOrders'), count: this.openOrderRows.length },
-        { key: 'tradeRecords', label: this.$t('quickTrade.tradeRecords'), count: this.scopedTradeRows.length }
+        { key: 'positions', label: this.$t('quickTrade.currentPosition'), count: this.currentPositions.length },
+        { key: 'tradeRecords', label: this.$t('quickTrade.floating.records'), count: this.scopedTradeRows.length },
+        ...(this.floatingConsole && this.isSwapMode ? [{ key: 'positionHistory', label: this.$t('quickTrade.workflow.history'), count: 0 }] : [])
       ]
     },
     balanceErrorMessage () {
@@ -1075,23 +1225,33 @@ export default {
       return 0.0001
     },
     pricePrecision () {
+      if (this.floatingConsole) {
+        const decimals = [this.currentPrice, this.limitPrice, this.tpPrice, this.slPrice].map(value => {
+          const [mantissa, exponent = '0'] = String(Number(value) || 0).toLowerCase().split('e')
+          return Math.max(0, (mantissa.split('.')[1] || '').length - Number(exponent))
+        })
+        return Math.min(8, Math.max(2, ...decimals))
+      }
       if (this.currentPrice > 10000) return 0
       if (this.currentPrice > 100) return 1
       if (this.currentPrice > 1) return 2
       return 4
     },
     submitContextReady () {
-      return Boolean(this.tradableMarketSupported && this.selectedCredentialId && this.selectedCredential && this.currentSymbol && !this.submitting)
+      if (this.floatingConsole && this.supportsNativeProtection && ((this.consoleTpEnabled && !(Number(this.tpPrice) > 0)) || (this.consoleSlEnabled && !(Number(this.slPrice) > 0)))) return false
+      if (this.isSwapMode && this.strategyConflict) return false
+      return Boolean(this.tradableMarketSupported && this.selectedCredentialId && this.selectedCredential && this.currentSymbol && !this.submitting && !this.closingPositionSide)
     },
     canSubmitBuy () {
-      if (!this.submitContextReady) return false
+      if (!this.submitContextReady || (this.orderType === 'limit' && !(Number(this.limitPrice) > 0))) return false
+      if (this.buyFundsInsufficient) return false
       if ((this.isStockMarket || this.isCryptoMarket) && !this.isSwapMode && this.spotBuyInputMode === 'quantity') {
         return Number(this.buyQuantity) > 0
       }
       return Number(this.amount) > 0
     },
     canSubmitSell () {
-      if (!this.submitContextReady) return false
+      if (!this.submitContextReady || (this.orderType === 'limit' && !(Number(this.limitPrice) > 0))) return false
       if ((this.isStockMarket || this.isCryptoMarket) && !this.isSwapMode) {
         if (this.spotSellInputMode === 'amount') {
           const requested = Number(this.sellAmount)
@@ -1156,6 +1316,12 @@ export default {
       }
     },
     currentSymbol (val) {
+      this.positionEditor = null
+      this.limitPrice = 0
+      this.tpPrice = null
+      this.slPrice = null
+      this.consoleTpEnabled = false
+      this.consoleSlEnabled = false
       this.buyQuantity = null
       this.sellQuantity = null
       this.sellAmount = null
@@ -1175,6 +1341,7 @@ export default {
       this.resetBalance()
       this.currentPositions = []
       this.recentTrades = []
+      this.positionEditor = null
       this.loadCredentials()
       this.loadWatchlistSymbols()
       if (this.currentSymbol) this.loadPrice()
@@ -1188,12 +1355,18 @@ export default {
       }
     },
     selectedCredentialId (val) {
+      this.limitPrice = 0
+      this.tpPrice = null
+      this.slPrice = null
+      this.consoleTpEnabled = false
+      this.consoleSlEnabled = false
       this.buyQuantity = null
       this.sellQuantity = null
       this.sellAmount = null
       this.resetBalance()
       this.currentPositions = []
       this.recentTrades = []
+      this.positionEditor = null
       if (val && this.isCryptoMarket) {
         const credential = this.credentials.find(c => c.id === val)
         const credentialExchangeId = String((credential && credential.exchange_id) || '').trim().toLowerCase()
@@ -1214,13 +1387,22 @@ export default {
     presetSide (val) {
       if (val) this.side = val
     },
+    orderType (value) {
+      if (value === 'limit' && this.currentPrice > 0) this.limitPrice = this.currentPrice
+    },
     presetPrice (val) {
       if (val > 0) {
         this.currentPrice = val
-        this.limitPrice = val
+        if (this.orderType !== 'limit' || !(this.limitPrice > 0)) this.limitPrice = val
       }
     },
     tradeMode (val) {
+      if (val === 'spot' && this.activeDockTab === 'positionHistory') this.activeDockTab = 'positions'
+      this.limitPrice = 0
+      this.tpPrice = null
+      this.slPrice = null
+      this.consoleTpEnabled = false
+      this.consoleSlEnabled = false
       this.buyQuantity = null
       this.sellQuantity = null
       this.sellAmount = null
@@ -1230,6 +1412,7 @@ export default {
       }
       this.currentPositions = []
       this.recentTrades = []
+      this.positionEditor = null
       this.$nextTick(() => {
         if (this.selectedCredentialId) {
           this.loadBalance()
@@ -1247,10 +1430,21 @@ export default {
     }
   },
   methods: {
+    normalizeLeverage () {
+      this.leverage = Math.max(1, Math.min(125, Math.round(Number(this.leverage) || 1)))
+    },
+    positionCostHint (position) {
+      if (this.isSwapMode) return ''
+      return this.$t(position.entry_price > 0 ? 'quickTrade.floating.costEstimate' : 'quickTrade.floating.costUnavailable')
+    },
     selectDockTab (key, event) {
       this.activeDockTab = key
+      if (this.floatingConsole) this.floatingActivityExpanded = true
       const target = event && event.currentTarget
       this.$nextTick(() => {
+        if (key === 'positionHistory' && this.$refs.positionActivity) {
+          this.$refs.positionActivity.load()
+        }
         if (target && typeof target.scrollIntoView === 'function') {
           target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
         }
@@ -1452,9 +1646,8 @@ export default {
     applyNewPrice (price) {
       const parsed = parseFloat(price || 0)
       if (parsed > 0) {
-        const oldPrice = this.currentPrice
         this.currentPrice = parsed
-        if (this.limitPrice === 0 || this.limitPrice === this.presetPrice || this.limitPrice === oldPrice) {
+        if (this.orderType !== 'limit' || !(this.limitPrice > 0)) {
           this.limitPrice = parsed
         }
       }
@@ -1545,15 +1738,20 @@ export default {
         this.currentPrice = 0
         return
       }
+      const symbol = this.currentSymbol
+      const exchangeId = this.isCryptoMarket ? String((this.selectedCredential && this.selectedCredential.exchange_id) || this.exchangeId || '') : ''
+      const marketType = this.effectiveMarketType
       try {
         const res = await request({
           url: '/api/market/price',
           method: 'get',
           params: {
             market: this.priceMarketParam,
-            symbol: this.currentSymbol
+            symbol,
+            ...(this.isCryptoMarket ? { exchange_id: exchangeId, market_type: marketType } : {})
           }
         })
+        if (symbol !== this.currentSymbol || marketType !== this.effectiveMarketType || (this.isCryptoMarket && exchangeId !== String((this.selectedCredential && this.selectedCredential.exchange_id) || this.exchangeId || ''))) return
         if (res && res.code === 1 && res.data) {
           this.applyNewPrice(res.data.price || res.data.latest || res.data.last)
           return
@@ -1654,14 +1852,18 @@ export default {
       await this.loadBalance()
       await this.loadPosition()
     },
-    async loadBalance () {
+    async loadBalance (fresh = false) {
       if (!this.selectedCredentialId) return
       const credentialId = this.selectedCredentialId
+      const marketType = this.effectiveMarketType
+      const requestId = (this.balanceRequestId || 0) + 1
+      this.balanceRequestId = requestId
+      const isCurrent = () => this.selectedCredentialId === credentialId && this.effectiveMarketType === marketType && this.balanceRequestId === requestId
       this.balanceLoading = true
       try {
         if (this.isStockMarket) {
           const res = await broker.alpaca.account({ credential_id: credentialId, include_counts: false })
-          if (this.selectedCredentialId !== credentialId) return
+          if (!isCurrent()) return
           const d = this.apiPayload(res)
           const available = parseFloat(d.buying_power || d.buyingPower || d.cash || 0) || 0
           const total = parseFloat(d.equity || d.portfolio_value || d.portfolioValue || d.cash || available) || available
@@ -1675,16 +1877,21 @@ export default {
           return
         }
         const res = await getQuickTradeBalance({
-          credential_id: this.selectedCredentialId,
-          market_type: this.effectiveMarketType
+          credential_id: credentialId,
+          market_type: marketType,
+          refresh: fresh === true ? '1' : undefined
         })
+        if (!isCurrent()) return
         if (res.code === 1 && res.data) {
           const d = res.data || {}
           const swap = d.swap && typeof d.swap === 'object' ? d.swap : {}
           const spot = d.spot && typeof d.spot === 'object' ? d.spot : {}
-          const activeAvail = this.isSwapMode
-            ? (parseFloat(swap.available) || parseFloat(d.available) || 0)
-            : (parseFloat(spot.available) || parseFloat(d.available) || 0)
+          const activeLeg = marketType === 'swap' ? swap : spot
+          if (d.error || activeLeg.error) {
+            this.balance = { ...this.balance, error: d.error || activeLeg.error, error_hint_key: d.error_hint_key || '', request_ip: d.request_ip || '' }
+            return
+          }
+          const activeAvail = parseFloat(activeLeg.available ?? d.available) || 0
           this.balance = {
             available: activeAvail,
             total: parseFloat(d.total) || 0,
@@ -1705,66 +1912,49 @@ export default {
             this.$message.warning(this.balanceErrorMessage || d.error, 6)
           }
         } else {
-          this.resetBalance()
+          this.balance = { ...this.balance, error: res.msg || res.message || this.$t('quickTrade.refreshFailed') }
         }
       } catch (e) {
         console.warn('loadBalance error:', e)
-        if (this.selectedCredentialId !== credentialId) return
+        if (!isCurrent()) return
         this.balance = {
-          available: 0,
-          total: 0,
-          swap: { available: 0, total: 0 },
-          spot: { available: 0, total: 0 },
+          ...this.balance,
           error: String(e.message || e)
         }
       } finally {
-        this.balanceLoading = false
+        if (this.balanceRequestId === requestId) this.balanceLoading = false
       }
     },
-    async loadPosition () {
+    async loadPosition (fresh = false) {
       const credentialId = this.selectedCredentialId
       const symbol = this.currentSymbol
-      if (!this.selectedCredentialId || !this.currentSymbol) {
-        console.log('loadPosition skipped:', { credentialId: this.selectedCredentialId, symbol: this.currentSymbol })
-        return
-      }
+      const marketType = this.effectiveMarketType
+      const requestId = (this.positionRequestId || 0) + 1
+      this.positionRequestId = requestId
+      const isCurrent = () => this.selectedCredentialId === credentialId && this.currentSymbol === symbol && this.effectiveMarketType === marketType && this.positionRequestId === requestId
+      if (!credentialId || !symbol) return
       try {
         if (this.isStockMarket) {
           const res = await broker.alpaca.positions({ credential_id: credentialId })
-          if (this.selectedCredentialId !== credentialId || this.currentSymbol !== symbol) return
+          if (!isCurrent()) return
           const payload = this.apiPayload(res)
           const items = Array.isArray(payload) ? payload : (payload.positions || payload.items || payload.data || [])
-          const target = this.normalizeBrokerSymbol(this.currentSymbol).toUpperCase()
-          const matched = (items || []).filter(p => this.normalizeBrokerSymbol(p.symbol || p.asset_symbol || '').toUpperCase() === target)
-          this.currentPositions = matched.map(p => this.normalizePosition({
-            ...p,
-            side: 'long',
-            leverage: 1
-          }, { preferComputedPnl: true }))
+          const target = this.normalizeBrokerSymbol(symbol).toUpperCase()
+          const matched = items.filter(p => this.normalizeBrokerSymbol(p.symbol || p.asset_symbol || '').toUpperCase() === target)
+          this.currentPositions = matched.map(p => this.normalizePosition({ ...p, side: 'long', leverage: 1 }, { preferComputedPnl: true }))
           return this.currentPositions.length > 0
         }
-        console.log('Loading position:', { credential_id: this.selectedCredentialId, symbol: this.currentSymbol, market_type: this.effectiveMarketType })
-        const res = await getQuickTradePosition({
-          credential_id: this.selectedCredentialId,
-          symbol: this.currentSymbol,
-          market_type: this.effectiveMarketType
-        })
-        console.log('Position response:', res)
-        if (res.code === 1 && res.data && res.data.positions && res.data.positions.length > 0) {
+        const res = await getQuickTradePosition({ credential_id: credentialId, symbol, market_type: marketType, refresh: fresh === true ? '1' : undefined })
+        if (!isCurrent()) return
+        if (res.code === 1 && res.data && Array.isArray(res.data.positions)) {
           this.currentPositions = res.data.positions.map(p => this.normalizePosition(p))
-          console.log('Positions loaded:', this.currentPositions.length)
-          return true
-        } else {
-          this.currentPositions = []
-          console.log('No position found')
-          return false
+          this.strategyConflict = res.data.strategy_conflict && res.data.strategy_conflict.active
+            ? res.data.strategy_conflict
+            : null
+          return this.currentPositions.length > 0
         }
-      } catch (e) {
-        console.error('loadPosition error:', e)
-        if (this.selectedCredentialId !== credentialId || this.currentSymbol !== symbol) return
-        this.currentPositions = []
-        return false
-      }
+      } catch (e) { console.warn('loadPosition error:', e) }
+      return false
     },
     async loadPositionWithRetry (maxRetries = 3, delayMs = 2000) {
       // Try to load position immediately
@@ -1792,21 +1982,33 @@ export default {
           const payload = this.apiPayload(res)
           const items = Array.isArray(payload) ? payload : (payload.orders || payload.items || payload.data || [])
           this.recentTrades = (items || []).slice(0, 20).map(o => {
-            const price = parseFloat(o.filled_avg_price || o.limit_price || 0) || 0
+            const requestedPrice = parseFloat(o.limit_price || 0) || 0
+            const fillPrice = parseFloat(o.filled_avg_price || 0) || 0
             const filledAmount = parseFloat(o.filled_qty || 0) || 0
             const requestedQty = parseFloat(o.qty || 0) || 0
-            const notional = parseFloat(o.notional || 0) || ((filledAmount || requestedQty) * price)
+            const requestedNotional = parseFloat(o.notional || 0) || 0
+            const notional = requestedNotional || ((filledAmount || requestedQty) * (fillPrice || requestedPrice))
             return {
               id: o.id || o.order_id || `${o.symbol}-${o.created_at || Date.now()}`,
               symbol: o.symbol || this.currentSymbol,
               side: o.side || 'buy',
               amount: notional,
+              requested_notional: requestedNotional,
+              requested_base_qty: requestedQty,
               filled_amount: filledAmount,
-              avg_fill_price: price,
+              price: requestedPrice,
+              avg_fill_price: fillPrice,
               market_type: 'spot',
               order_type: o.order_type || o.type || 'market',
               exchange_order_id: o.id || o.order_id || '',
               status: o.status || '',
+              commission: parseFloat(o.commission || 0) || 0,
+              commission_ccy: o.commission_ccy || '',
+              commission_quote: o.commission_quote === null || o.commission_quote === undefined
+                ? null
+                : (parseFloat(o.commission_quote) || 0),
+              fees_by_ccy: o.fees_by_ccy || {},
+              fee_status: o.fee_status || 'pending',
               created_at: o.created_at || o.submitted_at || o.updated_at
             }
           })
@@ -1852,9 +2054,7 @@ export default {
           : !!(res && res.code === 1)
         if (succeeded) {
           this.$message.success(this.$t('brokerAccounts.cancelRequested'))
-          await this.loadHistory()
-          await this.loadBalance()
-          await this.loadPosition()
+          this.refreshAfterTrade()
         } else {
           const hint = res && res.error_hint && this.$te(res.error_hint) ? this.$t(res.error_hint) : ''
           this.$notification.error({
@@ -1881,7 +2081,8 @@ export default {
           this.loadPrice(),
           this.loadBalance(),
           this.loadPosition(),
-          this.loadHistory()
+          this.loadHistory(),
+          this.$refs.positionActivity ? this.$refs.positionActivity.load() : Promise.resolve()
         ])
       } finally {
         this.dockRefreshing = false
@@ -1910,6 +2111,13 @@ export default {
     async handleSubmit (side = 'buy') {
       const canSubmitSide = side === 'sell' ? this.canSubmitSell : this.canSubmitBuy
       if (!canSubmitSide) {
+        if (side === 'buy' && this.buyFundsInsufficient) {
+          this.$notification.warning({
+            message: this.$t('quickTrade.insufficientFundsTitle'),
+            description: this.buyFundsWarning
+          })
+          return
+        }
         const exceedsSpotBalance = this.spotSellInputMode === 'amount'
           ? Number(this.sellAmount) > this.spotSellAvailableValue
           : Number(this.sellQuantity) > this.spotSellAvailable
@@ -1929,7 +2137,9 @@ export default {
           await this.submitAlpacaOrder(side)
           return
         }
-        const useProtectionPrices = !this.embeddedDock || this.dockTpslEnabled
+        const useProtectionPrices = this.floatingConsole ? this.supportsNativeProtection : (!this.embeddedDock || this.dockTpslEnabled)
+        const useTp = useProtectionPrices && (!this.floatingConsole || this.consoleTpEnabled)
+        const useSl = useProtectionPrices && (!this.floatingConsole || this.consoleSlEnabled)
         const isSpotOrder = this.isCryptoMarket && !this.isSwapMode
         const isSpotBuy = isSpotOrder && side === 'buy'
         const isSpotSell = isSpotOrder && side === 'sell'
@@ -1947,8 +2157,8 @@ export default {
           leverage: this.isSwapMode ? this.leverage : 1,
           market_type: this.effectiveMarketType,
           margin_mode: this.isSwapMode ? this.marginMode : undefined,
-          tp_price: useProtectionPrices ? (this.tpPrice || 0) : 0,
-          sl_price: useProtectionPrices ? (this.slPrice || 0) : 0,
+          tp_price: useTp ? (this.tpPrice || 0) : 0,
+          sl_price: useSl ? (this.slPrice || 0) : 0,
           source: this.source
         }
         if (buyByQuantity) payload.quantity = Number(this.buyQuantity)
@@ -1958,12 +2168,9 @@ export default {
           // Emit event for parent component (parent will show success message)
           this.$emit('order-success', res.data)
 
-          // Reload all data after successful order
-          await this.loadBalance()
-          await this.loadHistory()
-
-          // Load position with retry mechanism (exchange may need time to update)
-          await this.loadPositionWithRetry()
+          if (this.selectedCredentialId === payload.credential_id && this.currentSymbol === payload.symbol && this.effectiveMarketType === payload.market_type) {
+            this.refreshAfterTrade()
+          }
         } else {
           const hint = res.error_hint ? this.$t(res.error_hint) : ''
           this.$notification.error({
@@ -1974,9 +2181,12 @@ export default {
       } catch (e) {
         const rd = (e && e.response && e.response.data) || {}
         const hint = rd.error_hint ? this.$t(rd.error_hint) : ''
+        const description = typeof this.friendlyOrderErrorMessage === 'function'
+          ? this.friendlyOrderErrorMessage(rd, e.message || '')
+          : (rd.msg || e.message || '')
         this.$notification.error({
           message: this.$t('quickTrade.orderFailed'),
-          description: hint || rd.msg || e.message || ''
+          description: hint || description
         })
       } finally {
         this.submitting = false
@@ -2006,7 +2216,9 @@ export default {
         })
         return
       }
-      const useProtectionPrices = !this.embeddedDock || this.dockTpslEnabled
+      const useProtectionPrices = this.floatingConsole ? this.supportsNativeProtection : (!this.embeddedDock || this.dockTpslEnabled)
+      const useTp = useProtectionPrices && (!this.floatingConsole || this.consoleTpEnabled)
+      const useSl = useProtectionPrices && (!this.floatingConsole || this.consoleSlEnabled)
       const payload = {
         credential_id: this.selectedCredentialId,
         symbol: this.normalizeBrokerSymbol(this.currentSymbol),
@@ -2017,8 +2229,8 @@ export default {
         orderType: this.orderType,
         price: this.orderType === 'limit' ? price : undefined,
         reference_price: price,
-        take_profit_price: useProtectionPrices ? Number(this.tpPrice || 0) : 0,
-        stop_loss_price: useProtectionPrices ? Number(this.slPrice || 0) : 0,
+        take_profit_price: useTp ? Number(this.tpPrice || 0) : 0,
+        stop_loss_price: useSl ? Number(this.slPrice || 0) : 0,
         source: this.source
       }
       const res = await broker.alpaca.placeOrder(payload)
@@ -2031,14 +2243,53 @@ export default {
         const data = this.apiPayload(res)
         this.$notification.error({
           message: this.$t('quickTrade.orderFailed'),
-          description: data.msg || data.message || ''
+          description: this.friendlyOrderErrorMessage(data, data.msg || data.message || '')
         })
       }
     },
-    async handleClosePosition (pos) {
-      if (!pos || !this.selectedCredentialId || !this.currentSymbol) return
+    friendlyOrderErrorMessage (payload, fallback = '') {
+      const raw = [fallback, payload && payload.msg, payload && payload.message, payload && payload.detail, JSON.stringify(payload || {})].filter(Boolean).join(' ')
+      if (this.isStockMarket && /40310000|insufficient buying power/i.test(raw)) {
+        const readValue = key => {
+          const match = raw.match(new RegExp(`["']?${key}["']?\\s*[:=]\\s*["']?([0-9.]+)`, 'i'))
+          return match ? Number(match[1]) : 0
+        }
+        const required = readValue('cost_basis') || Number(this.spotBuyRequestedValue) || 0
+        const available = readValue('buying_power') || Number(this.activeBalanceAvailable) || 0
+        return this.$t('quickTrade.insufficientBuyingPower', {
+          required: this.formatPrice(required),
+          available: this.formatPrice(available),
+          currency: this.orderCurrency
+        })
+      }
+      return fallback || (payload && (payload.msg || payload.message || payload.detail)) || this.$t('quickTrade.orderFailed')
+    },
+    openPositionEditor (pos, mode) {
+      this.positionEditor = { side: pos.side, mode, price: mode === 'limit' ? Number(this.currentPrice.toFixed(this.pricePrecision)) : null, kind: 'tp' }
+    },
+    async submitPositionEditor () {
+      const editor = this.positionEditor
+      if (!editor || this.savingProtection || this.closingPositionSide) return
+      const pos = this.currentPositions.find(p => p.side === editor.side)
+      if (!pos) { this.$message.warning(this.$t('quickTrade.workflow.positionChanged')); return }
+      if (editor.mode === 'limit') return this.handleClosePosition(pos, 'limit', Number(editor.price))
+      this.savingProtection = true
+      try {
+        const res = await updateQuickPositionProtection({ credential_id: this.selectedCredentialId, symbol: this.currentSymbol, position_side: editor.side, kind: editor.kind, price: Number(editor.price) })
+        if (res.code !== 1) throw new Error(res.msg)
+        this.$message.success(this.$t('quickTrade.workflow.protectionAccepted'))
+        this.positionEditor = null
+        this.activeDockTab = 'openOrders'
+      } catch (e) {
+        const msg = (e.response && e.response.data && e.response.data.msg) || e.message
+        this.$message.error(this.$te(msg) ? this.$t(msg) : this.$t('quickTrade.workflow.protectionFailed'))
+      } finally { this.savingProtection = false }
+    },
+    async handleClosePosition (pos, exitType = 'market', exitPrice = 0) {
+      if (!pos || !this.selectedCredentialId || !this.currentSymbol || this.closingPositionSide) return
       const leg = (pos.side || '').toLowerCase()
       this.closingPositionSide = leg || null
+      this.positionRequestId = (this.positionRequestId || 0) + 1
       try {
         if (this.isStockMarket) {
           const qty = parseFloat(pos.size || pos.qty || 0) || 0
@@ -2071,19 +2322,21 @@ export default {
           symbol: this.currentSymbol,
           market_type: this.effectiveMarketType,
           size: 0,
-          close_scope: this.isSwapMode ? this.closeScope : 'full',
+          close_scope: this.floatingConsole ? 'full' : (this.isSwapMode ? this.closeScope : 'full'),
+          order_type: exitType,
+          price: exitPrice,
           position_side: leg,
           source: 'manual'
         }
         const res = await closeQuickTradePosition(payload)
         if (res.code === 1) {
-          this.$message.success(this.$t('quickTrade.positionClosed'))
-          await this.loadBalance()
-          await this.loadHistory()
-          this.currentPositions = this.currentPositions.filter(p => (p.side || '').toLowerCase() !== leg)
-          setTimeout(async () => {
-            await this.loadPosition()
-          }, 2000)
+          this.$message.success(this.$t(res.data && res.data.status === 'filled' ? 'quickTrade.workflow.exitFilled' : 'quickTrade.workflow.orderAccepted'))
+          if (this.selectedCredentialId === payload.credential_id && this.currentSymbol === payload.symbol && this.effectiveMarketType === payload.market_type) {
+            this.applyConfirmedClose(res.data, leg)
+            this.positionEditor = null
+            if (exitType === 'limit') this.activeDockTab = 'openOrders'
+            this.refreshAfterTrade()
+          }
         } else {
           const hint = res.error_hint ? this.$t(res.error_hint) : ''
           this.$notification.error({
@@ -2102,6 +2355,21 @@ export default {
         this.closingPositionSide = null
       }
     },
+    applyConfirmedClose (data, side) {
+      if (!data || data.status !== 'filled' || !(Number(data.filled) > 0)) return
+      this.positionRequestId = (this.positionRequestId || 0) + 1
+      this.currentPositions = this.currentPositions.map(pos => pos.side === side
+        ? { ...pos, size: Math.max(0, Number(pos.size) - Number(data.filled)) }
+        : pos).filter(pos => pos.size > 1e-12)
+    },
+    refreshAfterTrade () {
+      this.accountRefreshUntil = Date.now() + 15000
+      this.positionRequestId = (this.positionRequestId || 0) + 1
+      this.balanceRequestId = (this.balanceRequestId || 0) + 1
+      const refresh = Promise.allSettled([this.loadPosition(true), this.loadBalance(true), this.loadHistory()])
+      this.postTradeRefresh = refresh
+      refresh.finally(() => { if (this.postTradeRefresh === refresh) this.postTradeRefresh = null })
+    },
     startPolling () {
       this.stopPolling()
       this.pricePoller = createVisibilityPolling(() => {
@@ -2109,13 +2377,16 @@ export default {
           this.loadPrice()
         }
       }, 10000, { immediate: false })
-      this.accountPoller = createVisibilityPolling(() => {
-        if (this.selectedCredentialId && this.currentSymbol) {
-          this.loadBalance()
-          this.loadPosition()
-          this.loadHistory()
+      this.accountPoller = createVisibilityPolling(async () => {
+        if (!this.selectedCredentialId || !this.currentSymbol || this.submitting || this.closingPositionSide) return
+        if (this.postTradeRefresh) return this.postTradeRefresh
+        const fresh = this.floatingConsole || Date.now() < (this.accountRefreshUntil || 0)
+        await Promise.allSettled([this.loadPosition(fresh), this.loadHistory()])
+        if (Date.now() - (this.lastBalancePoll || 0) > 8000) {
+          this.lastBalancePoll = Date.now()
+          await this.loadBalance(fresh)
         }
-      }, 15000, { immediate: false })
+      }, this.floatingConsole ? 2000 : 15000, { immediate: false })
       this.pricePoller.start()
       this.accountPoller.start()
     },
@@ -2142,7 +2413,9 @@ export default {
     },
     toggleTradeDetails (tradeId) {
       const key = String(tradeId)
-      this.$set(this.expandedTradeIds, key, !this.expandedTradeIds[key])
+      const expanded = !this.expandedTradeIds[key]
+      if (this.floatingConsole) this.expandedTradeIds = {}
+      this.$set(this.expandedTradeIds, key, expanded)
     },
     isTradeDetailsExpanded (tradeId) {
       return Boolean(this.expandedTradeIds[String(tradeId)])
@@ -2150,11 +2423,31 @@ export default {
     tradeFillPrice (trade) {
       return parseFloat((trade && (trade.avg_fill_price || trade.filled_avg_price)) || 0) || 0
     },
-    tradeSideLabel (trade) {
+    requestedOrderPriceLabel (trade) {
+      if (String((trade && trade.order_type) || '').toLowerCase() !== 'limit') return this.$t('quickTrade.market')
+      const price = parseFloat((trade && trade.price) || 0) || 0
+      return price > 0 ? this.formatPrice(price) : '—'
+    },
+    formatRequestedOrderSize (trade) {
+      const quantity = parseFloat((trade && trade.requested_base_qty) || 0) || 0
+      if (quantity > 0) return this.formatQuantity(quantity)
+      const notional = parseFloat((trade && trade.requested_notional) || 0) || 0
+      if (notional > 0) return `${this.formatPrice(notional)} ${this.orderCurrency}`
+      return '—'
+    },
+    tradeActionLabel (trade) {
       const isBuy = String((trade && trade.side) || '').toLowerCase() === 'buy'
       const isSpot = String((trade && trade.market_type) || '').toLowerCase() === 'spot'
       if (isSpot) return this.$t(isBuy ? 'quickTrade.buySpot' : 'quickTrade.sellSpot')
-      return this.$t(isBuy ? 'quickTrade.long' : 'quickTrade.short')
+      if (trade && trade.is_close) {
+        const closeSide = String(trade.close_side || (isBuy ? 'short' : 'long')).toLowerCase()
+        return this.$t(closeSide === 'short' ? 'quickTrade.action.closeShort' : 'quickTrade.action.closeLong')
+      }
+      return this.$t(isBuy ? 'quickTrade.action.openLong' : 'quickTrade.action.openShort')
+    },
+    tradeActionColor (trade) {
+      if (trade && trade.is_close && String(trade.market_type || '').toLowerCase() !== 'spot') return '#1677ff'
+      return String((trade && trade.side) || '').toLowerCase() === 'buy' ? '#52c41a' : '#f5222d'
     },
     tradeOrderTypeLabel (trade) {
       return this.$t(String((trade && trade.order_type) || '').toLowerCase() === 'limit' ? 'quickTrade.limit' : 'quickTrade.market')
@@ -2196,7 +2489,29 @@ export default {
       const commission = parseFloat(trade.commission || 0) || 0
       const currency = String(trade.commission_ccy || '').trim()
       if (commission > 0) return `${this.formatQuantity(commission)}${currency ? ` ${currency}` : ''}`
+      if (String(trade.fee_status || '').toLowerCase() === 'actual_zero') {
+        return currency ? `0.00 ${currency}` : '0.00'
+      }
       return '--'
+    },
+    tradeEntryPrice (trade) {
+      return parseFloat((trade && trade.entry_price) || 0) || 0
+    },
+    tradeRealizedPnl (trade) {
+      if (!trade || trade.realized_pnl === null || trade.realized_pnl === undefined || trade.realized_pnl === '') return null
+      const value = Number(trade.realized_pnl)
+      return Number.isFinite(value) ? value : null
+    },
+    tradePnlTone (trade) {
+      const pnl = this.tradeRealizedPnl(trade)
+      if (pnl === null || pnl === 0) return ''
+      return pnl > 0 ? 'is-profit' : 'is-loss'
+    },
+    formatTradePnl (trade) {
+      const pnl = this.tradeRealizedPnl(trade)
+      if (pnl === null) return trade && trade.is_close ? this.$t('quickTrade.pnlPending') : '--'
+      const sign = pnl > 0 ? '+' : ''
+      return `${sign}${this.formatPrice(pnl)} USDT`
     },
     formatPrice (val) {
       const v = parseFloat(val || 0)
@@ -2207,9 +2522,16 @@ export default {
     },
     formatTime (ts) {
       if (!ts) return ''
-      const d = new Date(ts)
+      const d = parseUtcAwareInstant(ts)
+      if (!d) return ''
       const pad = n => String(n).padStart(2, '0')
       return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    },
+    formatFullTime (ts) {
+      const d = parseUtcAwareInstant(ts)
+      if (!d) return ''
+      const pad = n => String(n).padStart(2, '0')
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
     }
   },
   beforeDestroy () {
@@ -3076,12 +3398,13 @@ export default {
   }
 }
 .qt-trade-item--dock {
-  margin-bottom: 8px;
-  padding: 10px 11px !important;
-  border: 1px solid #e2e8f0 !important;
-  border-radius: 9px;
-  background: #fff;
-  &:last-child { margin-bottom: 0; }
+  margin: 0;
+  padding: 8px 4px !important;
+  border: 0 !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  border-radius: 0;
+  background: transparent;
+  &:last-child { border-bottom: 0 !important; }
   .qt-trade-symbol { color: #0f172a; font-size: 13px; font-weight: 700; }
   .qt-trade-time { color: #94a3b8; font-size: 10px; white-space: nowrap; }
   .qt-cancel-order-btn {
@@ -3110,17 +3433,24 @@ export default {
 .qt-trade-context,
 .qt-trade-actions { gap: 6px; }
 .qt-trade-card-identity { min-width: 0; }
+.qt-trade-card-state { flex: 0 0 auto; }
 .qt-trade-order-type {
   padding-left: 6px;
   color: #64748b;
   font-size: 10px;
   border-left: 1px solid #e2e8f0;
 }
+.qt-trade-inline-meta {
+  color: #94a3b8;
+  font-size: 9px;
+  white-space: nowrap;
+}
 .qt-trade-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(80px, 1fr));
-  gap: 6px;
-  margin-top: 9px;
+  gap: 0;
+  margin-top: 6px;
+  border-top: 1px solid #f1f5f9;
 }
 .qt-trade-metric,
 .qt-trade-details > div {
@@ -3130,9 +3460,12 @@ export default {
   gap: 2px;
 }
 .qt-trade-metric {
-  padding: 7px 8px;
-  border-radius: 7px;
-  background: #f8fafc;
+  min-height: 38px;
+  padding: 5px 7px;
+  border-left: 1px solid #f1f5f9;
+  border-radius: 0;
+  background: transparent;
+  &:first-child { border-left: 0; }
   span { color: #94a3b8; font-size: 9px; }
   strong {
     overflow: hidden;
@@ -3142,7 +3475,10 @@ export default {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  &--pnl.is-profit strong { color: #52c41a; }
+  &--pnl.is-loss strong { color: #f5222d; }
 }
+.qt-trade-price-flow { font-size: 10px !important; }
 .qt-trade-card-footer {
   margin-top: 8px;
 }
@@ -3160,8 +3496,10 @@ export default {
 .qt-trade-detail-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 0;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
   color: #64748b;
   font-size: 10px;
   border: 0;
@@ -3384,250 +3722,6 @@ export default {
     border-radius: 0;
     background: transparent;
   }
-}
-
-.quick-trade-embedded.qt-floating-console {
-  height: auto;
-  min-height: 0;
-  max-height: none;
-  background: transparent;
-
-  .qt-dock-header {
-    gap: 7px;
-    padding: 9px 12px 8px;
-    border-bottom: 1px solid #e2e8f0;
-  }
-  .qt-side-account-block { gap: 5px; }
-  .qt-side-section-heading { font-size: 10px; }
-  .qt-side-account-control {
-    grid-template-columns: minmax(0, 1fr) 30px;
-    gap: 5px;
-  }
-  .qt-side-account-control > .qt-dock-icon-btn,
-  .qt-side-balance-row > .qt-dock-icon-btn {
-    width: 30px;
-    height: 30px;
-    min-height: 30px;
-  }
-  .qt-side-account-control ::v-deep .ant-select,
-  .qt-side-account-control ::v-deep .ant-select-selection,
-  .qt-side-account-control ::v-deep .ant-select-selection--single {
-    height: 30px;
-  }
-  .qt-side-account-control ::v-deep .ant-select-selection__rendered { line-height: 28px; }
-  .qt-side-trade-controls {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 6px;
-  }
-  .qt-side-trade-controls > .qt-side-market-segmented:only-child { grid-column: 1 / -1; }
-  .qt-dock-trade-settings { min-width: 0; }
-  .qt-dock-leverage-trigger { min-width: 0; }
-  .qt-side-balance-row {
-    gap: 6px;
-    padding-top: 6px;
-  }
-  .qt-dock-balance strong { font-size: 12px; }
-  .qt-embedded-split--cols {
-    display: flex;
-    overflow: visible;
-  }
-  .qt-embedded-split--cols .qt-embedded-col-left {
-    padding: 8px 12px 10px !important;
-  }
-  .qt-order-entry-stack {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-  .qt-section {
-    padding: 0;
-  }
-  .qt-order-type-section ::v-deep .ant-radio-button-wrapper {
-    height: 30px;
-    line-height: 28px;
-  }
-  .qt-limit-section .qt-label { margin-bottom: 4px; }
-  .qt-amount-block { min-width: 0; }
-  .qt-spot-order-inputs {
-    display: block;
-    gap: 0;
-  }
-  .qt-side-amount {
-    min-height: 0;
-    padding: 9px;
-    border-color: #e2e8f0;
-    border-radius: 8px;
-    background: #f8fafc;
-  }
-  .qt-side-heading { margin-bottom: 6px; }
-  .qt-side-title { font-size: 12px; }
-  .qt-side-amount .qt-amount-label-row {
-    min-height: 0;
-    margin-bottom: 5px;
-  }
-  .qt-side-available { width: auto; }
-  .qt-side-amount ::v-deep .ant-input-number { height: 34px; }
-  .qt-side-amount ::v-deep .ant-input-number-input { height: 32px; }
-  .qt-side-amount .qt-quick-amounts { padding-top: 7px; }
-  .qt-side-amount .qt-quick-amounts button {
-    height: 26px;
-    font-size: 11px;
-  }
-  .qt-risk-action-stack {
-    position: static;
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid #e2e8f0;
-  }
-  .qt-dock-tpsl-toggle { margin-bottom: 6px; }
-  .qt-tpsl-card {
-    margin: 0 0 8px;
-    padding: 9px;
-    border-radius: 8px;
-  }
-  .qt-tpsl-record-hint {
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-  }
-  .qt-submit-section {
-    gap: 8px;
-    padding: 0;
-  }
-  .qt-submit-btn {
-    height: 38px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 800;
-  }
-  .qt-embedded-split--cols .qt-embedded-col-right {
-    max-height: 310px;
-    border-top: 1px solid #e2e8f0 !important;
-  }
-  .qt-dock-tabs {
-    min-height: 38px;
-    padding: 0 8px;
-  }
-  .qt-dock-tabs button {
-    height: 38px;
-    padding: 0 8px;
-    font-size: 10px;
-  }
-  .qt-position-section,
-  .qt-history-section {
-    max-height: 270px;
-    padding: 8px 10px;
-  }
-  .qt-position-empty { min-height: 108px; }
-  .qt-position-card {
-    gap: 6px 10px;
-    padding: 9px;
-  }
-}
-
-.qt-floating-quote-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  padding: 9px 12px 0;
-}
-.qt-floating-quote {
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid;
-  border-radius: 8px;
-  span {
-    font-size: 10px;
-    font-weight: 800;
-    text-transform: uppercase;
-  }
-  strong {
-    overflow: hidden;
-    font-size: 15px;
-    line-height: 1;
-    text-overflow: ellipsis;
-  }
-}
-.qt-floating-quote--buy {
-  color: #237804;
-  border-color: rgba(82, 196, 26, .34);
-  background: rgba(82, 196, 26, .08);
-}
-.qt-floating-quote--sell {
-  color: #cf1322;
-  border-color: rgba(245, 34, 45, .3);
-  background: rgba(245, 34, 45, .07);
-}
-.qt-floating-side-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  margin-bottom: 7px;
-  padding: 3px;
-  border-radius: 8px;
-  background: #f1f5f9;
-  button {
-    height: 28px;
-    padding: 0 8px;
-    color: #64748b;
-    border: 0;
-    border-radius: 6px;
-    background: transparent;
-    font-size: 11px;
-    font-weight: 700;
-    cursor: pointer;
-  }
-  button:first-child.active {
-    color: #237804;
-    background: #fff;
-    box-shadow: 0 1px 3px rgba(15, 23, 42, .12);
-  }
-  button:last-child.active {
-    color: #cf1322;
-    background: #fff;
-    box-shadow: 0 1px 3px rgba(15, 23, 42, .12);
-  }
-}
-.qt-floating-activity-toggle {
-  width: calc(100% - 24px);
-  height: 34px;
-  margin: 0 12px 10px;
-  padding: 0 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: #475569;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #f8fafc;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
-  &.active {
-    color: var(--primary-color, #ff5a1f);
-    border-color: color-mix(in srgb, var(--primary-color, #ff5a1f) 28%, transparent);
-    background: color-mix(in srgb, var(--primary-color, #ff5a1f) 6%, transparent);
-  }
-}
-.qt-floating-activity-count {
-  min-width: 18px;
-  height: 18px;
-  margin-left: auto;
-  padding: 0 5px;
-  border-radius: 999px;
-  color: #64748b;
-  background: #e2e8f0;
-  font-size: 10px;
-  line-height: 18px;
-  text-align: center;
 }
 
 @media (max-width: 1180px) {
@@ -4243,6 +4337,24 @@ export default {
   border-top: 1px dashed #e8e8e8;
 }
 
+.qt-close-scope-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.qt-close-scope-toolbar .qt-close-scope-radio {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.qt-close-scope-help {
+  flex: 0 0 auto;
+  color: #8c8c8c;
+  font-size: 14px;
+  cursor: help;
+}
+
 .qt-label-close-scope {
   margin-bottom: 6px;
 }
@@ -4778,14 +4890,15 @@ export default {
   }
   .qt-trade-item--dock {
     border-color: #363636 !important;
-    background: #242424;
+    background: transparent;
     .qt-trade-symbol { color: rgba(255, 255, 255, .9); }
     .qt-trade-time,
     .qt-trade-order-type { color: rgba(255, 255, 255, 0.42); }
     .qt-trade-order-type { border-left-color: #434343; }
   }
   .qt-trade-metric {
-    background: #1b1b1b;
+    border-left-color: #303030;
+    background: transparent;
     span { color: rgba(255, 255, 255, .38); }
     strong { color: rgba(255, 255, 255, .78); }
   }
@@ -4810,58 +4923,22 @@ export default {
   .qt-empty-desc {
     color: #888;
   }
-  &.qt-floating-console {
-    .qt-dock-header,
-    .qt-embedded-split--cols .qt-embedded-col-left,
-    .qt-risk-action-stack {
-      background: transparent !important;
-    }
-    .qt-dock-header,
-    .qt-side-balance-row,
-    .qt-risk-action-stack,
-    .qt-embedded-split--cols .qt-embedded-col-right {
-      border-color: #343434 !important;
-    }
-    .qt-side-amount {
-      border-color: #383838;
-      background: #202020;
-    }
-    .qt-floating-side-tabs {
-      background: #202020;
-      button { color: rgba(255, 255, 255, .5); }
-      button.active {
-        background: #303030;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, .42);
-      }
-      button:first-child.active { color: #95de64; }
-      button:last-child.active { color: #ff7875; }
-    }
-  }
-  .qt-floating-quote--buy {
-    color: #95de64;
-    border-color: rgba(82, 196, 26, .32);
-    background: rgba(82, 196, 26, .1);
-  }
-  .qt-floating-quote--sell {
-    color: #ff7875;
-    border-color: rgba(255, 77, 79, .3);
-    background: rgba(255, 77, 79, .09);
-  }
+
+
+
   .qt-floating-activity-toggle {
     color: rgba(255, 255, 255, .62);
-    border-color: #383838;
-    background: #202020;
+    border-color: transparent;
+    background: transparent;
     &.active {
       color: var(--primary-color, #ff5a1f);
-      border-color: color-mix(in srgb, var(--primary-color, #ff5a1f) 34%, transparent);
-      background: color-mix(in srgb, var(--primary-color, #ff5a1f) 10%, transparent);
+      border-color: transparent;
+      background: transparent;
     }
   }
-  .qt-floating-activity-count {
-    color: rgba(255, 255, 255, .62);
-    background: #383838;
-  }
+
 }
+@import "./floating-console.less";
 </style>
 
 <style lang="less" scoped>
@@ -5021,6 +5098,8 @@ export default {
     color: rgba(255, 255, 255, 0.86);
   }
 }
+
+
 </style>
 
 <style lang="less">

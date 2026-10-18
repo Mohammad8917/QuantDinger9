@@ -2859,14 +2859,17 @@ Object.entries(marketplaceDirectActionCopy).forEach(([locale, values]) => Object
 
 export const verifiedSameUiMessages = [
   'brokerAccounts.alpaca.name',
-  'brokerAccounts.ibkr.name'
+  'brokerAccounts.ibkr.name',
+  'profile.exchange.whitelistIpv4',
+  'profile.exchange.whitelistIpv6'
 ]
 
-// Provider names are trademarks, not translatable UI copy. Keep their
-// canonical spelling in every locale while translating surrounding text.
+// Keep trademarks and protocol names canonical in every locale.
 Object.keys(messages).forEach(locale => Object.assign(messages[locale], {
   'brokerAccounts.alpaca.name': 'Alpaca Markets',
-  'brokerAccounts.ibkr.name': 'Interactive Brokers'
+  'brokerAccounts.ibkr.name': 'Interactive Brokers',
+  'profile.exchange.whitelistIpv4': 'IPv4',
+  'profile.exchange.whitelistIpv6': 'IPv6'
 }))
 
 export default messages

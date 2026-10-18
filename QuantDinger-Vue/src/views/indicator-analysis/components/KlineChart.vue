@@ -253,6 +253,7 @@ import request from '@/utils/request'
 import { inferMarketPricePrecision } from '@/utils/marketPricePrecision.mjs'
 import { buildRenkoBricks } from '@/utils/renko.mjs'
 import { buildHeikinAshiRows, buildHlcAreaRows, buildRangeBars } from '@/utils/price-chart-transforms.mjs'
+import { captureChartViewport, restoreChartViewport } from '@/utils/chartViewport.mjs'
 import ExchangeKlineWs from '@/utils/exchangeWs'
 import { splitIndicatorPlotsByPane } from '@/utils/indicatorPlotGrouping'
 import { usePyodide } from '@/services/pyodide/usePyodide'
@@ -2457,11 +2458,32 @@ registerOverlay({
       return [q(b.open), q(b.high), q(b.low), q(b.close), q(b.volume)].join('|')
     }
 
+    let pendingViewportRestore = null
+
+    const replaceChartData = (rows, options = {}) => {
+      const chart = chartRef.value
+      if (!chart || typeof chart.applyNewData !== 'function') return
+      const viewport = options.preserveViewport
+        ? (options.viewport || pendingViewportRestore || captureChartViewport(chart))
+        : null
+      if (viewport && !viewport.followingLatest) pendingViewportRestore = viewport
+
+      const afterApply = () => {
+        if (chartRef.value === chart && viewport && !viewport.followingLatest) {
+          restoreChartViewport(chart, viewport)
+        }
+        if (pendingViewportRestore === viewport) pendingViewportRestore = null
+        if (typeof options.onComplete === 'function') options.onComplete()
+      }
+
+      chart.applyNewData(rows, options.moreData, afterApply)
+    }
+
     const flushRealtimeChartBar = (bar) => {
       if (!chartRef.value) return
       if (usesDerivedPriceBars()) {
         try {
-          chartRef.value.applyNewData(chartDisplayData())
+          replaceChartData(chartDisplayData(), { preserveViewport: true })
         } catch (_) {}
         return
       }
@@ -2470,7 +2492,7 @@ registerOverlay({
         chartRef.value.updateData(bar)
       } catch (e) {
         try {
-          chartRef.value.applyNewData(chartDisplayData())
+          replaceChartData(chartDisplayData(), { preserveViewport: true })
         } catch (_) {}
       }
     }
@@ -2489,7 +2511,7 @@ registerOverlay({
       if (!chartRef.value || !Array.isArray(bars) || bars.length === 0) return
       if (usesDerivedPriceBars()) {
         try {
-          chartRef.value.applyNewData(chartDisplayData())
+          replaceChartData(chartDisplayData(), { preserveViewport: true })
         } catch (_) {}
         return
       }
@@ -2507,7 +2529,7 @@ registerOverlay({
         return
       }
       try {
-        chartRef.value.applyNewData(chartDisplayData())
+        replaceChartData(chartDisplayData(), { preserveViewport: true })
       } catch (_) {}
     }
 
@@ -2795,61 +2817,24 @@ registerOverlay({
               return
             }
 
-            let savedVisibleRange = null
-            try {
-              if (chartRef.value && typeof chartRef.value.getVisibleRange === 'function') {
-                savedVisibleRange = chartRef.value.getVisibleRange()
-              }
-            } catch (e) {
-            }
+            const savedViewport = captureChartViewport(chartRef.value)
 
-            const previousDisplayCount = chartDisplayData(klineData.value).length
             const mergedHistory = normalizeKlineSequence([...filteredNewData, ...klineData.value])
-            const newDataCount = Math.max(0, chartDisplayData(mergedHistory).length - previousDisplayCount)
             klineData.value = mergedHistory
             suppressHistoryRangeUntil = Date.now() + 1200
 
             nextTick(() => {
               if (chartRef.value) {
-                const restoreDataIndex = savedVisibleRange && typeof savedVisibleRange.from === 'number'
-                  ? Math.max(0, Math.round(savedVisibleRange.from + newDataCount))
-                  : null
-
-                const afterApply = () => {
-                  if (restoreDataIndex !== null) {
-                    requestAnimationFrame(() => {
-                      suppressHistoryRangeUntil = Date.now() + 900
-                      try {
-                        if (chartRef.value && typeof chartRef.value.scrollToDataIndex === 'function') {
-                          chartRef.value.scrollToDataIndex(restoreDataIndex, 0)
-                        }
-                      } catch (e) {
-                      }
-                    })
-                  }
-                  updateIndicators()
-                }
-
+                suppressHistoryRangeUntil = Date.now() + 1200
                 try {
-                  chartRef.value.applyNewData(chartDisplayData(), hasMoreHistory.value, afterApply)
+                  replaceChartData(chartDisplayData(), {
+                    preserveViewport: true,
+                    viewport: savedViewport,
+                    moreData: hasMoreHistory.value,
+                    onComplete: updateIndicators
+                  })
                 } catch (e) {
-                  try {
-                    chartRef.value.applyNewData(chartDisplayData())
-                    afterApply()
-                  } catch (e2) {
-                    updateIndicators()
-                  }
-                }
-
-                if (restoreDataIndex !== null && typeof chartRef.value.scrollToDataIndex !== 'function') {
-                  setTimeout(() => {
-                    try {
-                      if (chartRef.value) {
-                        suppressHistoryRangeUntil = Date.now() + 500
-                      }
-                    } catch (e) {
-                    }
-                  }, 50)
+                  updateIndicators()
                 }
               }
             })
@@ -2911,12 +2896,16 @@ registerOverlay({
             return
           }
 
+          const savedViewport = captureChartViewport(chartRef.value)
           klineData.value = normalizeKlineSequence([...filteredNewData, ...klineData.value])
 
           nextTick(() => {
             if (chartRef.value) {
-              chartRef.value.applyNewData(chartDisplayData())
-              updateIndicators()
+              replaceChartData(chartDisplayData(), {
+                preserveViewport: true,
+                viewport: savedViewport,
+                onComplete: updateIndicators
+              })
             }
           })
         }
@@ -2971,7 +2960,7 @@ registerOverlay({
               return
             }
 
-            klineData.value = mergedData.length > 500 ? mergedData.slice(-500) : mergedData
+            klineData.value = mergedData
 
             const internalData = convertToInternalFormat(klineData.value)
             updatePricePanel(internalData, { force: hasAppendedBars })
@@ -2993,7 +2982,7 @@ registerOverlay({
                 scheduleRealtimeChartBarUpdate(bar)
               } else if (chartRef.value) {
                 try {
-                  chartRef.value.applyNewData(chartDisplayData())
+                  replaceChartData(chartDisplayData(), { preserveViewport: true })
                 } catch (_) {}
               }
               maybeUpdateIndicators(false)
@@ -5678,7 +5667,7 @@ registerOverlay({
       if (!chartRef.value) return
       updateChartTheme()
       try {
-        chartRef.value.applyNewData(chartDisplayData())
+        replaceChartData(chartDisplayData(), { preserveViewport: true })
       } catch (_) {}
       updateIndicators()
     })

@@ -4069,7 +4069,7 @@ const locale = {
   "profile.exchange.whitelistIpHint": "請依交易所要求將 IPv4 和/或 IPv6 加入 API 金鑰白名單（可同時新增）。此為後端出網位址，與您電腦瀏覽器的公網 IP 通常不同；若某項顯示為「—」表示目前環境無該協定出網路。",
   "profile.exchange.whitelistIpLabel": "API 白名單 IP（伺服器出網路）",
   "profile.exchange.whitelistIpRefresh": "重新整理",
-  "profile.exchange.whitelistIpv4": "IPv4 :",
+  "profile.exchange.whitelistIpv4": "IPv4",
   "profile.exchange.whitelistIpv6": "IPv6",
   "profile.lastLogin": "最後登入",
   "profile.loginLogs.device": "裝置",

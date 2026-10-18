@@ -4070,7 +4070,7 @@ const locale = {
   "profile.exchange.whitelistIpLabel": "Liste blanche des adresses IP de l'API (sortie du serveur)",
   "profile.exchange.whitelistIpRefresh": "Rafraîchir",
   "profile.exchange.whitelistIpv4": "IPv4",
-  "profile.exchange.whitelistIpv6": " Annexe I",
+  "profile.exchange.whitelistIpv6": "IPv6",
   "profile.lastLogin": "Dernière connexion",
   "profile.loginLogs.device": "Appareil",
   "profile.loginLogs.flags": "Alerte",

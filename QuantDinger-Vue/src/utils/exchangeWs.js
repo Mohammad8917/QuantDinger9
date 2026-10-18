@@ -54,7 +54,9 @@ function okxInstrumentId (symbol, marketType, instrumentId) {
 }
 
 function gateInstrumentId (symbol, instrumentId) {
-  return String(instrumentId || '').trim().toUpperCase() || spotPair(symbol)
+  const supplied = String(instrumentId || '').trim().toUpperCase()
+  if (supplied.includes('_')) return supplied
+  return spotPair(supplied || symbol)
 }
 
 function htxInstrumentId (symbol, marketType, instrumentId) {
@@ -535,7 +537,20 @@ export default class ExchangeKlineWs {
       return
     }
 
-    if (data.event === 'subscribe' || data.op === 'subscribe' || data.event === 'pong' || data.ret_msg === 'pong') return
+    if (data.event === 'subscribe' || data.op === 'subscribe') {
+      const subscriptionFailed = Boolean(data.error) || String(data.result && data.result.status || '').toLowerCase() === 'fail'
+      if (subscriptionFailed) {
+        console.warn(`[ExchangeWs] ${this._exchangeId} subscription rejected`)
+        if (this._ws) {
+          this._ws.onclose = null
+          try { this._ws.close() } catch (_) {}
+          this._ws = null
+        }
+        this._tryFallback()
+      }
+      return
+    }
+    if (data.event === 'pong' || data.ret_msg === 'pong') return
 
     let parsed
     try {

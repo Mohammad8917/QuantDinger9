@@ -17,6 +17,137 @@ function options (file, mocks = {}) {
   return scope.result
 }
 
+test('position history ignores a late response after switching instruments', async () => {
+  const pending = []
+  const component = options('components/QuickTradePanel/PositionActivity.vue', {
+    getQuickPositionHistory: () => new Promise(resolve => pending.push(resolve))
+  })
+  const state = { ...component.data(), credentialId: 12, symbol: 'BTC/USDT', marketType: 'swap', history: true, $t: key => key }
+  const first = component.methods.load.call(state)
+  state.symbol = 'SOL/USDT'
+  const second = component.methods.load.call(state)
+  pending[1]({ code: 1, data: { supported: true, positions: [{ id: 'sol' }] } })
+  await second
+  pending[0]({ code: 1, data: { supported: true, positions: [{ id: 'btc' }] } })
+  await first
+  assert.equal(state.rows[0].id, 'sol')
+  assert.equal(state.loading, false)
+})
+
+test('history refresh preserves visible rows while pending and reports a failed refresh', async () => {
+  let reject
+  const component = options('components/QuickTradePanel/PositionActivity.vue', {
+    getQuickPositionHistory: () => new Promise((resolve, fail) => { reject = fail })
+  })
+  const state = { ...component.data(), credentialId: 12, symbol: 'SOL/USDT', marketType: 'swap', history: true, rows: [{ id: 'existing' }], $t: key => key }
+  const request = component.methods.load.call(state)
+  assert.equal(state.rows[0].id, 'existing')
+  assert.equal(state.loading, true)
+  reject(new Error('offline'))
+  await request
+  assert.equal(state.loading, false)
+  assert.equal(state.error, 'quickTrade.workflow.historyFailed')
+  assert.equal(component.methods.number(null), '—')
+})
+
+test('floating ticket sends only enabled protection legs and keeps limit, margin and leverage', async () => {
+  const calls = []
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue', {
+    placeQuickOrder: async payload => { calls.push(payload); return { code: 0 } }
+  })
+  for (const [tp, sl] of [[false, false], [true, false], [false, true], [true, true]]) {
+    const state = {
+      canSubmitBuy: true, canSubmitSell: true, floatingConsole: true,
+      supportsNativeProtection: true, embeddedDock: true, dockTpslEnabled: false,
+      consoleTpEnabled: tp, consoleSlEnabled: sl, tpPrice: 85000, slPrice: 79000,
+      isCryptoMarket: true, isStockMarket: false, isSwapMode: true,
+      selectedCredentialId: 7, currentSymbol: 'BTC/USDT', orderType: 'limit',
+      limitPrice: 81000, amount: 100, leverage: 5, marginMode: 'isolated',
+      effectiveMarketType: 'swap', source: 'indicator',
+      $t: key => key, $notification: { error: () => {} }
+    }
+    await component.methods.handleSubmit.call(state, 'buy')
+    const payload = calls.at(-1)
+    assert.equal(payload.tp_price, tp ? 85000 : 0)
+    assert.equal(payload.sl_price, sl ? 79000 : 0)
+    assert.equal(payload.price, 81000)
+    assert.equal(payload.leverage, 5)
+    assert.equal(payload.margin_mode, 'isolated')
+    assert.equal(payload.amount, 100)
+    assert.equal(state.submitting, false)
+  }
+  assert.equal(calls.length, 4)
+})
+
+test('live quotes do not overwrite a manually entered limit', () => {
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue')
+  const state = { orderType: 'limit', limitPrice: 81000, currentPrice: 82000 }
+  component.watch.presetPrice.call(state, 82500)
+  assert.equal(state.currentPrice, 82500)
+  assert.equal(state.limitPrice, 81000)
+  state.limitPrice = state.currentPrice
+  component.methods.applyNewPrice.call(state, 82600)
+  assert.equal(state.limitPrice, 82500)
+  state.orderType = 'market'
+  component.watch.presetPrice.call(state, 82600)
+  assert.equal(state.limitPrice, 82600)
+})
+
+test('floating price inputs preserve fractional prices for high and low value assets', () => {
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue')
+  assert.equal(component.computed.pricePrecision.call({ floatingConsole: true, currentPrice: 81000.5 }), 2)
+  assert.equal(component.computed.pricePrecision.call({ floatingConsole: true, currentPrice: 1e-7 }), 7)
+  assert.equal(component.computed.pricePrecision.call({ floatingConsole: true, currentPrice: 81000, limitPrice: 81000.125 }), 3)
+})
+
+test('enabled protection must have a price and empty limit prices cannot submit', () => {
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue')
+  const state = {
+    floatingConsole: true, supportsNativeProtection: true, consoleTpEnabled: true,
+    consoleSlEnabled: false, tpPrice: null, tradableMarketSupported: true,
+    selectedCredentialId: 7, selectedCredential: { id: 7 }, currentSymbol: 'BTC/USDT',
+    submitting: false
+  }
+  assert.equal(component.computed.submitContextReady.call(state), false)
+  state.tpPrice = 85000
+  assert.equal(component.computed.submitContextReady.call(state), true)
+  assert.equal(component.computed.canSubmitBuy.call({ submitContextReady: true, orderType: 'limit', limitPrice: null, amount: 100 }), false)
+  assert.equal(component.computed.canSubmitSell.call({ submitContextReady: true, orderType: 'limit', limitPrice: 0, amount: 100, isSwapMode: true }), false)
+})
+
+test('quotes use the selected exchange and market and ignore stale responses', async () => {
+  let release
+  let params
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue', {
+    request: request => { params = request.params; return new Promise(resolve => { release = resolve }) }
+  })
+  const prices = []
+  const state = {
+    currentSymbol: 'BTC/USDT', isCryptoMarket: true,
+    selectedCredential: { exchange_id: 'gate' }, exchangeId: 'okx',
+    effectiveMarketType: 'swap', priceMarketParam: 'Crypto',
+    applyNewPrice: value => prices.push(value)
+  }
+  const pending = component.methods.loadPrice.call(state)
+  assert.deepEqual(JSON.parse(JSON.stringify(params)), { market: 'Crypto', symbol: 'BTC/USDT', exchange_id: 'gate', market_type: 'swap' })
+  state.effectiveMarketType = 'spot'
+  release({ code: 1, data: { price: 82000 } })
+  await pending
+  assert.deepEqual(prices, [])
+  const next = component.methods.loadPrice.call(state)
+  release({ code: 1, data: { price: 81000 } })
+  await next
+  assert.deepEqual(prices, [81000])
+})
+
+test('selecting an activity tab expands a collapsed floating table', () => {
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue')
+  const state = { floatingConsole: true, floatingActivityExpanded: false, $nextTick: fn => fn() }
+  component.methods.selectDockTab.call(state, 'positions')
+  assert.equal(state.activeDockTab, 'positions')
+  assert.equal(state.floatingActivityExpanded, true)
+})
+
 test('PC spot sell submits the exact base asset quantity', async () => {
   const calls = []
   const component = options('components/QuickTradePanel/QuickTradePanel.vue', {
@@ -216,4 +347,275 @@ test('PC spot sell validates both quantity and USDT value against the holding', 
   assert.equal(compute({ mode: 'quantity', sellQuantity: 0.01000001 }), false)
   assert.equal(compute({ mode: 'amount', sellAmount: 100 }), true)
   assert.equal(compute({ mode: 'amount', sellAmount: 831 }), false)
+})
+
+test('cash buy validates requested value against available funds', () => {
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue')
+  const amountState = {
+    isSpotCashOrder: true,
+    spotBuyInputMode: 'amount',
+    amount: 100,
+    activeBalanceAvailable: 0,
+    balanceLoading: false,
+    selectedCredentialId: 13
+  }
+  amountState.spotBuyRequestedValue = component.computed.spotBuyRequestedValue.call(amountState)
+  assert.equal(amountState.spotBuyRequestedValue, 100)
+  assert.equal(component.computed.buyFundsInsufficient.call(amountState), true)
+
+  const quantityState = {
+    isSpotCashOrder: true,
+    spotBuyInputMode: 'quantity',
+    buyQuantity: 0.25,
+    spotBuyReferencePrice: 400,
+    activeBalanceAvailable: 100,
+    balanceLoading: false,
+    selectedCredentialId: 13
+  }
+  quantityState.spotBuyRequestedValue = component.computed.spotBuyRequestedValue.call(quantityState)
+  assert.equal(quantityState.spotBuyRequestedValue, 100)
+  assert.equal(component.computed.buyFundsInsufficient.call(quantityState), false)
+})
+
+test('insufficient cash buy is blocked with a friendly warning', async () => {
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue')
+  const notices = []
+  const state = {
+    canSubmitBuy: false,
+    canSubmitSell: false,
+    buyFundsInsufficient: true,
+    buyFundsWarning: 'friendly balance warning',
+    spotSellInputMode: 'quantity',
+    sellQuantity: 0,
+    spotSellAvailable: 0,
+    $t: key => key,
+    $notification: { warning: notice => notices.push(notice), error: () => assert.fail('unexpected error') }
+  }
+
+  await component.methods.handleSubmit.call(state, 'buy')
+
+  assert.equal(notices.length, 1)
+  assert.equal(notices[0].message, 'quickTrade.insufficientFundsTitle')
+  assert.equal(notices[0].description, 'friendly balance warning')
+})
+
+test('Alpaca buying power rejection is converted into a local message', () => {
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue')
+  const state = {
+    isStockMarket: true,
+    spotBuyRequestedValue: 100,
+    activeBalanceAvailable: 0,
+    orderCurrency: 'USD',
+    formatPrice: component.methods.formatPrice,
+    $t: (key, values) => `${key}:${values.required}:${values.available}:${values.currency}`
+  }
+
+  const message = component.methods.friendlyOrderErrorMessage.call(state, {
+    msg: 'Alpaca rejected the request. Raw error: {"buying_power":"0","code":40310000,"cost_basis":"100","message":"insufficient buying power"}'
+  })
+
+  assert.equal(message, 'quickTrade.insufficientBuyingPower:100.00:0.0000:USD')
+})
+
+test('balance refresh keeps the last value pending or failed and accepts a real zero', async () => {
+  let release
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue', {
+    getQuickTradeBalance: () => new Promise(resolve => { release = resolve })
+  })
+  const state = { selectedCredentialId: 7, effectiveMarketType: 'swap', isSwapMode: true, balance: { available: 431, total: 496, swap: { available: 431, total: 496 } }, $t: key => key }
+  let pending = component.methods.loadBalance.call(state)
+  assert.equal(state.balance.available, 431)
+  release({ code: 0, msg: 'offline' })
+  await pending
+  assert.equal(state.balance.available, 431)
+  assert.equal(state.balance.error, 'offline')
+  pending = component.methods.loadBalance.call(state)
+  release({ code: 1, data: { available: 999, total: 496, swap: { available: 0, total: 496 } } })
+  await pending
+  assert.equal(state.balance.available, 0)
+  assert.equal(state.balance.swap.available, 0)
+  assert.equal(state.balanceLoading, false)
+})
+
+test('balance refresh ignores responses from another account, market or an older request', async () => {
+  const releases = []
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue', {
+    getQuickTradeBalance: () => new Promise(resolve => { releases.push(resolve) })
+  })
+  const state = { selectedCredentialId: 7, effectiveMarketType: 'swap', balance: { available: 431 }, $t: key => key }
+  const result = value => ({ code: 1, data: { available: value, swap: { available: value } } })
+  const first = component.methods.loadBalance.call(state)
+  const second = component.methods.loadBalance.call(state)
+  releases[1](result(432)); await second
+  releases[0](result(400)); await first
+  assert.equal(state.balance.available, 432)
+  const third = component.methods.loadBalance.call(state)
+  state.selectedCredentialId = 8
+  releases[2](result(900)); await third
+  assert.equal(state.balance.available, 432)
+  const fourth = component.methods.loadBalance.call(state)
+  state.effectiveMarketType = 'spot'
+  releases[3](result(800)); await fourth
+  assert.equal(state.balance.available, 432)
+})
+
+test('leverage input clamps blank, fractional and out-of-range values', () => {
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue')
+  for (const [input, expected] of [[null, 1], [0, 1], [500, 125], [5.6, 6], [20, 20]]) {
+    const state = { leverage: input }
+    component.methods.normalizeLeverage.call(state)
+    assert.equal(state.leverage, expected)
+  }
+})
+
+test('full close is market by default and refreshes fresh snapshots without hiding a live position', async () => {
+  const calls = []
+  let release
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue', {
+    closeQuickTradePosition: async data => { calls.push(data); return { code: 1 } }
+  })
+  const pos = { side: 'long', size: .0061 }
+  const state = {
+    selectedCredentialId: 7, currentSymbol: 'BTC/USDT', effectiveMarketType: 'swap',
+    floatingConsole: true, isSwapMode: true, closeScope: 'system_tracked', currentPositions: [pos],
+    $t: key => key, $message: { success: () => {} },
+    loadBalance: fresh => { assert.equal(fresh, true); return new Promise(resolve => { release = resolve }) },
+    loadPosition: fresh => { assert.equal(fresh, true) }, loadHistory: () => {},
+    applyConfirmedClose: (...args) => component.methods.applyConfirmedClose.call(state, ...args),
+    refreshAfterTrade: () => component.methods.refreshAfterTrade.call(state),
+    $notification: { error: () => assert.fail('unexpected error') }
+  }
+  await component.methods.handleClosePosition.call(state, pos)
+  assert.equal(calls[0].order_type, 'market')
+  assert.equal(calls[0].close_scope, 'full')
+  assert.equal(calls[0].size, 0)
+  assert.equal(state.currentPositions[0], pos)
+  assert.equal(state.closingPositionSide, null)
+  release()
+  await component.methods.handleClosePosition.call(state, pos, 'limit', 90000)
+  assert.equal(calls[1].price, 90000)
+  assert.equal(calls[1].order_type, 'limit')
+  assert.equal(state.activeDockTab, 'openOrders')
+  release()
+})
+
+test('positions ignore stale market responses and keep last snapshot on failure', async () => {
+  const pending = []
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue', {
+    getQuickTradePosition: () => new Promise(resolve => pending.push(resolve))
+  })
+  const position = { side: 'long', size: .0061 }
+  const state = { selectedCredentialId: 7, currentSymbol: 'BTC/USDT', effectiveMarketType: 'swap', currentPositions: [position], normalizePosition: p => p }
+  const first = component.methods.loadPosition.call(state)
+  state.effectiveMarketType = 'spot'
+  pending[0]({ code: 1, data: { positions: [] } }); await first
+  assert.equal(state.currentPositions[0], position)
+  const second = component.methods.loadPosition.call(state)
+  pending[1]({ code: 0 }); await second
+  assert.equal(state.currentPositions[0], position)
+})
+
+test('Alpaca history keeps confirmed zero and broker reported commissions', async () => {
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue', {
+    broker: { alpaca: { orders: async () => ({ success: true, data: [{
+      id: 'alpaca-1', symbol: 'AAPL', side: 'sell', status: 'filled',
+      filled_qty: 2, filled_avg_price: 250, asset_class: 'us_equity',
+      commission: 0, commission_ccy: 'USD', commission_quote: 0,
+      fees_by_ccy: { USD: 0 }, fee_status: 'actual_zero'
+    }] }) } }
+  })
+  const state = {
+    isStockMarket: true,
+    selectedCredentialId: 9,
+    currentSymbol: 'AAPL',
+    recentTrades: [],
+    apiPayload: response => response.data,
+    normalizeBrokerSymbol: symbol => symbol
+  }
+
+  await component.methods.loadHistory.call(state)
+
+  assert.equal(state.recentTrades[0].commission_quote, 0)
+  assert.equal(state.recentTrades[0].commission_ccy, 'USD')
+  assert.equal(state.recentTrades[0].fee_status, 'actual_zero')
+  const formatted = component.methods.formatTradeCommission.call({
+    formatPrice: component.methods.formatPrice,
+    formatQuantity: component.methods.formatQuantity
+  }, state.recentTrades[0])
+  assert.equal(formatted, '0.00 USD')
+})
+
+test('Alpaca notional market orders keep their requested value before filling', async () => {
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue', {
+    broker: { alpaca: { orders: async () => ({ success: true, data: [{
+      id: 'alpaca-notional-1', symbol: 'NVDA', side: 'sell', status: 'accepted',
+      qty: null, notional: 10000, order_type: 'market', limit_price: null,
+      filled_qty: 0, filled_avg_price: null, asset_class: 'us_equity'
+    }] }) } }
+  })
+  const state = {
+    isStockMarket: true,
+    selectedCredentialId: 13,
+    currentSymbol: 'NVDA',
+    recentTrades: [],
+    apiPayload: response => response.data
+  }
+
+  await component.methods.loadHistory.call(state)
+
+  const order = state.recentTrades[0]
+  assert.equal(order.requested_base_qty, 0)
+  assert.equal(order.requested_notional, 10000)
+  assert.equal(order.price, 0)
+  assert.equal(order.avg_fill_price, 0)
+
+  const display = {
+    orderCurrency: 'USD',
+    formatPrice: component.methods.formatPrice,
+    formatQuantity: component.methods.formatQuantity,
+    $t: key => key
+  }
+  assert.equal(component.methods.requestedOrderPriceLabel.call(display, order), 'quickTrade.market')
+  assert.equal(component.methods.formatRequestedOrderSize.call(display, order), '10,000 USD')
+})
+
+test('buying power validation does not render a polling warning inside the ticket', async () => {
+  const source = fs.readFileSync(new URL('../../src/components/QuickTradePanel/QuickTradePanel.vue', import.meta.url), 'utf8')
+  assert.doesNotMatch(source, /v-if="buyFundsWarning"/)
+  assert.doesNotMatch(source, /class="qt-buy-funds-warning"/)
+})
+
+
+test('only confirmed fills reduce the displayed holding, preserving the other side and spot dust', () => {
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue')
+  const state = { currentPositions: [{ side: 'long', size: .082917 }, { side: 'short', size: 2 }], positionRequestId: 4 }
+  component.methods.applyConfirmedClose.call(state, { status: 'submitted', filled: .082 }, 'long')
+  assert.equal(state.currentPositions[0].size, .082917)
+  component.methods.applyConfirmedClose.call(state, { status: 'filled', filled: .082 }, 'long')
+  assert.ok(Math.abs(state.currentPositions[0].size - .000917) < 1e-12)
+  assert.equal(state.currentPositions[1].size, 2)
+  assert.equal(state.positionRequestId, 5)
+  component.methods.applyConfirmedClose.call(state, { status: 'filled', filled: .000917 }, 'long')
+  assert.equal(state.currentPositions.length, 1)
+  assert.equal(state.currentPositions[0].side, 'short')
+})
+
+test('spot hides position history and returning from swap history selects holdings', () => {
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue')
+  const state = { floatingConsole: true, isSwapMode: false, currentPositions: [], openOrderRows: [], scopedTradeRows: [], $t: key => key }
+  assert.equal(component.computed.dockTabItems.call(state).length, 3)
+  state.isSwapMode = true
+  assert.equal(component.computed.dockTabItems.call(state).length, 4)
+  Object.assign(state, { activeDockTab: 'positionHistory', $nextTick: () => {} })
+  component.watch.tradeMode.call(state, 'spot')
+  assert.equal(state.activeDockTab, 'positions')
+})
+
+test('order acknowledgement releases the ticket without waiting for account refresh', async () => {
+  let refreshing = false
+  const component = options('components/QuickTradePanel/QuickTradePanel.vue', { placeQuickOrder: async () => ({ code: 1, data: { status: 'filled' } }) })
+  const state = { canSubmitBuy: true, isSwapMode: true, selectedCredentialId: 12, currentSymbol: 'SOL/USDT', effectiveMarketType: 'swap', orderType: 'market', amount: 25, leverage: 5, $emit: () => {}, refreshAfterTrade: () => { refreshing = true }, $notification: { error: () => assert.fail('unexpected error') } }
+  await component.methods.handleSubmit.call(state, 'buy')
+  assert.equal(refreshing, true)
+  assert.equal(state.submitting, false)
 })

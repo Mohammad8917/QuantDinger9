@@ -226,9 +226,15 @@
                     <div ref="aiConversation" class="ai-conversation">
                       <div v-if="aiWorkspaceLoading" class="ai-workspace-loading"><a-icon type="loading" spin /></div>
                       <div v-else-if="!aiMessages.length" class="ai-conversation-empty">
+                        <div class="ai-conversation-empty__intro">
+                          <a-icon type="message" />
+                          <div class="ai-conversation-empty__copy">
+                            <strong>{{ $t('indicatorIde.aiConversationEmptyTitle') }}</strong>
+                            <span>{{ $t('indicatorIde.aiConversationEmptyDesc') }}</span>
+                          </div>
+                        </div>
                         <div class="ai-quick-prompts">
                           <button v-for="item in aiQuickPrompts" :key="item.label" type="button" @click="useAiQuickPrompt(item)">
-                            <a-icon :type="item.icon" />
                             <span>{{ item.label }}</span>
                           </button>
                         </div>
@@ -588,24 +594,7 @@
                   }"
                   :style="quickTradeFloatingStyle"
                 >
-                  <header class="ide-quick-float__titlebar" @mousedown="startQuickTradeDrag">
-                    <div class="ide-quick-float__identity">
-                      <span class="ide-quick-float__brand"><a-icon type="thunderbolt" theme="filled" /> {{ $t('quickTrade.title') }}</span>
-                      <span v-if="!quickTradeMinimized" class="ide-quick-float__symbol">{{ market === 'Crypto' ? `${cryptoExchangeId.toUpperCase()} · ${qtSymbol} · ${cryptoMarketType.toUpperCase()}` : `${qtSymbol} · SPOT` }}</span>
-                    </div>
-                    <div class="ide-quick-float__actions" @mousedown.stop>
-                      <a-tooltip :title="quickTradePinned ? $t('quickTrade.floating.unpin') : $t('quickTrade.floating.pin')">
-                        <button type="button" :class="{ active: quickTradePinned }" :aria-label="quickTradePinned ? $t('quickTrade.floating.unpin') : $t('quickTrade.floating.pin')" :aria-pressed="quickTradePinned ? 'true' : 'false'" @click="toggleQuickTradePin"><a-icon type="pushpin" theme="filled" /></button>
-                      </a-tooltip>
-                      <a-tooltip :title="quickTradeMinimized ? $t('quickTrade.floating.restore') : $t('quickTrade.floating.minimize')">
-                        <button type="button" :aria-label="quickTradeMinimized ? $t('quickTrade.floating.restore') : $t('quickTrade.floating.minimize')" @click="quickTradeMinimized = !quickTradeMinimized"><a-icon :type="quickTradeMinimized ? 'border' : 'minus'" /></button>
-                      </a-tooltip>
-                      <a-tooltip :title="$t('indicatorIde.hideQuickTrade')">
-                        <button type="button" :aria-label="$t('indicatorIde.hideQuickTrade')" @click="closeQuickTradeFloat"><a-icon type="close" /></button>
-                      </a-tooltip>
-                    </div>
-                  </header>
-                  <div v-show="!quickTradeMinimized" class="ide-quick-float__body">
+                  <div class="ide-quick-float__body">
                     <quick-trade-panel
                       key="ide-floating-qt"
                       embedded
@@ -613,6 +602,7 @@
                       embedded-dock
                       side-dock
                       floating-console
+                      :console-minimized="quickTradeMinimized"
                       :visible="true"
                       :symbol="qtSymbol"
                       :preset-side="qtSide"
@@ -627,7 +617,32 @@
                       @update:symbol="handleQuickTradeSymbolChange"
                       @exchange-change="handleQuickTradeExchangeChange"
                       @market-type-change="handleCryptoMarketTypeChange"
-                    />
+                    >
+                      <template #console-header="consoleState">
+                        <header class="ide-quick-float__titlebar" @mousedown="startQuickTradeDrag">
+                          <div class="ide-quick-float__identity">
+                            <span class="ide-quick-float__brand"><a-icon type="thunderbolt" theme="filled" /> {{ $t('quickTrade.title') }}</span>
+                            <span v-if="!quickTradeMinimized" class="ide-quick-float__symbol">{{ market === 'Crypto' ? `${cryptoExchangeId.toUpperCase()} · ${qtSymbol}` : `${qtSymbol} · SPOT` }}</span>
+                          </div>
+                          <div v-if="market === 'Crypto' && !quickTradeMinimized" class="ide-quick-float__modes" @mousedown.stop>
+                            <button type="button" :class="{ active: consoleState.tradeMode === 'spot' }" @click="consoleState.selectTradeMode('spot')">{{ $t('quickTrade.spot') }}</button>
+                            <button type="button" :class="{ active: consoleState.tradeMode === 'swap' }" @click="consoleState.selectTradeMode('swap')">{{ $t('quickTrade.contractBadge') }}</button>
+                          </div>
+                          <span v-if="consoleState.connected && !quickTradeMinimized" class="ide-quick-float__connected"><a-badge status="success" />{{ $t('quickTrade.connected') }}</span>
+                          <div class="ide-quick-float__actions" @mousedown.stop>
+                            <a-tooltip :title="quickTradePinned ? $t('quickTrade.floating.unpin') : $t('quickTrade.floating.pin')">
+                              <button type="button" :class="{ active: quickTradePinned }" :aria-label="quickTradePinned ? $t('quickTrade.floating.unpin') : $t('quickTrade.floating.pin')" :aria-pressed="quickTradePinned ? 'true' : 'false'" @click="toggleQuickTradePin"><a-icon type="pushpin" theme="filled" /></button>
+                            </a-tooltip>
+                            <a-tooltip :title="quickTradeMinimized ? $t('quickTrade.floating.restore') : $t('quickTrade.floating.minimize')">
+                              <button type="button" :aria-label="quickTradeMinimized ? $t('quickTrade.floating.restore') : $t('quickTrade.floating.minimize')" @click="quickTradeMinimized = !quickTradeMinimized"><a-icon :type="quickTradeMinimized ? 'border' : 'minus'" /></button>
+                            </a-tooltip>
+                            <a-tooltip :title="$t('indicatorIde.hideQuickTrade')">
+                              <button type="button" :aria-label="$t('indicatorIde.hideQuickTrade')" @click="closeQuickTradeFloat"><a-icon type="close" /></button>
+                            </a-tooltip>
+                          </div>
+                        </header>
+                      </template>
+                    </quick-trade-panel>
                   </div>
                 </section>
                 <button
@@ -5957,10 +5972,42 @@ body.dark .ide-signal-alert-modal-wrap {
 }
 .ai-conversation-empty {
   min-height: 100%;
+  align-items: center;
   justify-content: center;
-  padding-top: 8%;
-  padding-bottom: 4%;
+  gap: 14px;
+  padding: 24px 16px;
   box-sizing: border-box;
+  text-align: center;
+}
+.ai-conversation-empty__intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  max-width: 560px;
+  > .anticon {
+    font-size: 28px;
+    color: var(--primary-color, #52c41a);
+  }
+}
+.ai-conversation-empty__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  strong {
+    color: #25324a;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  span {
+    max-width: 520px;
+    color: #7d899b;
+    font-size: 11px;
+    line-height: 1.55;
+  }
 }
 .ai-workspace-blocked > .anticon {
   flex: 0 0 26px;
@@ -5977,26 +6024,36 @@ body.dark .ide-signal-alert-modal-wrap {
 .ai-quick-prompts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 8px;
   width: 100%;
+  max-width: 720px;
 }
 .ai-quick-prompts button {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
   min-width: 0;
-  min-height: 34px;
-  padding: 5px 8px;
+  min-height: 38px;
+  padding: 7px 14px;
   border: 1px solid #dce3ec;
-  border-radius: 7px;
+  border-radius: 999px;
   color: #5f6b7d;
-  background: #f8fafc;
+  background: #fff;
   font-size: 10px;
-  line-height: 1.3;
-  text-align: left;
+  line-height: 1.35;
+  text-align: center;
   cursor: pointer;
-  &:hover { color: var(--primary-color, #ff5b22); border-color: color-mix(in srgb, var(--primary-color, #ff5b22) 52%, #dce3ec); background: #fff; }
-  .anticon { flex: 0 0 auto; }
+  transition: color 0.15s, border-color 0.15s, background 0.15s, transform 0.15s;
+  &:hover {
+    color: var(--primary-color, #ff5b22);
+    border-color: color-mix(in srgb, var(--primary-color, #ff5b22) 52%, #dce3ec);
+    background: color-mix(in srgb, var(--primary-color, #ff5b22) 4%, #fff);
+    transform: translateY(-1px);
+  }
+  &:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary-color, #ff5b22) 48%, transparent);
+    outline-offset: 2px;
+  }
   span {
     display: -webkit-box;
     min-width: 0;
@@ -6863,8 +6920,8 @@ body.dark .ide-signal-alert-modal-wrap {
 .ide-quick-float {
   position: absolute;
   z-index: 18;
-  width: min(408px, calc(100% - 24px));
-  max-height: min(720px, calc(100% - 70px));
+  width: min(620px, calc(100% - 24px));
+  max-height: min(760px, calc(100% - 70px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -6876,7 +6933,7 @@ body.dark .ide-signal-alert-modal-wrap {
   transition: width .18s ease, max-height .18s ease, box-shadow .18s ease;
   &.is-minimized {
     width: 244px;
-    max-height: 44px;
+    max-height: 54px;
   }
   &.is-dragging {
     user-select: none;
@@ -6885,8 +6942,11 @@ body.dark .ide-signal-alert-modal-wrap {
   }
 }
 .ide-quick-float__titlebar {
-  height: 44px;
-  flex: 0 0 44px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 42px;
+  flex: 0 0 42px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -6905,20 +6965,34 @@ body.dark .ide-signal-alert-modal-wrap {
   align-items: center;
   gap: 8px;
 }
+.ide-quick-float__modes {
+  display: flex;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--bg-secondary, #f1f5f9);
+  button { border: 1px solid transparent; background: transparent; color: #64748b; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap; }
+  button.active { color: var(--primary-color); border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 8%, transparent); }
+}
+.ide-quick-float__connected { display: flex; align-items: center; white-space: nowrap; color: #16a34a; font-size: 12px; margin-left: auto; }
+@media (max-width: 480px) {
+  .ide-quick-float__connected { display: none; }
+  .ide-quick-float__modes button { padding: 4px 6px; }
+  .ide-quick-float__titlebar { gap: 5px; }
+}
 .ide-quick-float__brand {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
-  font-weight: 800;
+  font-size: 16px;
+  font-weight: 600;
   .anticon { color: var(--primary-color, #ff5a1f); }
 }
 .ide-quick-float__symbol {
   min-width: 0;
   overflow: hidden;
   color: #64748b;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -7389,7 +7463,18 @@ body.dark .ide-signal-alert-modal-wrap {
   .ai-gen-body { background: #171717; }
   .ai-memory-badge { color: var(--primary-color, #ff7a45); background: color-mix(in srgb, var(--primary-color, #ff5b22) 12%, transparent); border-color: color-mix(in srgb, var(--primary-color, #ff5b22) 30%, transparent); }
   .ai-conversation { background: transparent; border-color: transparent; }
-  .ai-quick-prompts button { color: rgba(255,255,255,0.65); background: #202020; border-color: #363636; &:hover { background: #262626; } }
+  .ai-conversation-empty__copy strong { color: rgba(255, 255, 255, 0.9); }
+  .ai-conversation-empty__copy span { color: rgba(255, 255, 255, 0.48); }
+  .ai-quick-prompts button {
+    color: rgba(255,255,255,0.68);
+    background: #202020;
+    border-color: #363636;
+    &:hover {
+      color: var(--primary-color, #52c41a);
+      background: #262626;
+      border-color: color-mix(in srgb, var(--primary-color, #52c41a) 58%, #363636);
+    }
+  }
   .ai-message__content { color: rgba(255,255,255,0.78); background: #2a2a2a; }
   .ai-message--user .ai-message__content { color: #b7eb8f; background: rgba(82,196,26,0.11); border-color: rgba(82,196,26,0.28); }
   .ai-message-candidate { background: rgba(82,196,26,0.09); border-color: rgba(82,196,26,0.34); }
@@ -7427,6 +7512,9 @@ body.dark .ide-signal-alert-modal-wrap {
     background: linear-gradient(180deg, #232323 0%, #1b1b1b 100%);
   }
   .ide-quick-float__symbol { color: rgba(255, 255, 255, .48); }
+  .ide-quick-float__modes { background: #262626; }
+  .ide-quick-float__modes button { color: #aaa; }
+  .ide-quick-float__modes button.active { color: var(--primary-color); }
   .ide-quick-float__actions button {
     color: rgba(255, 255, 255, .56);
     &:hover,

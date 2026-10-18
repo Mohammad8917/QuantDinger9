@@ -53,3 +53,15 @@ export function cancelQuickTradeOrder (data) {
     data
   })
 }
+
+export function getQuickPositionHistory (params) {
+  return request({ url: '/api/quick-trade/position-history', method: 'get', params })
+}
+
+export function getQuickPositionProtection (params) {
+  return request({ url: '/api/quick-trade/position-protection', method: 'get', params })
+}
+
+export function updateQuickPositionProtection (data) {
+  return request({ url: '/api/quick-trade/position-protection', method: 'post', data })
+}

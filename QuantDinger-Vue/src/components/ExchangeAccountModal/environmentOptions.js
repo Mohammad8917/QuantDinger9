@@ -17,3 +17,8 @@ export function getCryptoEnvironmentValues (exchangeId) {
   const normalizedId = normalizeCryptoExchangeId(exchangeId)
   return [...(ENVIRONMENTS_BY_EXCHANGE[normalizedId] || [LIVE_ENVIRONMENT])]
 }
+
+export function shouldShowCryptoEnvironmentHint (environment) {
+  const normalizedEnvironment = String(environment || LIVE_ENVIRONMENT).trim().toLowerCase()
+  return normalizedEnvironment !== LIVE_ENVIRONMENT
+}

@@ -164,14 +164,18 @@ test('reviewed values reject known machine-translation corruption markers', () =
   assert.doesNotMatch(reviewedText, /胡說|小熊|뚱\s*베어|งุ่มง่าม|Je ne sais/iu)
 })
 
-test('broker trademarks keep their canonical names in every translated locale', () => {
+test('broker trademarks and IP protocol labels stay canonical in every locale', () => {
   assert.deepEqual(verifiedSameUiMessages, [
     'brokerAccounts.alpaca.name',
-    'brokerAccounts.ibkr.name'
+    'brokerAccounts.ibkr.name',
+    'profile.exchange.whitelistIpv4',
+    'profile.exchange.whitelistIpv6'
   ])
 
-  for (const locale of translatedLocales) {
+  for (const locale of ['en-US', ...translatedLocales]) {
     assert.equal(reviewedUiOverrides[locale]['brokerAccounts.alpaca.name'], 'Alpaca Markets')
     assert.equal(reviewedUiOverrides[locale]['brokerAccounts.ibkr.name'], 'Interactive Brokers')
+    assert.equal(reviewedUiOverrides[locale]['profile.exchange.whitelistIpv4'], 'IPv4')
+    assert.equal(reviewedUiOverrides[locale]['profile.exchange.whitelistIpv6'], 'IPv6')
   }
 })

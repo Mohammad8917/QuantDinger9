@@ -9,7 +9,10 @@ const enUS = {
   'quickTrade.sellAmount': 'Sell value',
   'quickTrade.enterSellQuantity': 'Enter sell quantity',
   'quickTrade.enterSellAmount': 'Enter sell value',
-  'quickTrade.insufficientSpotQuantity': 'The sell quantity exceeds the available asset balance.'
+  'quickTrade.insufficientSpotQuantity': 'The sell quantity exceeds the available asset balance.',
+  'quickTrade.insufficientFundsTitle': 'Insufficient funds',
+  'quickTrade.insufficientBuyingPower': 'Insufficient buying power: this order needs about {required} {currency}, but only {available} {currency} is available. Reduce the order value or add funds.',
+  'quickTrade.insufficientSpotBalance': 'Insufficient available balance: this order needs about {required} {currency}, but only {available} {currency} is available. Reduce the order value or add funds.'
 }
 
 export default {
@@ -26,7 +29,10 @@ export default {
     'quickTrade.sellAmount': '卖出金额',
     'quickTrade.enterSellQuantity': '输入卖出数量',
     'quickTrade.enterSellAmount': '输入卖出金额',
-    'quickTrade.insufficientSpotQuantity': '卖出数量超过当前币种可用持仓。'
+    'quickTrade.insufficientSpotQuantity': '卖出数量超过当前币种可用持仓。',
+    'quickTrade.insufficientFundsTitle': '可用资金不足',
+    'quickTrade.insufficientBuyingPower': '购买力不足：本次买入预计需要 {required} {currency}，当前可用 {available} {currency}。请减少买入金额或补充资金。',
+    'quickTrade.insufficientSpotBalance': '可用余额不足：本次买入预计需要 {required} {currency}，当前可用 {available} {currency}。请减少买入金额或补充资金。'
   },
   'zh-TW': {
     ...enUS,
@@ -40,7 +46,10 @@ export default {
     'quickTrade.sellAmount': '賣出金額',
     'quickTrade.enterSellQuantity': '輸入賣出數量',
     'quickTrade.enterSellAmount': '輸入賣出金額',
-    'quickTrade.insufficientSpotQuantity': '賣出數量超過目前幣種可用持倉。'
+    'quickTrade.insufficientSpotQuantity': '賣出數量超過目前幣種可用持倉。',
+    'quickTrade.insufficientFundsTitle': '可用資金不足',
+    'quickTrade.insufficientBuyingPower': '購買力不足：本次買入預計需要 {required} {currency}，目前可用 {available} {currency}。請減少買入金額或補充資金。',
+    'quickTrade.insufficientSpotBalance': '可用餘額不足：本次買入預計需要 {required} {currency}，目前可用 {available} {currency}。請減少買入金額或補充資金。'
   },
   'de-DE': {
     ...enUS,
