@@ -169,7 +169,24 @@ test('broker trademarks and IP protocol labels stay canonical in every locale', 
     'brokerAccounts.alpaca.name',
     'brokerAccounts.ibkr.name',
     'profile.exchange.whitelistIpv4',
-    'profile.exchange.whitelistIpv6'
+    'profile.exchange.whitelistIpv6',
+    'trading-assistant.notify.discord',
+    'trading-assistant.notify.webhook',
+    'universeManager.placeholder',
+    'universeManager.mixedPlaceholder',
+    'indicatorIde.signalAlert.telegram',
+    'indicatorIde.signalAlert.webhook',
+    'indicatorIde.signalAlert.telegramChatIdPlaceholder',
+    'indicatorIde.signalAlert.webhookUrlPlaceholder',
+    'aiAssetAnalysis.copilot.intervalMinutes',
+    'fastAnalysis.provider.yahoo_finance',
+    'fastAnalysis.provider.yfinance',
+    'fastAnalysis.provider.finnhub',
+    'strategyV2.taLibBadge',
+    'factorLibrary.family.talib',
+    'factorLibrary.family.alpha158',
+    'factorLibrary.family.alpha360',
+    'factorLibrary.qlibFeatureName'
   ])
 
   for (const locale of ['en-US', ...translatedLocales]) {

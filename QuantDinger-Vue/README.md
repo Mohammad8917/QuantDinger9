@@ -35,7 +35,7 @@ The frontend expects a compatible QuantDinger backend. Running this repository b
 
 ### Research and market context
 
-- AI asset research with market context, event radar, watchlists, professional reports, and shareable report pages
+- AI asset research with market context, watchlists, scheduled analysis, professional reports, and shareable report pages
 - Market, sentiment, technical, and fundamental views with ECharts and KLineCharts visualizations
 - Reusable universes for stock and crypto research
 - Multilingual, light/dark theme, and responsive desktop layouts
@@ -61,6 +61,7 @@ The frontend expects a compatible QuantDinger backend. Running this repository b
 - Unified strategy runtime for paper, signal-only, and live workflows
 - Signal-only virtual accounts with simulated orders, fills, positions, fees, PnL, and equity curves without broker submission
 - Live positions, orders, execution records, strategy logs, AI decision records, grid resting orders, and review reports
+- Quick Trade for supported crypto and US stock accounts, with chart-linked pricing, position cost lines, and entry markers
 - Broker account, credential, environment, and account-health management
 - Explicit pause, stop, and close-position controls with status feedback
 

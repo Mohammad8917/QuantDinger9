@@ -312,8 +312,8 @@ body.realdark .ant-layout-header .ant-menu-horizontal > .ant-menu-submenu-select
 .basic-layout-wrapper .ant-layout-header .ant-menu-horizontal > .ant-menu-submenu-selected,
 .basic-layout-wrapper .ant-pro-top-nav-header .ant-menu-horizontal > .ant-menu-item-selected,
 .basic-layout-wrapper .ant-pro-top-nav-header .ant-menu-horizontal > .ant-menu-submenu-selected {
-  background: ${soft} !important;
-  background-color: ${soft} !important;
+  background: transparent !important;
+  background-color: transparent !important;
 }
 
 .basic-layout-wrapper .ant-layout-header .ant-menu-horizontal > .ant-menu-item:hover,
@@ -324,8 +324,8 @@ body.realdark .ant-layout-header .ant-menu-horizontal > .ant-menu-submenu-select
 .basic-layout-wrapper .ant-pro-top-nav-header .ant-menu-horizontal > .ant-menu-item-active,
 .basic-layout-wrapper .ant-pro-top-nav-header .ant-menu-horizontal > .ant-menu-submenu:hover,
 .basic-layout-wrapper .ant-pro-top-nav-header .ant-menu-horizontal > .ant-menu-submenu-active {
-  background: ${softStrong} !important;
-  background-color: ${softStrong} !important;
+  background: transparent !important;
+  background-color: transparent !important;
 }
 
 .ant-menu-light .ant-menu-item-selected,

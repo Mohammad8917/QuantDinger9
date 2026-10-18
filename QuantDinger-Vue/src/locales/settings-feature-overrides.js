@@ -38,7 +38,13 @@ const messages = {
     'settings.field.MARKETPLACE_ENABLED': '策略與指標市場',
     'settings.desc.MARKETPLACE_ENABLED': '顯示市場入口與發布操作。本機或內部團隊部署可關閉。',
     'settings.field.ENABLE_REGISTRATION': '開放使用者註冊',
-    'settings.desc.ENABLE_REGISTRATION': '允許訪客建立帳號。內部團隊部署建議關閉。'
+    'settings.desc.ENABLE_REGISTRATION': '允許訪客建立帳號。內部團隊部署建議關閉。',
+    'settings.field.AGENT_LIVE_TRADING_ENABLED': '允許 Agent 實盤交易',
+    'settings.desc.AGENT_LIVE_TRADING_ENABLED': 'Agent 權杖提交真實訂單的總安全開關。關閉後仍可進行模擬交易。',
+    'settings.field.QUANTDINGER_DEPLOYMENT_MODE': '部署模式',
+    'settings.desc.QUANTDINGER_DEPLOYMENT_MODE': '控制自行託管與多租戶環境中的 Agent 權杖策略。',
+    'settings.field.AGENT_JOBS_MAX_WORKERS': 'Agent 任務並行數',
+    'settings.desc.AGENT_JOBS_MAX_WORKERS': '程序內可同時執行的 Agent 任務上限，修改後需要重新啟動服務。'
   },
   'ja-JP': {
     'settings.group.features': '製品機能',
@@ -47,7 +53,13 @@ const messages = {
     'settings.field.MARKETPLACE_ENABLED': 'マーケットプレイス',
     'settings.desc.MARKETPLACE_ENABLED': 'マーケットと公開操作を表示します。個人または社内利用では無効にできます。',
     'settings.field.ENABLE_REGISTRATION': '公開ユーザー登録',
-    'settings.desc.ENABLE_REGISTRATION': '訪問者によるアカウント作成を許可します。閉じたチームでは無効にしてください。'
+    'settings.desc.ENABLE_REGISTRATION': '訪問者によるアカウント作成を許可します。閉じたチームでは無効にしてください。',
+    'settings.field.AGENT_LIVE_TRADING_ENABLED': 'Agent のライブ取引を許可',
+    'settings.desc.AGENT_LIVE_TRADING_ENABLED': 'Agent トークンによる実注文の安全スイッチです。無効時もペーパー取引は利用できます。',
+    'settings.field.QUANTDINGER_DEPLOYMENT_MODE': 'デプロイモード',
+    'settings.desc.QUANTDINGER_DEPLOYMENT_MODE': 'セルフホストおよびマルチテナント環境の Agent トークンポリシーを制御します。',
+    'settings.field.AGENT_JOBS_MAX_WORKERS': 'Agent ジョブの同時実行数',
+    'settings.desc.AGENT_JOBS_MAX_WORKERS': 'プロセス内で同時実行できる Agent ジョブの上限です。変更後は再起動が必要です。'
   },
   'ko-KR': {
     'settings.group.features': '제품 기능',
@@ -56,7 +68,13 @@ const messages = {
     'settings.field.MARKETPLACE_ENABLED': '마켓플레이스',
     'settings.desc.MARKETPLACE_ENABLED': '마켓과 게시 작업을 표시합니다. 개인 또는 내부 팀 배포에서는 끌 수 있습니다.',
     'settings.field.ENABLE_REGISTRATION': '공개 회원가입',
-    'settings.desc.ENABLE_REGISTRATION': '방문자의 계정 생성을 허용합니다. 폐쇄형 팀에서는 끄는 것이 좋습니다.'
+    'settings.desc.ENABLE_REGISTRATION': '방문자의 계정 생성을 허용합니다. 폐쇄형 팀에서는 끄는 것이 좋습니다.',
+    'settings.field.AGENT_LIVE_TRADING_ENABLED': 'Agent 실거래 허용',
+    'settings.desc.AGENT_LIVE_TRADING_ENABLED': 'Agent 토큰으로 제출되는 실제 주문의 전역 안전 스위치입니다. 꺼도 모의 거래는 사용할 수 있습니다.',
+    'settings.field.QUANTDINGER_DEPLOYMENT_MODE': '배포 모드',
+    'settings.desc.QUANTDINGER_DEPLOYMENT_MODE': '자체 호스팅 및 멀티테넌트 환경의 Agent 토큰 정책을 제어합니다.',
+    'settings.field.AGENT_JOBS_MAX_WORKERS': 'Agent 작업 동시 실행 수',
+    'settings.desc.AGENT_JOBS_MAX_WORKERS': '프로세스 내에서 동시에 실행할 수 있는 Agent 작업의 상한입니다. 변경 후 재시작해야 합니다.'
   },
   'de-DE': {
     'settings.group.features': 'Produktfunktionen',
@@ -65,7 +83,13 @@ const messages = {
     'settings.field.MARKETPLACE_ENABLED': 'Marktplatz',
     'settings.desc.MARKETPLACE_ENABLED': 'Zeigt Marktplatz und Veröffentlichungsaktionen. Für private oder interne Installationen deaktivieren.',
     'settings.field.ENABLE_REGISTRATION': 'Öffentliche Registrierung',
-    'settings.desc.ENABLE_REGISTRATION': 'Erlaubt Besuchern, Konten anzulegen. Für geschlossene Teams deaktivieren.'
+    'settings.desc.ENABLE_REGISTRATION': 'Erlaubt Besuchern, Konten anzulegen. Für geschlossene Teams deaktivieren.',
+    'settings.field.AGENT_LIVE_TRADING_ENABLED': 'Live-Handel für Agents erlauben',
+    'settings.desc.AGENT_LIVE_TRADING_ENABLED': 'Globaler Sicherheitsschalter für echte Aufträge mit Agent-Tokens. Papierhandel bleibt bei Deaktivierung verfügbar.',
+    'settings.field.QUANTDINGER_DEPLOYMENT_MODE': 'Bereitstellungsmodus',
+    'settings.desc.QUANTDINGER_DEPLOYMENT_MODE': 'Steuert die Agent-Token-Richtlinie für selbst gehostete und mandantenfähige Installationen.',
+    'settings.field.AGENT_JOBS_MAX_WORKERS': 'Parallele Agent-Aufträge',
+    'settings.desc.AGENT_JOBS_MAX_WORKERS': 'Maximale Anzahl gleichzeitig ausgeführter Agent-Aufträge im Prozess. Nach einer Änderung ist ein Neustart erforderlich.'
   },
   'fr-FR': {
     'settings.group.features': 'Fonctions du produit',
@@ -74,7 +98,13 @@ const messages = {
     'settings.field.MARKETPLACE_ENABLED': 'Marché',
     'settings.desc.MARKETPLACE_ENABLED': 'Affiche le marché et les actions de publication. À désactiver pour un usage privé ou interne.',
     'settings.field.ENABLE_REGISTRATION': 'Inscription publique',
-    'settings.desc.ENABLE_REGISTRATION': 'Autorise les visiteurs à créer un compte. À désactiver pour une équipe fermée.'
+    'settings.desc.ENABLE_REGISTRATION': 'Autorise les visiteurs à créer un compte. À désactiver pour une équipe fermée.',
+    'settings.field.AGENT_LIVE_TRADING_ENABLED': 'Autoriser le trading réel des Agents',
+    'settings.desc.AGENT_LIVE_TRADING_ENABLED': 'Interrupteur de sécurité global pour les ordres réels soumis avec des jetons Agent. Le trading simulé reste disponible.',
+    'settings.field.QUANTDINGER_DEPLOYMENT_MODE': 'Mode de déploiement',
+    'settings.desc.QUANTDINGER_DEPLOYMENT_MODE': 'Contrôle la politique des jetons Agent pour les déploiements auto-hébergés et mutualisés.',
+    'settings.field.AGENT_JOBS_MAX_WORKERS': 'Tâches Agent simultanées',
+    'settings.desc.AGENT_JOBS_MAX_WORKERS': 'Nombre maximal de tâches Agent exécutées simultanément dans le processus. Un redémarrage est requis après modification.'
   },
   'ru-RU': {
     'settings.group.features': 'Функции продукта',
@@ -83,7 +113,13 @@ const messages = {
     'settings.field.MARKETPLACE_ENABLED': 'Маркетплейс',
     'settings.desc.MARKETPLACE_ENABLED': 'Показывает маркетплейс и публикацию. Можно отключить для личной или внутренней установки.',
     'settings.field.ENABLE_REGISTRATION': 'Открытая регистрация',
-    'settings.desc.ENABLE_REGISTRATION': 'Разрешает посетителям создавать аккаунты. Отключите для закрытой команды.'
+    'settings.desc.ENABLE_REGISTRATION': 'Разрешает посетителям создавать аккаунты. Отключите для закрытой команды.',
+    'settings.field.AGENT_LIVE_TRADING_ENABLED': 'Разрешить реальную торговлю Agent',
+    'settings.desc.AGENT_LIVE_TRADING_ENABLED': 'Глобальный защитный переключатель реальных ордеров с токенами Agent. При отключении бумажная торговля остаётся доступной.',
+    'settings.field.QUANTDINGER_DEPLOYMENT_MODE': 'Режим развёртывания',
+    'settings.desc.QUANTDINGER_DEPLOYMENT_MODE': 'Управляет политикой токенов Agent для локальных и многопользовательских развёртываний.',
+    'settings.field.AGENT_JOBS_MAX_WORKERS': 'Параллельные задания Agent',
+    'settings.desc.AGENT_JOBS_MAX_WORKERS': 'Максимальное число одновременно выполняемых заданий Agent в процессе. После изменения требуется перезапуск.'
   },
   'th-TH': {
     'settings.group.features': 'ฟีเจอร์ผลิตภัณฑ์',
@@ -92,7 +128,13 @@ const messages = {
     'settings.field.MARKETPLACE_ENABLED': 'มาร์เก็ตเพลส',
     'settings.desc.MARKETPLACE_ENABLED': 'แสดงตลาดและการเผยแพร่ ปิดได้สำหรับการใช้งานส่วนตัวหรือภายในทีม',
     'settings.field.ENABLE_REGISTRATION': 'เปิดลงทะเบียนสาธารณะ',
-    'settings.desc.ENABLE_REGISTRATION': 'อนุญาตให้ผู้เยี่ยมชมสร้างบัญชี ปิดสำหรับทีมแบบปิด'
+    'settings.desc.ENABLE_REGISTRATION': 'อนุญาตให้ผู้เยี่ยมชมสร้างบัญชี ปิดสำหรับทีมแบบปิด',
+    'settings.field.AGENT_LIVE_TRADING_ENABLED': 'อนุญาตให้ Agent เทรดจริง',
+    'settings.desc.AGENT_LIVE_TRADING_ENABLED': 'สวิตช์ความปลอดภัยส่วนกลางสำหรับคำสั่งจริงที่ส่งด้วยโทเค็น Agent เมื่อปิดยังคงใช้การเทรดจำลองได้',
+    'settings.field.QUANTDINGER_DEPLOYMENT_MODE': 'โหมดการติดตั้ง',
+    'settings.desc.QUANTDINGER_DEPLOYMENT_MODE': 'ควบคุมนโยบายโทเค็น Agent สำหรับระบบที่โฮสต์เองและระบบหลายผู้เช่า',
+    'settings.field.AGENT_JOBS_MAX_WORKERS': 'งาน Agent ที่ทำพร้อมกัน',
+    'settings.desc.AGENT_JOBS_MAX_WORKERS': 'จำนวนงาน Agent สูงสุดที่ทำพร้อมกันภายในโพรเซส ต้องเริ่มบริการใหม่หลังแก้ไข'
   },
   'vi-VN': {
     'settings.group.features': 'Tính năng sản phẩm',
@@ -101,7 +143,13 @@ const messages = {
     'settings.field.MARKETPLACE_ENABLED': 'Chợ nội dung',
     'settings.desc.MARKETPLACE_ENABLED': 'Hiển thị chợ và thao tác xuất bản. Có thể tắt cho triển khai cá nhân hoặc nội bộ.',
     'settings.field.ENABLE_REGISTRATION': 'Đăng ký công khai',
-    'settings.desc.ENABLE_REGISTRATION': 'Cho phép khách tạo tài khoản. Nên tắt cho nhóm nội bộ.'
+    'settings.desc.ENABLE_REGISTRATION': 'Cho phép khách tạo tài khoản. Nên tắt cho nhóm nội bộ.',
+    'settings.field.AGENT_LIVE_TRADING_ENABLED': 'Cho phép Agent giao dịch thật',
+    'settings.desc.AGENT_LIVE_TRADING_ENABLED': 'Công tắc an toàn toàn cục cho lệnh thật gửi bằng token Agent. Giao dịch mô phỏng vẫn dùng được khi tắt.',
+    'settings.field.QUANTDINGER_DEPLOYMENT_MODE': 'Chế độ triển khai',
+    'settings.desc.QUANTDINGER_DEPLOYMENT_MODE': 'Kiểm soát chính sách token Agent cho môi trường tự lưu trữ và nhiều đối tượng thuê.',
+    'settings.field.AGENT_JOBS_MAX_WORKERS': 'Tác vụ Agent đồng thời',
+    'settings.desc.AGENT_JOBS_MAX_WORKERS': 'Số tác vụ Agent tối đa chạy đồng thời trong tiến trình. Cần khởi động lại sau khi thay đổi.'
   },
   'ar-SA': {
     'settings.group.features': 'ميزات المنتج',
@@ -110,7 +158,13 @@ const messages = {
     'settings.field.MARKETPLACE_ENABLED': 'السوق',
     'settings.desc.MARKETPLACE_ENABLED': 'يعرض السوق وإجراءات النشر. يمكن تعطيله للاستخدام الشخصي أو الداخلي.',
     'settings.field.ENABLE_REGISTRATION': 'التسجيل العام',
-    'settings.desc.ENABLE_REGISTRATION': 'يسمح للزوار بإنشاء حسابات. عطّله لفرق العمل المغلقة.'
+    'settings.desc.ENABLE_REGISTRATION': 'يسمح للزوار بإنشاء حسابات. عطّله لفرق العمل المغلقة.',
+    'settings.field.AGENT_LIVE_TRADING_ENABLED': 'السماح بالتداول الحقيقي للوكيل',
+    'settings.desc.AGENT_LIVE_TRADING_ENABLED': 'مفتاح أمان عام للأوامر الحقيقية المرسلة برموز الوكيل. يظل التداول التجريبي متاحًا عند تعطيله.',
+    'settings.field.QUANTDINGER_DEPLOYMENT_MODE': 'وضع النشر',
+    'settings.desc.QUANTDINGER_DEPLOYMENT_MODE': 'يتحكم في سياسة رموز الوكيل لعمليات النشر المستضافة ذاتيًا ومتعددة المستأجرين.',
+    'settings.field.AGENT_JOBS_MAX_WORKERS': 'مهام الوكيل المتزامنة',
+    'settings.desc.AGENT_JOBS_MAX_WORKERS': 'الحد الأقصى لمهام الوكيل المتزامنة داخل العملية. يلزم إعادة التشغيل بعد التغيير.'
   }
 }
 

@@ -313,6 +313,10 @@ export default {
       type: Array,
       default: () => []
     },
+    quickTradePositions: {
+      type: Array,
+      default: () => []
+    },
     showIndicatorToolbar: {
       type: Boolean,
       default: true
@@ -653,6 +657,7 @@ export default {
     const addedSignalOverlayIds = ref([])
     const addedBacktestOverlayIds = ref([])
     const addedDrawingOverlayIds = ref([])
+    const addedQuickTradeOverlayIds = ref([])
     const activeDrawingTool = ref(null)
     let shiftMeasurePointerDownHandler = null
 
@@ -667,6 +672,83 @@ export default {
             inst.removeOverlayById(overlayId)
           }
         } catch (err) {
+        }
+      })
+    }
+
+    const clearQuickTradePositionOverlays = () => {
+      removeSignalOverlayBatch(addedQuickTradeOverlayIds.value)
+      addedQuickTradeOverlayIds.value = []
+    }
+
+    const formatQuickTradePrice = (value) => {
+      const price = Number(value)
+      if (!Number.isFinite(price)) return ''
+      const maximumFractionDigits = price >= 1000 ? 2 : (price >= 1 ? 4 : 8)
+      return price.toLocaleString(undefined, { maximumFractionDigits })
+    }
+
+    const renderQuickTradePositionOverlays = () => {
+      clearQuickTradePositionOverlays()
+      const chart = chartRef.value
+      const rows = Array.isArray(klineData.value) ? klineData.value : []
+      const positions = Array.isArray(props.quickTradePositions) ? props.quickTradePositions : []
+      if (!chart || typeof chart.createOverlay !== 'function' || rows.length === 0 || positions.length === 0) return
+
+      const firstTimestamp = Number(rows[0] && rows[0].timestamp)
+      const lastTimestamp = Number(rows[rows.length - 1] && rows[rows.length - 1].timestamp)
+      if (!Number.isFinite(firstTimestamp) || !Number.isFinite(lastTimestamp)) return
+
+      const addOverlay = (config) => {
+        try {
+          const overlayId = chart.createOverlay(config, 'candle_pane')
+          if (overlayId) addedQuickTradeOverlayIds.value.push(overlayId)
+        } catch (_) {}
+      }
+
+      positions.forEach(position => {
+        const entryPrice = Number(position && position.entryPrice)
+        if (!(entryPrice > 0)) return
+        const side = position.side === 'short' ? 'short' : 'long'
+        const markerSide = side === 'short' ? 'sell' : 'buy'
+        const color = side === 'short' ? '#f04438' : '#12b76a'
+        const rawEntryTimestamp = Number(position.entryTimestamp)
+        const hasEntryTimestamp = Number.isFinite(rawEntryTimestamp) && rawEntryTimestamp > 0
+        const entryBarTimestamp = hasEntryTimestamp ? alignKlineTimestampMs(rawEntryTimestamp) : null
+        const lineStartTimestamp = hasEntryTimestamp
+          ? Math.max(firstTimestamp, Math.min(entryBarTimestamp, lastTimestamp))
+          : firstTimestamp
+        const costLabel = String(position.costLabel || '')
+        const costPrice = formatQuickTradePrice(entryPrice)
+
+        addOverlay({
+          name: 'quickTradeCostLine',
+          points: [
+            { timestamp: lineStartTimestamp, value: entryPrice }
+          ],
+          extendData: {
+            label: costLabel,
+            price: costPrice
+          },
+          lock: true
+        })
+
+        if (entryBarTimestamp && entryBarTimestamp >= firstTimestamp && entryBarTimestamp <= lastTimestamp) {
+          addOverlay({
+            name: 'signalTag',
+            points: [
+              { timestamp: entryBarTimestamp, value: entryPrice },
+              { timestamp: entryBarTimestamp, value: entryPrice }
+            ],
+            extendData: {
+              text: position.entryLabel || '',
+              color,
+              side: markerSide,
+              source: 'quick-trade',
+              fontSize: 10
+            },
+            lock: true
+          })
         }
       })
     }
@@ -2126,6 +2208,99 @@ registerOverlay({
       }
     })
 
+    registerOverlay({
+      name: 'quickTradeCostLine',
+      totalStep: 1,
+      lock: true,
+      needDefaultPointFigure: false,
+      needDefaultXAxisFigure: false,
+      needDefaultYAxisFigure: false,
+      checkEventOn: () => false,
+      createPointFigures: ({ coordinates, overlay, bounding }) => {
+        if (!coordinates[0] || !Number.isFinite(bounding?.width)) return []
+        const isDark = chartTheme.value === 'dark'
+        const color = isDark ? '#d8ad5c' : '#a66b16'
+        const lineColor = withAlpha(color, isDark ? 0.76 : 0.68)
+        const startX = Math.max(0, coordinates[0].x)
+        const endX = Math.max(startX, bounding.width)
+        const y = coordinates[0].y
+        return {
+          type: 'line',
+          attrs: { coordinates: [{ x: startX, y }, { x: endX, y }] },
+          styles: {
+            style: 'stroke',
+            color: lineColor,
+            size: 1,
+            dashedValue: [7, 5]
+          },
+          ignoreEvent: true
+        }
+      },
+      createYAxisFigures: ({ coordinates, overlay, bounding }) => {
+        if (!coordinates[0] || !Number.isFinite(bounding?.width) || !Number.isFinite(bounding?.height)) return []
+        const data = overlay.extendData || {}
+        const label = String(data.label || '')
+        const price = String(data.price || '')
+        if (!label && !price) return []
+
+        const isDark = chartTheme.value === 'dark'
+        const color = isDark ? '#d8ad5c' : '#a66b16'
+        const tagHeight = 38
+        const tagWidth = Math.max(1, bounding.width - 2)
+        const tagX = 1
+        const tagY = Math.max(2, Math.min(coordinates[0].y - tagHeight / 2, bounding.height - tagHeight - 2))
+        const centerX = tagX + tagWidth / 2
+
+        return [
+          {
+            type: 'rect',
+            attrs: { x: tagX, y: tagY, width: tagWidth, height: tagHeight, r: 4 },
+            styles: {
+              style: 'stroke_fill',
+              color: isDark ? 'rgba(54, 43, 22, 0.98)' : 'rgba(166, 107, 22, 0.96)',
+              borderColor: withAlpha(color, isDark ? 0.72 : 0.62),
+              borderSize: 1
+            },
+            ignoreEvent: true
+          },
+          {
+            type: 'text',
+            attrs: {
+              x: centerX,
+              y: tagY + 11,
+              text: label,
+              align: 'center',
+              baseline: 'middle'
+            },
+            styles: {
+              color: isDark ? 'rgba(244, 225, 184, 0.82)' : 'rgba(255, 255, 255, 0.82)',
+              size: 9,
+              weight: '500',
+              backgroundColor: 'transparent'
+            },
+            ignoreEvent: true
+          },
+          {
+            type: 'text',
+            attrs: {
+              x: centerX,
+              y: tagY + 27,
+              text: price,
+              align: 'center',
+              baseline: 'middle'
+            },
+            styles: {
+              color: isDark ? '#fff4d6' : '#ffffff',
+              size: 11,
+              weight: '700',
+              backgroundColor: 'transparent'
+            },
+            ignoreEvent: true
+          }
+        ]
+      }
+    })
+
     const getMeasureOverlayTheme = () => {
       const isDark = chartTheme.value === 'dark'
       const accent = '#26a69a'
@@ -2215,7 +2390,7 @@ registerOverlay({
       let metaText = ''
       if (barCount > 0) {
         metaText = `${barCount}${proxy.$t('dashboard.indicator.drawing.measureBarUnit')}`
-        if (timeSpan) metaText += ` 鐠?${timeSpan}`
+        if (timeSpan) metaText += ` · ${timeSpan}`
       } else if (timeSpan) {
         metaText = timeSpan
       }
@@ -3335,6 +3510,7 @@ registerOverlay({
         if (chartRef.value && typeof chartRef.value.subscribeAction === 'function') {
           chartRef.value.subscribeAction('onDataReady', () => {
             scheduleSyncVolumePaneLayout()
+            renderQuickTradePositionOverlays()
             const rows = typeof chartRef.value.getDataList === 'function' ? chartRef.value.getDataList() : []
             emit('load', { barCount: Array.isArray(rows) ? rows.length : 0 })
           })
@@ -5688,6 +5864,10 @@ registerOverlay({
       }
     }, { deep: true })
 
+    watch(() => props.quickTradePositions, () => {
+      nextTick(() => renderQuickTradePositionOverlays())
+    }, { deep: true, immediate: true })
+
     watch(() => props.realtimeEnabled, (newVal) => {
       if (newVal) {
         startRealtime()
@@ -6012,6 +6192,7 @@ registerOverlay({
       clearAllDrawings,
       addedSignalOverlayIds,
       addedBacktestOverlayIds,
+      addedQuickTradeOverlayIds,
       getChartInstance,
       captureMarketPreview,
       clearBacktestOverlays,

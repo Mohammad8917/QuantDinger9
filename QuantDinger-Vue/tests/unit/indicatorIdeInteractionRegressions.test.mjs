@@ -61,6 +61,11 @@ test('derived live candles restore the viewport before the browser can paint a r
   assert.doesNotMatch(replaceSource, /requestAnimationFrame/)
 })
 
+test('measure overlay separates bar count and duration without mojibake', () => {
+  assert.match(klineChartSource, /metaText \+= ` · \$\{timeSpan\}`/)
+  assert.doesNotMatch(klineChartSource, /鐠\?|锟斤拷|\uFFFD/u)
+})
+
 test('indicator conversion route opens before strategy route initialization can replace it', () => {
   assert.match(
     strategyIdeSource,

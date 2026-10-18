@@ -120,19 +120,21 @@
       :width="1120"
       destroy-on-close
     >
-      <a-alert
-        class="ownership-risk-alert"
-        type="warning"
-        show-icon
-        :message="$t('strategyCenter.positionOwnership.riskTitle')"
-        :description="$t(ownershipExchangeId === 'alpaca' ? 'strategyCenter.positionOwnership.alpacaRiskDescription' : 'strategyCenter.positionOwnership.riskDescription')"
-      />
-      <a-alert
-        class="ownership-risk-alert"
-        type="info"
-        show-icon
-        :message="$t(ownershipExchangeId === 'alpaca' ? 'strategyCenter.positionOwnership.alpacaHelp' : 'strategyCenter.positionOwnership.toleranceHelp')"
-      />
+      <div class="ownership-guidance" :class="{ 'is-dark': isDark }">
+        <div class="ownership-guidance__main">
+          <span class="ownership-guidance__icon">
+            <a-icon type="safety-certificate" />
+          </span>
+          <div class="ownership-guidance__copy">
+            <strong>{{ $t('strategyCenter.positionOwnership.riskTitle') }}</strong>
+            <p>{{ $t(ownershipExchangeId === 'alpaca' ? 'strategyCenter.positionOwnership.alpacaRiskDescription' : 'strategyCenter.positionOwnership.riskDescription') }}</p>
+          </div>
+        </div>
+        <div class="ownership-guidance__note">
+          <a-icon type="info-circle" />
+          <span>{{ $t(ownershipExchangeId === 'alpaca' ? 'strategyCenter.positionOwnership.alpacaHelp' : 'strategyCenter.positionOwnership.toleranceHelp') }}</span>
+        </div>
+      </div>
       <a-table
         :columns="ownershipColumns"
         :data-source="ownershipRows"
@@ -185,7 +187,7 @@
       </a-table>
       <a-alert
         v-if="ownershipRows.some(row => row.repair_kind === 'allocation_shortfall')"
-        class="ownership-risk-alert"
+        class="ownership-shortfall-alert"
         type="warning"
         show-icon
         :message="$t('strategyCenter.positionOwnership.shortfall')"
@@ -785,7 +787,95 @@ export default {
   }
 }
 
-.ownership-risk-alert {
+.ownership-guidance {
   margin-bottom: 16px;
+  overflow: hidden;
+  border: 1px solid fade(@primary-color, 20%);
+  border-radius: 10px;
+  background: linear-gradient(135deg, fade(@primary-color, 5%) 0%, #ffffff 72%);
+
+  &__main {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 13px 15px 11px;
+  }
+
+  &__icon {
+    display: inline-flex;
+    flex: 0 0 30px;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    margin-top: 1px;
+    border: 1px solid fade(@primary-color, 20%);
+    border-radius: 8px;
+    color: @primary-color;
+    background: fade(@primary-color, 9%);
+    font-size: 15px;
+  }
+
+  &__copy {
+    min-width: 0;
+
+    strong {
+      display: block;
+      color: #253044;
+      font-size: 14px;
+      font-weight: 650;
+      line-height: 1.45;
+    }
+
+    p {
+      margin: 4px 0 0;
+      color: #667085;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+  }
+
+  &__note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 9px 15px 10px 57px;
+    border-top: 1px solid fade(@primary-color, 12%);
+    color: #758095;
+    background: fade(@primary-color, 2%);
+    font-size: 12px;
+    line-height: 1.5;
+
+    .anticon {
+      margin-top: 3px;
+      color: @primary-color;
+    }
+  }
+
+  &.is-dark {
+    border-color: fade(@primary-color, 30%);
+    background: linear-gradient(135deg, fade(@primary-color, 10%) 0%, #1b1d20 72%);
+
+    .ownership-guidance__icon {
+      border-color: fade(@primary-color, 30%);
+      background: fade(@primary-color, 14%);
+    }
+
+    .ownership-guidance__copy {
+      strong { color: #e5e9ef; }
+      p { color: #a8b0bc; }
+    }
+
+    .ownership-guidance__note {
+      border-top-color: rgba(255, 255, 255, 0.07);
+      color: #949eab;
+      background: rgba(255, 255, 255, 0.015);
+    }
+  }
+}
+
+.ownership-shortfall-alert {
+  margin-top: 16px;
+  border-radius: 8px;
 }
 </style>

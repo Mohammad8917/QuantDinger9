@@ -33,14 +33,14 @@ export default {
 <style scoped>
 .professional-analysis-page {
   width: 100%;
-  height: calc(100vh - 88px);
-  min-height: 560px;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   background: #eef3f8;
 }
 
 .professional-analysis-page.embedded {
-  height: calc(100vh - 92px);
+  height: 100%;
   background: transparent;
 }
 
@@ -48,10 +48,4 @@ export default {
   background: #0a0a0a;
 }
 
-@media (max-width: 768px) {
-  .professional-analysis-page,
-  .professional-analysis-page.embedded {
-    min-height: 0;
-  }
-}
 </style>

@@ -109,6 +109,7 @@
               class="top-admin-shortcut"
               :class="{ 'top-admin-shortcut--active': topAdminShortcutActive }"
               type="button"
+              :aria-label="topAdminTitle"
             >
               <a-icon type="setting" />
               <span>{{ topAdminTitle }}</span>

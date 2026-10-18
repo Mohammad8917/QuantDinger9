@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { spawn, spawnSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 import {
   evaluateObject,
@@ -10,6 +11,9 @@ import {
   placeholdersMatch,
   renderLocaleObject
 } from './i18n-utils.mjs'
+import {
+  verifiedSameTranslations as existingVerifiedSameTranslations
+} from '../src/locales/generated-locale-overrides.js'
 
 const root = resolve(process.cwd())
 const langDir = join(root, 'src', 'locales', 'lang')
@@ -20,11 +24,23 @@ const endpoint = process.env.QUANTDINGER_TRANSLATE_ENDPOINT ||
   'https://api-edge.cognitive.microsofttranslator.com/translate'
 const requestDelayMs = Number(process.env.QUANTDINGER_TRANSLATE_DELAY_MS || 180)
 const requestedProvider = process.env.QUANTDINGER_TRANSLATE_PROVIDER || 'auto'
+const googleCloudKey = process.env.GOOGLE_TRANSLATE_API_KEY ||
+  process.env.GOOGLE_CLOUD_TRANSLATE_KEY ||
+  process.env.VITE_GOOGLE_API_KEY || ''
+const requestedLocales = new Set(
+  String(process.env.QUANTDINGER_TRANSLATE_LOCALES || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean)
+)
+const activeLocaleNames = Object.keys(localeTargets).filter(localeName => (
+  requestedLocales.size === 0 || requestedLocales.has(localeName)
+))
 const missingOnly = process.env.QUANTDINGER_TRANSLATE_MISSING_ONLY === '1'
 const batchCharacterLimit = 3500
 const batchItemLimit = 90
 const bingBatchCharacterLimit = 850
-const bingParallelTargets = Number(process.env.QUANTDINGER_TRANSLATE_PARALLEL_TARGETS || 3)
+const bingParallelTargets = Number(process.env.QUANTDINGER_TRANSLATE_PARALLEL_TARGETS || 1)
 const existingGeneratedMessages = existsSync(outputPath)
   ? evaluateObject(
       readFileSync(outputPath, 'utf8'),
@@ -37,13 +53,14 @@ const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, millise
 let translationToken = ''
 let activeProvider = requestedProvider
 let bingSession = null
+let googlePowerShellOnly = false
 
 function protectText(value) {
   const protectedValues = []
   const text = value.replace(
     /<code\b[^>]*>.*?<\/code>|\{[^{}\n]+\}|%\([^)]+\)[sdif](?![A-Za-z])|%[sdif](?![A-Za-z])|<[^>\n]+>|`[^`\n]+`|https?:\/\/[A-Za-z0-9][A-Za-z0-9./?&=_:%#@+~-]*[A-Za-z0-9/#]/gi,
     match => {
-      const token = `QDINGERPLACEHOLDER${String(protectedValues.length).padStart(6, '0')}TOKEN`
+      const token = `__QD${String(protectedValues.length).padStart(6, '0')}__`
       protectedValues.push(match)
       return token
     }
@@ -54,7 +71,7 @@ function protectText(value) {
 function restoreText(value, protectedValues) {
   let restored = value
   protectedValues.forEach((original, index) => {
-    const token = `QDINGERPLACEHOLDER${String(index).padStart(6, '0')}TOKEN`
+    const token = `__QD${String(index).padStart(6, '0')}__`
     if (!restored.includes(token)) {
       throw new Error(`Translation response lost protected token ${token}`)
     }
@@ -139,7 +156,21 @@ async function requestBingText(text, targetLanguage, attempt = 1) {
     await sleep(Math.min(baseDelay * (2 ** (attempt - 1)), 30000))
     return requestBingText(text, targetLanguage, attempt + 1)
   }
-  const payload = await response.json()
+  const responseText = await response.text()
+  let payload
+  try {
+    payload = JSON.parse(responseText)
+  } catch (error) {
+    if (attempt >= 6) {
+      throw new Error(
+        `Bing translation returned an invalid response for ${targetLanguage}: ` +
+        `${responseText.slice(0, 160) || '<empty>'}`
+      )
+    }
+    bingSession = null
+    await sleep(Math.min(1500 * (2 ** (attempt - 1)), 30000))
+    return requestBingText(text, targetLanguage, attempt + 1)
+  }
   const translated = payload?.[0]?.translations?.[0]?.text
   if (typeof translated !== 'string') {
     throw new Error('Bing translation response did not contain translated text')
@@ -147,14 +178,14 @@ async function requestBingText(text, targetLanguage, attempt = 1) {
   return translated
 }
 
-function makeBingBatches(protectedItems) {
+function makeTranslationBatches(protectedItems, characterLimit = bingBatchCharacterLimit) {
   const batches = []
   let current = []
   let characters = 0
   protectedItems.forEach((item, index) => {
     const marker = `QDINGERITEM${String(index).padStart(6, '0')}TOKEN`
     const size = marker.length + item.text.length + 2
-    if (current.length && characters + size > bingBatchCharacterLimit) {
+    if (current.length && characters + size > characterLimit) {
       batches.push(current)
       current = []
       characters = 0
@@ -184,7 +215,7 @@ function extractBingBatch(translatedText, batch) {
 
 async function requestBingTranslationMatrix(values, targetLanguages) {
   const protectedItems = values.map(protectText)
-  const batches = makeBingBatches(protectedItems)
+  const batches = makeTranslationBatches(protectedItems)
   const matrix = values.map(() => ({}))
   let nextTarget = 0
 
@@ -230,7 +261,268 @@ async function requestBingTranslationMatrix(values, targetLanguages) {
   return matrix
 }
 
+const googleLanguageAliases = {
+  'zh-Hans': 'zh-CN',
+  'zh-Hant': 'zh-TW'
+}
+
+async function requestGoogleText(text, targetLanguage, attempt = 1) {
+  if (googlePowerShellOnly) {
+    return requestGoogleTextViaPowerShell(text, targetLanguage)
+  }
+  const body = new URLSearchParams({
+    client: 'gtx',
+    sl: 'en',
+    tl: googleLanguageAliases[targetLanguage] || targetLanguage,
+    dt: 't',
+    q: text
+  })
+  try {
+    const response = await fetch('https://translate.googleapis.com/translate_a/single', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
+        'user-agent': bingHeaders['user-agent']
+      },
+      body
+    })
+    const responseText = await response.text()
+    if (!response.ok) {
+      const error = new Error(`Google translation failed with HTTP ${response.status}`)
+      error.status = response.status
+      throw error
+    }
+    const payload = JSON.parse(responseText)
+    const translated = Array.isArray(payload?.[0])
+      ? payload[0].map(segment => segment?.[0] || '').join('')
+      : ''
+    if (!translated) throw new Error('Google translation response did not contain translated text')
+    return translated
+  } catch (error) {
+    try {
+      googlePowerShellOnly = true
+      return await requestGoogleTextViaPowerShell(text, targetLanguage)
+    } catch (transportError) {
+      if (attempt >= 6) throw transportError
+    }
+    if (attempt >= 6) throw error
+    const baseDelay = error.status === 429 ? 5000 : 1000
+    await sleep(Math.min(baseDelay * (2 ** (attempt - 1)), 30000))
+    return requestGoogleText(text, targetLanguage, attempt + 1)
+  }
+}
+
+function requestGoogleTextViaPowerShell(text, targetLanguage) {
+  const script = `
+$ErrorActionPreference = 'Stop'
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$text = [Console]::In.ReadToEnd()
+$body = @{
+  client = 'gtx'
+  sl = 'en'
+  tl = $env:QDINGER_TRANSLATE_TARGET
+  dt = 't'
+  q = $text
+}
+$response = Invoke-WebRequest -UseBasicParsing -Method Post -Uri 'https://translate.googleapis.com/translate_a/single' -ContentType 'application/x-www-form-urlencoded;charset=UTF-8' -Body $body -TimeoutSec 60
+$response.Content
+`
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      {
+        env: {
+          ...process.env,
+          QDINGER_TRANSLATE_TARGET: googleLanguageAliases[targetLanguage] || targetLanguage
+        },
+        windowsHide: true
+      }
+    )
+    let stdout = ''
+    let stderr = ''
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', chunk => { stdout += chunk })
+    child.stderr.on('data', chunk => { stderr += chunk })
+    child.on('error', rejectPromise)
+    child.on('close', code => {
+      if (code !== 0) {
+        rejectPromise(new Error((stderr || stdout || 'PowerShell transport failed').trim()))
+        return
+      }
+      try {
+        const payload = JSON.parse(stdout)
+        const translated = Array.isArray(payload?.[0])
+          ? payload[0].map(segment => segment?.[0] || '').join('')
+          : ''
+        if (!translated) {
+          throw new Error('Google translation response did not contain translated text')
+        }
+        resolvePromise(translated)
+      } catch (error) {
+        rejectPromise(error)
+      }
+    })
+    child.stdin.end(text, 'utf8')
+  })
+}
+
+async function requestGoogleTranslationMatrix(values, targetLanguages) {
+  const protectedItems = values.map(protectText)
+  const batches = makeTranslationBatches(protectedItems, 3500)
+  const matrix = values.map(() => ({}))
+  await Promise.all(targetLanguages.map(async targetLanguage => {
+    for (const batch of batches) {
+      const joined = batch
+        .map(item => item.text.replace(/\s+/g, ' ').trim())
+        .join('\n')
+      const translated = await requestGoogleText(joined, targetLanguage)
+      let translatedItems
+      const translatedLines = translated
+        .replace(/\r/g, '')
+        .replace(/\n+$/, '')
+        .split('\n')
+        .map(value => value.trim())
+      if (translatedLines.length === batch.length) {
+        translatedItems = new Map(
+          batch.map((item, index) => [item.index, translatedLines[index]])
+        )
+      } else {
+        console.warn(
+          `${targetLanguage}: expected ${batch.length} translated lines, got ` +
+          `${translatedLines.length}; retrying individually`
+        )
+        translatedItems = new Map()
+        for (const item of batch) {
+          translatedItems.set(
+            item.index,
+            await requestGoogleText(item.text, targetLanguage)
+          )
+          await sleep(requestDelayMs)
+        }
+      }
+      for (const item of batch) {
+        try {
+          matrix[item.index][targetLanguage] = restoreText(
+            translatedItems.get(item.index) || '',
+            item.protectedValues
+          )
+        } catch (error) {
+          console.warn(
+            `${targetLanguage}: protected tokens changed for item ${item.index}; ` +
+            'retrying individually'
+          )
+          const retried = await requestGoogleText(item.text, targetLanguage)
+          matrix[item.index][targetLanguage] = restoreText(
+            retried,
+            item.protectedValues
+          )
+        }
+      }
+      await sleep(requestDelayMs)
+    }
+  }))
+  return matrix
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || '')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+}
+
+async function requestGoogleCloudTranslationMatrix(values, targetLanguages) {
+  if (!googleCloudKey) {
+    throw new Error('Missing Google Cloud Translate API key')
+  }
+  const protectedItems = values.map(protectText)
+  const matrix = values.map(() => ({}))
+  for (const targetLanguage of targetLanguages) {
+    const requestPayload = {
+      q: protectedItems.map(item => item.text),
+      source: 'en',
+      target: googleLanguageAliases[targetLanguage] || targetLanguage,
+      format: 'text'
+    }
+    let response = { ok: true, status: 200 }
+    let payload
+    try {
+      response = await fetch(
+        `https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(googleCloudKey)}`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json;charset=UTF-8',
+            'user-agent': bingHeaders['user-agent']
+          },
+          body: JSON.stringify(requestPayload)
+        }
+      )
+      payload = await response.json().catch(() => ({}))
+    } catch (error) {
+      console.warn(`Google Cloud fetch failed, using PowerShell transport: ${error.message}`)
+      payload = requestGoogleCloudViaPowerShell(requestPayload)
+    }
+    if (!response.ok) {
+      throw new Error(
+        payload?.error?.message || `Google Cloud translation failed with HTTP ${response.status}`
+      )
+    }
+    const translations = payload?.data?.translations || []
+    if (translations.length !== values.length) {
+      throw new Error(
+        `Google Cloud response item count mismatch: expected ${values.length}, got ${translations.length}`
+      )
+    }
+    translations.forEach((item, index) => {
+      matrix[index][targetLanguage] = restoreText(
+        decodeHtmlEntities(item.translatedText),
+        protectedItems[index].protectedValues
+      )
+    })
+    await sleep(requestDelayMs)
+  }
+  return matrix
+}
+
+function requestGoogleCloudViaPowerShell(requestPayload) {
+  const script = `
+$ErrorActionPreference = 'Stop'
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$payload = [Console]::In.ReadToEnd()
+$uri = 'https://translation.googleapis.com/language/translate/v2?key=' + [System.Uri]::EscapeDataString($env:GOOGLE_TRANSLATE_API_KEY)
+$result = Invoke-RestMethod -Method Post -Uri $uri -ContentType 'application/json; charset=utf-8' -Body $payload -TimeoutSec 60
+$result | ConvertTo-Json -Depth 20 -Compress
+`
+  const result = spawnSync(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-Command', script],
+    {
+      input: JSON.stringify(requestPayload),
+      encoding: 'utf8',
+      env: { ...process.env, GOOGLE_TRANSLATE_API_KEY: googleCloudKey },
+      maxBuffer: 10 * 1024 * 1024
+    }
+  )
+  if (result.status !== 0) {
+    throw new Error((result.stderr || result.stdout || 'PowerShell transport failed').trim())
+  }
+  return JSON.parse(result.stdout)
+}
+
 async function requestTranslationMatrix(values, targetLanguages, attempt = 1) {
+  if (activeProvider === 'google-cloud') {
+    return requestGoogleCloudTranslationMatrix(values, targetLanguages)
+  }
+  if (activeProvider === 'google') {
+    return requestGoogleTranslationMatrix(values, targetLanguages)
+  }
   if (activeProvider === 'bing') {
     return requestBingTranslationMatrix(values, targetLanguages)
   }
@@ -331,7 +623,7 @@ async function translateCandidateMatrix(candidateEntries, verifiedSame, phaseNam
   const batches = makeBatches(unionEntries)
   let completed = 0
   for (const batch of batches) {
-    const activeLocales = Object.keys(localeTargets).filter(localeName => (
+    const activeLocales = activeLocaleNames.filter(localeName => (
       batch.some(entry => candidateKeys[localeName].has(entry.key))
     ))
     const targetLanguages = activeLocales.map(localeName => localeTargets[localeName])
@@ -414,7 +706,7 @@ if (process.env.QUANTDINGER_TRANSLATE_REBUILD_VERIFIED_ONLY === '1') {
     ...composeOverrides(modules, 'en-US')
   }
   const verified = Object.fromEntries(
-    Object.keys(localeTargets).map(localeName => {
+    activeLocaleNames.map(localeName => {
       const effective = {
         ...loadCoreLocale(langDir, localeName).locale,
         ...composeOverrides(modules, localeName),
@@ -437,14 +729,17 @@ if (process.env.QUANTDINGER_TRANSLATE_REBUILD_VERIFIED_ONLY === '1') {
 
 const coreLocales = {}
 const verifiedSame = Object.fromEntries(
-  Object.keys(localeTargets).map(localeName => [localeName, new Set()])
+  Object.keys(localeTargets).map(localeName => [
+    localeName,
+    new Set(existingVerifiedSameTranslations[localeName] || [])
+  ])
 )
 const enCore = loadCoreLocale(langDir, 'en-US').locale
 coreLocales['en-US'] = enCore
 const coreWork = {}
 const coreCandidates = {}
 
-for (const localeName of Object.keys(localeTargets)) {
+for (const localeName of activeLocaleNames) {
   const filePath = join(langDir, `${localeName}.js`)
   const loaded = loadCoreLocale(langDir, localeName)
   const locale = { ...loaded.locale }
@@ -470,7 +765,7 @@ const coreTranslations = await translateCandidateMatrix(
   'core locales'
 )
 
-for (const localeName of Object.keys(localeTargets)) {
+for (const localeName of activeLocaleNames) {
   const { filePath, loaded, locale } = coreWork[localeName]
   Object.assign(locale, coreTranslations[localeName])
   for (const [key, source] of Object.entries(enCore)) {
@@ -491,11 +786,11 @@ const overrideModules = await loadOverrideModules()
 translationToken = ''
 const enOverrides = composeOverrides(overrideModules, 'en-US')
 const finalEnglish = { ...enCore, ...enOverrides }
-const generatedMessages = {}
+const generatedMessages = missingOnly ? { ...existingGeneratedMessages } : {}
 const generatedSeeds = {}
 const overrideCandidates = {}
 
-for (const localeName of Object.keys(localeTargets)) {
+for (const localeName of activeLocaleNames) {
   const existingOverrides = composeOverrides(overrideModules, localeName)
   const retainedGenerated = missingOnly
     ? (existingGeneratedMessages[localeName] || {})
@@ -542,7 +837,7 @@ const overrideTranslations = await translateCandidateMatrix(
   'effective overrides'
 )
 
-for (const localeName of Object.keys(localeTargets)) {
+for (const localeName of activeLocaleNames) {
   generatedMessages[localeName] = {
     ...generatedSeeds[localeName],
     ...overrideTranslations[localeName]

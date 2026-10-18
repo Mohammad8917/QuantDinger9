@@ -3,24 +3,30 @@ import {
   isTranslatableText,
   loadCoreLocale,
   localeTargets,
-  overrideModulePaths,
+  postGeneratedOverrideModulePaths,
+  preGeneratedOverrideModulePaths,
   placeholdersMatch
 } from './i18n-utils.mjs'
 import generatedOverrides, {
   verifiedSameTranslations
 } from '../src/locales/generated-locale-overrides.js'
 import { verifiedSameUiMessages } from '../src/locales/reviewed-ui-overrides.js'
+import { verifiedSameSettingsMessages } from '../src/locales/settings-research-overrides.js'
 
 const root = resolve(process.cwd())
 const langDir = join(root, 'src', 'locales', 'lang')
-const overrideModules = await Promise.all(
-  overrideModulePaths.map(modulePath => import(new URL(modulePath, import.meta.url)))
+const preGeneratedModules = await Promise.all(
+  preGeneratedOverrideModulePaths.map(modulePath => import(new URL(modulePath, import.meta.url)))
+)
+const postGeneratedModules = await Promise.all(
+  postGeneratedOverrideModulePaths.map(modulePath => import(new URL(modulePath, import.meta.url)))
 )
 
 function composeOverrides(localeName) {
   return Object.assign(
     {},
-    ...overrideModules.map(module => module.default?.[localeName] || {}),
+    ...preGeneratedModules.map(module => module.default?.[localeName] || {}),
+    ...postGeneratedModules.map(module => module.default?.[localeName] || {}),
     generatedOverrides[localeName] || {}
   )
 }
@@ -35,12 +41,19 @@ function finalMessages(localeName) {
 const english = finalMessages('en-US')
 const failures = []
 const coverage = []
+const requestedLocale = process.env.QUANTDINGER_I18N_AUDIT_LOCALE
+const localesToAudit = requestedLocale ? [requestedLocale] : Object.keys(localeTargets)
 
-for (const localeName of Object.keys(localeTargets)) {
+if (requestedLocale && !localeTargets[requestedLocale]) {
+  throw new Error(`Unsupported locale requested for audit: ${requestedLocale}`)
+}
+
+for (const localeName of localesToAudit) {
   const locale = finalMessages(localeName)
   const verifiedSame = new Set([
     ...(verifiedSameTranslations[localeName] || []),
-    ...verifiedSameUiMessages
+    ...verifiedSameUiMessages,
+    ...verifiedSameSettingsMessages
   ])
   const missing = []
   const placeholderMismatches = []
@@ -80,6 +93,10 @@ for (const localeName of Object.keys(localeTargets)) {
     untranslated: untranslated.length
   })
 
+  if (process.env.QUANTDINGER_I18N_AUDIT_DETAILS === localeName) {
+    console.log(JSON.stringify({ locale: localeName, missing, placeholderMismatches, untranslated }, null, 2))
+  }
+
   if (missing.length) {
     failures.push(`${localeName}: missing ${missing.length} keys (${missing.slice(0, 8).join(', ')})`)
   }
@@ -105,4 +122,4 @@ if (failures.length) {
   process.exit(1)
 }
 
-console.log(`Locale completeness audit passed for ${Object.keys(localeTargets).length} translated locales.`)
+console.log(`Locale completeness audit passed for ${localesToAudit.length} translated locale(s).`)

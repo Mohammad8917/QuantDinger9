@@ -70,4 +70,23 @@ test('indicator IDE keeps every required quick-trade capability in the floating 
   assert.doesNotMatch(ide, /this\.qtPrice = 0\s*\n\s*this\.quickTradeMinimized/)
   assert.doesNotMatch(panel, /ai_decision_filter/)
   assert.doesNotMatch(panel, /eventRadar/)
+  assert.match(panel, /emitPositionOverlayChange \(\)/)
+  assert.match(panel, /this\.\$emit\('position-overlay-change'/)
+  assert.match(panel, /entryTimestamp: this\.positionEntryTimestamp\(position\)/)
+  assert.match(ide, /:quick-trade-positions="quickTradeChartPositions"/)
+  assert.match(ide, /@position-overlay-change="handleQuickTradePositionOverlayChange"/)
+})
+
+test('quick-trade positions render a removable cost line and entry marker on the chart', async () => {
+  const chart = await readFile(new URL('../../src/views/indicator-analysis/components/KlineChart.vue', import.meta.url), 'utf8')
+
+  assert.match(chart, /quickTradePositions:/)
+  assert.match(chart, /const addedQuickTradeOverlayIds = ref\(\[\]\)/)
+  assert.match(chart, /name: 'quickTradeCostLine'[\s\S]*?dashedValue: \[7, 5\]/)
+  assert.match(chart, /endX = Math\.max\(startX, bounding\.width\)/)
+  assert.match(chart, /createYAxisFigures:[\s\S]*?text: label[\s\S]*?text: price/)
+  assert.match(chart, /tagY \+ 11[\s\S]*?tagY \+ 27/)
+  assert.match(chart, /name: 'signalTag'[\s\S]*?source: 'quick-trade'/)
+  assert.match(chart, /clearQuickTradePositionOverlays\(\)/)
+  assert.match(chart, /watch\(\(\) => props\.quickTradePositions/)
 })

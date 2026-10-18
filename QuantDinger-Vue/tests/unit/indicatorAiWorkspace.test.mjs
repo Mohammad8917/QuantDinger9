@@ -7,6 +7,9 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const viewSource = fs.readFileSync(path.join(root, 'src/views/indicator-ide/index.vue'), 'utf8')
 const layoutSource = fs.readFileSync(path.join(root, 'src/layouts/BasicLayout.less'), 'utf8')
+const layoutViewSource = fs.readFileSync(path.join(root, 'src/layouts/BasicLayout.vue'), 'utf8')
+const rightContentSource = fs.readFileSync(path.join(root, 'src/components/GlobalHeader/RightContent.vue'), 'utf8')
+const noticeIconSource = fs.readFileSync(path.join(root, 'src/components/NoticeIcon/NoticeIcon.vue'), 'utf8')
 const quickTradeSource = fs.readFileSync(path.join(root, 'src/components/QuickTradePanel/QuickTradePanel.vue'), 'utf8')
 
 test('indicator AI is indicator-scoped and does not overwrite the editor while streaming', () => {
@@ -127,11 +130,33 @@ test('multi-tab mode keeps every route inside the available viewport height', ()
   assert.match(viewSource, /\.indicator-ide\s*\{[\s\S]*?height: var\(--ide-shell-height,[\s\S]*?max-height: var\(--ide-shell-height,[\s\S]*?overflow: hidden;/)
   assert.match(viewSource, /\.ide-main\s*\{[^}]*overflow: hidden;/)
   assert.match(viewSource, /\.ide-left\s*\{[\s\S]*?height: 100%;[\s\S]*?max-height: 100%;/)
-  assert.match(layoutSource, /\.basic-layout-wrapper--multi-tab \.ant-layout-content,[\s\S]*?display: flex !important;[\s\S]*?height: calc\(100vh - 64px\) !important;/)
+  assert.match(layoutSource, /\.basic-layout-wrapper--multi-tab \.ant-layout-content,[\s\S]*?display: flex !important;[\s\S]*?height: calc\(100vh - 60px\) !important;/)
   assert.match(layoutSource, /\.basic-layout-wrapper--multi-tab \.ant-pro-grid-content\s*\{[\s\S]*?display: flex !important;[\s\S]*?height: 100% !important;/)
   assert.match(layoutSource, /\.basic-layout-wrapper--multi-tab \.basic-route-view-shell\s*\{[\s\S]*?flex: 1 1 0 !important;[\s\S]*?height: 0 !important;[\s\S]*?overflow: auto;/)
   assert.match(layoutSource, /\.basic-layout-wrapper--multi-tab \.indicator-ide,\s*\.basic-layout-wrapper--multi-tab \.strategy-ide-shell\s*\{[\s\S]*?--ide-shell-height: 100%;[\s\S]*?height: 100% !important;/)
   assert.doesNotMatch(layoutSource, /:has\(\.indicator-ide\)/)
+})
+
+test('top navigation uses a compact terminal-style hierarchy', () => {
+  assert.match(layoutSource, /\.ant-menu-horizontal\s*\{[\s\S]*?display: flex !important;[\s\S]*?align-items: center !important;/)
+  assert.match(layoutSource, /\.ant-menu-horizontal > \.ant-menu-item,[\s\S]*?align-self: center !important;[\s\S]*?height: @layout-header-height !important;[\s\S]*?margin: 0 !important;/)
+  assert.match(layoutSource, /\.anticon \+ span,[\s\S]*?margin-left: 0 !important;/)
+  assert.match(layoutSource, /\.ant-menu-item-selected::after,[\s\S]*?height: 3px !important;[\s\S]*?background: var\(--primary-color/)
+  assert.match(layoutSource, /\.ant-menu-item-selected,[\s\S]*?background: transparent !important;/)
+  assert.match(layoutSource, /font-size: 14px !important;[\s\S]*?font-weight: 500 !important;/)
+  assert.match(layoutSource, /border-bottom: 0 !important;/)
+})
+
+test('collapsed header actions retain accessible names', () => {
+  assert.match(layoutViewSource, /class="top-admin-shortcut"[\s\S]*?:aria-label="topAdminTitle"/)
+  assert.match(rightContentSource, /<button[\s\S]*?:aria-label="\$t\('app\.setting\.tooltip'\)"[\s\S]*?@click="handleSettingClick"/)
+})
+
+test('notification bell uses one centered action box without nested header padding', () => {
+  assert.match(rightContentSource, /<notice-icon class="header-notice-action" \/>/)
+  assert.doesNotMatch(rightContentSource, /<notice-icon :class="prefixCls" \/>/)
+  assert.match(noticeIconSource, /\.notice-icon-wrapper\s*\{[\s\S]*?width: 36px;[\s\S]*?height: 36px;/)
+  assert.match(noticeIconSource, /\.header-notice-icon\s*\{[\s\S]*?padding: 0;/)
 })
 
 test('plain Enter sends while Ctrl or Command Enter keeps a newline', () => {

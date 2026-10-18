@@ -151,14 +151,17 @@ export default {
 </script>
 
 <style lang="less">
+@import '@/styles/antd-vars.less';
+
 .qd-account-trigger {
   display: inline-flex !important;
   align-items: center !important;
   gap: 10px;
+  width: auto !important;
   min-width: 0;
-  height: 64px !important;
-  margin-right: 8px;
-  padding: 0 4px !important;
+  height: @layout-header-height !important;
+  margin-right: 6px;
+  padding: 0 2px !important;
   line-height: normal !important;
   vertical-align: top;
 
@@ -167,10 +170,10 @@ export default {
     align-items: center;
     gap: 7px;
     min-width: 0;
-    height: 32px;
-    padding: 0 7px 0 3px;
-    border-radius: 9px;
-    line-height: 32px;
+    height: 36px;
+    padding: 0 8px 0 4px;
+    border-radius: 6px;
+    line-height: 36px;
     cursor: pointer;
     transition: background 0.16s ease, color 0.16s ease;
 
@@ -201,22 +204,22 @@ export default {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    height: 32px;
-    padding: 0 9px;
+    height: 36px;
+    padding: 0 10px;
     border: 1px solid color-mix(in srgb, var(--primary-color, #1890ff) 18%, transparent);
-    border-radius: 9px;
-    background: color-mix(in srgb, var(--primary-color, #1890ff) 5%, #fff);
+    border-radius: 8px;
+    background: #fff;
     color: var(--primary-color, #1890ff);
     font-size: 12px;
     font-weight: 600;
-    line-height: 30px;
+    line-height: 34px;
     white-space: nowrap;
     cursor: pointer;
     transition: background 0.16s ease, border-color 0.16s ease;
 
     &:hover {
       border-color: color-mix(in srgb, var(--primary-color, #1890ff) 34%, transparent);
-      background: color-mix(in srgb, var(--primary-color, #1890ff) 9%, #fff);
+      background: color-mix(in srgb, var(--primary-color, #1890ff) 4%, #fff);
     }
 
     .anticon {
@@ -234,13 +237,13 @@ export default {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    height: 32px;
-    padding: 0 12px;
-    border-radius: 9px;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 8px;
     font-size: 12px;
     font-weight: 600;
-    line-height: 30px;
-    box-shadow: 0 3px 8px color-mix(in srgb, var(--primary-color, #1890ff) 22%, transparent);
+    line-height: 34px;
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--primary-color, #1890ff) 18%, transparent);
 
     span {
       line-height: 1;

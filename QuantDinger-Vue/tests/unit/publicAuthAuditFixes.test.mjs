@@ -82,6 +82,7 @@ test('Turnstile initialization is shared and an explicit challenge resolves the 
 
 test('public authentication fixes cover consent, Arabic copy, and route titles', () => {
   const login = read('src/views/user/Login.vue')
+  const userLayout = read('src/layouts/UserLayout.vue')
   const arabic = read('src/locales/lang/ar-SA.js')
   const router = read('src/config/router.config.js')
   const permission = read('src/permission.js')
@@ -89,6 +90,8 @@ test('public authentication fixes cover consent, Arabic copy, and route titles',
   assert.match(login, /legalAgreed:\s*false/)
   assert.match(login, /class="legal-error" role="alert" aria-live="assertive"/)
   assert.match(login, /execution="execute"/)
+  assert.doesNotMatch(userLayout, /user\.login\.hero\.(edition|status|scope)/)
+  assert.doesNotMatch(userLayout, /class="(brand-edition|brand-footer)"/)
   assert.match(arabic, /"user\.login\.hero\.title":\s*"(?!Turn uncertain)/)
   assert.match(router, /name:\s*'login',[\s\S]*?meta:\s*\{\s*title:\s*'user\.login\.tab'\s*\}/)
   assert.match(permission, /setDocumentTitle\(routeTitle \?[^:]+:\s*domTitle\)/)

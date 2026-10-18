@@ -10,6 +10,7 @@ test('desktop marketplace exposes queryable strategy compatibility filters', () 
     assert.match(source, new RegExp(`${parameter}:`))
   }
   assert.doesNotMatch(source, /filters\.timeframe/)
+  assert.doesNotMatch(source, /marketplace-spotlight|market-section-heading/)
   assert.match(source, /activeStrategyFilterChips/)
 })
 
@@ -26,6 +27,14 @@ test('marketplace typography keeps top-level tabs and controls on one scale', ()
   assert.match(source, /--market-font-control: 13px;/)
   assert.match(source, /\.admin-tabs[\s\S]*?\.ant-tabs-nav \.ant-tabs-tab \{[\s\S]*?font-size: var\(--market-font-body\);/)
   assert.match(source, /\.ant-tabs-nav \.ant-badge \{[\s\S]*?font: inherit;/)
+})
+
+test('marketplace search keeps the input and action border aligned', () => {
+  const marketplace = read('src/views/indicator-community/index.vue')
+
+  assert.match(marketplace, /\.market-search \{[\s\S]*?\.ant-input-group \{[\s\S]*?display: flex;[\s\S]*?overflow: hidden;/)
+  assert.match(marketplace, /\.ant-input-affix-wrapper \.ant-input \{[\s\S]*?height: 32px;[\s\S]*?border-right: 0;/)
+  assert.match(marketplace, /\.ant-input-search-button \{[\s\S]*?height: 32px;[\s\S]*?border-radius: 0 6px 6px 0;/)
 })
 
 test('indicator marketplace uses generated chart previews and removes decorative capability cards', () => {
@@ -52,12 +61,9 @@ test('indicator marketplace uses generated chart previews and removes decorative
 test('strategy marketplace stays compact and never renders indicator preview images', () => {
   const card = read('src/views/indicator-community/components/IndicatorCard.vue')
   const detail = read('src/views/indicator-community/components/IndicatorDetail.vue')
-  const spotlight = read('src/views/indicator-community/components/MarketplaceSpotlight.vue')
 
   assert.match(card, /v-if="!isStrategyAsset" class="card-cover"/)
   assert.match(card, /v-if="isStrategyAsset" class="strategy-card-head"/)
-  assert.match(spotlight, /v-if="!isStrategyAsset\(item\)" :src="item\.preview_image \|\| fallbackCover"/)
-  assert.match(spotlight, /if \(this\.isStrategyAsset\(this\.featured\)\) return null/)
   assert.doesNotMatch(detail, /<template v-if="isStrategyAsset">[\s\S]*?<img/)
   assert.match(detail, /'detail-header--strategy': isStrategyAsset/)
 })
@@ -79,27 +85,21 @@ test('light marketplace detail keeps indicator and strategy header copy readable
 test('dark marketplace strategy accents follow the selected theme color', () => {
   const detail = read('src/views/indicator-community/components/IndicatorDetail.vue')
   const card = read('src/views/indicator-community/components/IndicatorCard.vue')
-  const spotlight = read('src/views/indicator-community/components/MarketplaceSpotlight.vue')
   const comments = read('src/views/indicator-community/components/CommentList.vue')
 
   assert.match(detail, /\.parameter-count \{[\s\S]*?var\(--primary-color, #1890ff\)/)
   assert.match(detail, /\.contract-tags \.ant-tag \{[\s\S]*?rgba\(255, 255, 255, 0\.72\)/)
   assert.match(detail, /\.detail-container\.is-dark[\s\S]*?\.strategy-api-badge \{[\s\S]*?var\(--primary-color-hover, #69c0ff\)/)
   assert.match(card, /\.strategy-card-facts \{[\s\S]*?var\(--primary-color-hover, #69c0ff\)/)
-  assert.match(spotlight, /\.marketplace-feature--strategy \.marketplace-feature__shade \{[\s\S]*?var\(--primary-color, #1890ff\)/)
   assert.match(comments, /class="my-comment-hint__icon"/)
   assert.doesNotMatch(comments, /two-tone-color="#52c41a"/)
 })
 
 test('strategy marketplace separates author metadata from performance metrics', () => {
   const card = read('src/views/indicator-community/components/IndicatorCard.vue')
-  const spotlight = read('src/views/indicator-community/components/MarketplaceSpotlight.vue')
 
   assert.match(card, /\.strategy-card-facts \{[\s\S]*?margin: 2px 0 12px;/)
   assert.doesNotMatch(card, /\.strategy-card-facts \{[^}]*border:/)
-  assert.match(spotlight, /\.marketplace-feature__footer \{\s*padding-top: 12px;/)
-  assert.match(spotlight, /\.marketplace-hot__item--strategy \.marketplace-hot__meta \{\s*margin-top: 12px;/)
-  assert.doesNotMatch(spotlight, /\.marketplace-hot__item--strategy \.marketplace-hot__meta \{[^}]*border-top:/)
 })
 
 test('desktop strategy cards separate execution and confirmation cadence', () => {

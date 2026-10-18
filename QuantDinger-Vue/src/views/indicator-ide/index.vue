@@ -576,6 +576,7 @@
                     :theme="chartTheme"
                     :candle-type="chartCandleType"
                     :activeIndicators="activeIndicators"
+                    :quick-trade-positions="quickTradeChartPositions"
                     :show-indicator-library-trigger="false"
                     :userId="userId"
                     :realtime-enabled="klineRealtimeEnabled"
@@ -617,6 +618,7 @@
                       @update:symbol="handleQuickTradeSymbolChange"
                       @exchange-change="handleQuickTradeExchangeChange"
                       @market-type-change="handleCryptoMarketTypeChange"
+                      @position-overlay-change="handleQuickTradePositionOverlayChange"
                     >
                       <template #console-header="consoleState">
                         <header class="ide-quick-float__titlebar" @mousedown="startQuickTradeDrag">
@@ -1330,6 +1332,7 @@ export default {
       quickTradePinned: false,
       quickTradeDragging: false,
       quickTradePosition: null,
+      quickTradeChartPositions: [],
       paramDrawerVisible: false,
       indicatorParamOverrides: {},
       indicatorParamDraft: {},
@@ -3748,6 +3751,7 @@ export default {
       this.stopQuickTradeDrag()
       this.quickTradeDrawerVisible = false
       this.quickTradeMinimized = false
+      this.quickTradeChartPositions = []
     },
     toggleQuickTradePin () {
       this.quickTradePinned = !this.quickTradePinned
@@ -3839,6 +3843,11 @@ export default {
       } else if (protectionStatus === 'pending_fill') {
         this.$message.info(this.$t('quickTrade.protectionPendingFill'))
       }
+    },
+    handleQuickTradePositionOverlayChange (payload = {}) {
+      const payloadSymbol = String(payload.symbol || '')
+      if (payloadSymbol && payloadSymbol !== String(this.qtSymbol || this.symbol || '')) return
+      this.quickTradeChartPositions = Array.isArray(payload.positions) ? payload.positions : []
     },
     handleChartPriceChange (payload) {
       const value = payload && typeof payload === 'object' ? payload.price : payload
@@ -4186,6 +4195,7 @@ export default {
       return translated !== key ? translated : String(productType || '')
     },
     handleCryptoExchangeChange (value) {
+      this.quickTradeChartPositions = []
       this.cryptoExchangeId = this.normalizeCryptoExchange(value)
       this.currentInstrumentId = ''
       this.selectedWatchlistKey = marketContextKey({
@@ -4203,6 +4213,7 @@ export default {
       this.handleCryptoExchangeChange(exchangeId)
     },
     handleCryptoMarketTypeChange (value) {
+      this.quickTradeChartPositions = []
       this.cryptoMarketType = normalizeMarketType(value, 'Crypto')
       this.currentInstrumentId = ''
       this.selectedWatchlistKey = marketContextKey({
@@ -4353,13 +4364,16 @@ export default {
       }
     },
     market () {
+      this.quickTradeChartPositions = []
       this.schedulePersistIdeUiState()
     },
     cryptoExchangeId () {
+      this.quickTradeChartPositions = []
       this.ensureChartReady()
       this.schedulePersistIdeUiState()
     },
     cryptoMarketType () {
+      this.quickTradeChartPositions = []
       this.ensureChartReady()
       this.schedulePersistIdeUiState()
     },
@@ -4418,6 +4432,7 @@ export default {
       this.$nextTick(() => this.ensureChartReady())
     },
     symbol () {
+      this.quickTradeChartPositions = []
       this.qtSymbol = this.symbol
       this.ensureChartReady()
       this.schedulePersistIdeUiState()

@@ -1852,7 +1852,7 @@ const messages = {
     "aiAssetAnalysis.copilot.starterPrompts.compare_benchmarks.label": "比较 SPY、QQQ、IWM 最近表现",
     "aiAssetAnalysis.copilot.starterPrompts.compare_benchmarks.prompt": "比较 SPY、QQQ、IWM 最近 5 个交易日的收益、波动率、成交量和相对强弱，用表格展示并解释市场风格。",
     "aiAssetAnalysis.copilot.starterPrompts.compare.label": "比较 {comparison} 的近期强弱",
-    "aiAssetAnalysis.copilot.starterPrompts.compare.prompt": "比较 {comparison} 最近 5 个交易日的收益、波动率、成交量和趋势质量，用表格排名并解释差异。",
+    "aiAssetAnalysis.copilot.starterPrompts.compare.prompt": "比较 {symbol}、BETA、GAMMA 最近 5 个交易日的收益、波动率、成交量和趋势质量，用表格排名并解释差异。",
     "aiAssetAnalysis.copilot.starterPrompts.crypto_activity.label": "扫描加密市场异常成交量",
     "aiAssetAnalysis.copilot.starterPrompts.crypto_activity.prompt": "扫描加密市场近期异常成交量、持仓和价格联动，列出值得关注的标的、触发原因和数据限制。",
     "aiAssetAnalysis.copilot.starterPrompts.diagnose.label": "分析 {symbol} 当前趋势和关键价位",
@@ -2861,7 +2861,24 @@ export const verifiedSameUiMessages = [
   'brokerAccounts.alpaca.name',
   'brokerAccounts.ibkr.name',
   'profile.exchange.whitelistIpv4',
-  'profile.exchange.whitelistIpv6'
+  'profile.exchange.whitelistIpv6',
+  'trading-assistant.notify.discord',
+  'trading-assistant.notify.webhook',
+  'universeManager.placeholder',
+  'universeManager.mixedPlaceholder',
+  'indicatorIde.signalAlert.telegram',
+  'indicatorIde.signalAlert.webhook',
+  'indicatorIde.signalAlert.telegramChatIdPlaceholder',
+  'indicatorIde.signalAlert.webhookUrlPlaceholder',
+  'aiAssetAnalysis.copilot.intervalMinutes',
+  'fastAnalysis.provider.yahoo_finance',
+  'fastAnalysis.provider.yfinance',
+  'fastAnalysis.provider.finnhub',
+  'strategyV2.taLibBadge',
+  'factorLibrary.family.talib',
+  'factorLibrary.family.alpha158',
+  'factorLibrary.family.alpha360',
+  'factorLibrary.qlibFeatureName'
 ]
 
 // Keep trademarks and protocol names canonical in every locale.

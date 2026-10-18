@@ -64,6 +64,8 @@ const canonicalNames = {
   'settings.market.sourceLabel.twelve_data': 'Twelve Data'
 }
 
+export const verifiedSameSettingsMessages = Object.keys(canonicalNames)
+
 const messages = Object.fromEntries(
   supportedLocales.map(locale => [locale, { ...canonicalNames }])
 )

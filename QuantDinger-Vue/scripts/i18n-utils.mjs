@@ -15,20 +15,50 @@ export const localeTargets = {
   'zh-TW': 'zh-Hant'
 }
 
-export const overrideModulePaths = [
+export const preGeneratedOverrideModulePaths = [
   '../src/locales/copilot-overrides.js',
   '../src/locales/lang/profile-security.js',
   '../src/locales/lang/broker-account-workspace.js',
   '../src/locales/lang/strategy-v2.js',
+  '../src/locales/lang/fundamental-sync.js',
   '../src/locales/lang/strategy-live-risk.js',
   '../src/locales/lang/robot-builder-overrides.js',
   '../src/locales/billing-payment-overrides.js',
+  '../src/locales/referral-reward-overrides.js',
+  '../src/locales/admin-order-overrides.js',
   '../src/locales/lang/strategy-trade-records.js',
+  '../src/locales/quick-trade-records.js',
+  '../src/locales/chart-type-overrides.js',
+  '../src/locales/ai-decision-filter-overrides.js',
   '../src/locales/ux-overrides.js',
-  '../src/locales/copilot-callsite-overrides.js',
+  '../src/locales/copilot-callsite-overrides.js'
+]
+
+export const postGeneratedOverrideModulePaths = [
   '../src/locales/reviewed-ui-overrides.js',
+  '../src/locales/professional-report-overrides.js',
+  '../src/locales/backtest-range-overrides.js',
+  '../src/locales/settings-research-overrides.js',
+  '../src/locales/settings-runtime-overrides.js',
+  '../src/locales/strategy-builder-overrides.js',
   '../src/locales/lang/current-feature-overrides.js',
-  '../src/locales/lang/event-radar.js'
+  '../src/locales/lang/strategy-evolution.js',
+  '../src/locales/lang/quick-trade-spot-sell.js',
+  '../src/locales/lang/talib-factors.js',
+  '../src/locales/lang/factor-research-factors.js',
+  '../src/locales/lang/factor-library-enhancements.js',
+  '../src/locales/lang/backtest-workbench.js',
+  '../src/locales/lang/strategy-review.js',
+  '../src/locales/lang/quick-trade-floating.js',
+  '../src/locales/lang/quick-trade-workflow.js',
+  '../src/locales/settings-feature-overrides.js',
+  '../src/locales/zh-tw-product-overrides.js',
+  '../src/locales/navigation-overrides.js'
+]
+
+export const overrideModulePaths = [
+  ...preGeneratedOverrideModulePaths,
+  ...postGeneratedOverrideModulePaths
 ]
 
 export function extractObjectRange(source, marker, fileName = 'locale file') {
@@ -110,10 +140,10 @@ export function evaluateObject(source, marker, fileName = 'locale file') {
   return vm.runInNewContext(`(${objectSource})`, {}, { filename: fileName })
 }
 
-export function extractComponentMessages(source, fileName) {
-  const { objectSource } = extractObjectRange(source, 'const components =', fileName)
+export function extractLiteralMessages(source, marker, fileName) {
+  const { objectSource } = extractObjectRange(source, marker, fileName)
   const messages = {}
-  const linePattern = /^\s*("(?:[^"\\]|\\.)*")\s*:\s*("(?:[^"\\]|\\.)*")\s*,?\s*$/gm
+  const linePattern = /("(?:[^"\\]|\\.)*")\s*:\s*("(?:[^"\\]|\\.)*")/g
   let match
   while ((match = linePattern.exec(objectSource)) !== null) {
     messages[JSON.parse(match[1])] = JSON.parse(match[2])
@@ -127,8 +157,9 @@ export function loadCoreLocale(langDir, localeName) {
   return {
     source,
     locale: {
-      ...extractComponentMessages(source, fileName),
-      ...evaluateObject(source, 'const locale =', fileName)
+      ...extractLiteralMessages(source, 'const components =', fileName),
+      ...evaluateObject(source, 'const locale =', fileName),
+      ...extractLiteralMessages(source, 'export default', fileName)
     }
   }
 }

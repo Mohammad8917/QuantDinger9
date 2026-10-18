@@ -1152,7 +1152,7 @@ export default {
         label: this.i18nText(`aiAssetAnalysis.copilot.starterPrompts.${item.key}.label`, item.label, { symbol, comparison }),
         prompt: this.i18nText(`aiAssetAnalysis.copilot.starterPrompts.${item.key}.prompt`, item.prompt, { symbol, comparison })
       }))
-      return rankPromptsByUsage(prompts, this.promptUsage).slice(0, 6)
+      return rankPromptsByUsage(prompts, this.promptUsage).slice(0, 4)
     },
     lastAssistantMessage () {
       return [...(this.messages || [])].reverse().find(item => item && item.role === 'assistant') || null
@@ -4989,6 +4989,8 @@ export default {
   display: grid;
   grid-template-columns: minmax(240px, 280px) minmax(560px, 1fr) minmax(270px, 320px);
   gap: 10px;
+  width: 100%;
+  max-width: none;
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -6921,14 +6923,13 @@ export default {
 
 @media (max-width: 1360px) {
   .copilot-workbench {
-    grid-template-columns: minmax(250px, 300px) minmax(520px, 1fr);
-    overflow: auto;
-    height: auto;
+    grid-template-columns: minmax(210px, 240px) minmax(0, 1fr) minmax(230px, 260px);
+    overflow: hidden;
+    height: 100%;
   }
   .right-rail {
-    grid-column: 1 / -1;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-column: auto;
+    display: flex;
   }
   .watch-panel,
   .monitor-panel {
@@ -7019,7 +7020,7 @@ export default {
   --qd-shadow: 0 18px 42px rgba(21, 45, 78, 0.1);
 
   position: relative;
-  grid-template-columns: minmax(250px, 292px) minmax(640px, 1fr) minmax(286px, 330px);
+  grid-template-columns: minmax(250px, 292px) minmax(0, 1fr) minmax(286px, 330px);
   gap: 12px;
   padding: 12px;
   isolation: isolate;
@@ -8776,6 +8777,12 @@ body.realdark .followup-suggestions,
 .copilot-workbench .rail-panel,
 .copilot-workbench .chat-panel {
   border-radius: 10px;
+}
+
+.copilot-workbench > .chat-panel {
+  width: 100%;
+  max-width: none;
+  justify-self: stretch;
 }
 
 .copilot-workbench .rail-panel {

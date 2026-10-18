@@ -136,40 +136,19 @@
     </div>
 
     <template v-if="activeTab === 'market'">
-      <marketplace-spotlight
-        v-if="indicators.length > 0 && !loading"
-        :featured="featuredIndicator"
-        :hot-items="hotIndicators"
-        :dark="isDarkTheme"
-        @select="openDetail"
-      />
-
-      <div v-if="pagination.total > 0" ref="marketResultsStart" class="market-section-heading">
-        <div class="market-section-heading__title">
-          <h3>{{ $t('community.all') }} · {{ currentMarketAssetLabel }}</h3>
-          <span>{{ pagination.total }} {{ $t('community.items') }}</span>
-        </div>
-        <a-pagination
-          v-if="pagination.total > pagination.pageSize"
-          simple
-          :current="pagination.current"
-          :total="pagination.total"
-          :page-size="pagination.pageSize"
-          @change="handlePageChange"
-        />
+      <div ref="marketResultsStart" class="market-results">
+        <a-spin :spinning="loading">
+          <div v-if="indicators.length === 0 && !loading" class="empty-state empty-state--blank" />
+          <div v-else class="indicator-grid">
+            <indicator-card
+              v-for="item in indicators"
+              :key="item.id"
+              :indicator="item"
+              @click="openDetail(item)"
+            />
+          </div>
+        </a-spin>
       </div>
-
-      <a-spin :spinning="loading">
-        <div v-if="indicators.length === 0 && !loading" class="empty-state empty-state--blank" />
-        <div v-else class="indicator-grid">
-          <indicator-card
-            v-for="item in indicators"
-            :key="item.id"
-            :indicator="item"
-            @click="openDetail(item)"
-          />
-        </div>
-      </a-spin>
 
       <div v-if="pagination.total > 0" class="pagination-wrapper">
         <a-pagination
@@ -534,7 +513,6 @@ import { mapState } from 'vuex'
 import IndicatorCard from './components/IndicatorCard.vue'
 import IndicatorDetail from './components/IndicatorDetail.vue'
 import AuthorDashboard from './components/AuthorDashboard.vue'
-import MarketplaceSpotlight from './components/MarketplaceSpotlight.vue'
 import request from '@/utils/request'
 import { loadEnabledMarketOptions } from '@/utils/marketModules'
 
@@ -543,8 +521,7 @@ export default {
   components: {
     IndicatorCard,
     IndicatorDetail,
-    AuthorDashboard,
-    MarketplaceSpotlight
+    AuthorDashboard
   },
   computed: {
     ...mapState({
@@ -594,17 +571,6 @@ export default {
     },
     defaultMarketSort () {
       return this.marketAssetType === 'indicator' ? 'hot' : 'score'
-    },
-    currentMarketAssetLabel () {
-      return this.marketAssetType === 'script_template'
-        ? this.$t('community.tabScriptTemplates')
-        : this.$t('community.tabIndicators')
-    },
-    featuredIndicator () {
-      return this.indicators.length ? this.indicators[0] : null
-    },
-    hotIndicators () {
-      return this.indicators.slice(1, 3)
     },
     marketSortOptions () {
       const common = [
@@ -1396,18 +1362,41 @@ export default {
       }
 
       .market-search {
+        ::v-deep .ant-input-group {
+          display: flex;
+          align-items: stretch;
+          overflow: hidden;
+          width: 100%;
+          border-radius: 6px;
+        }
+
         ::v-deep .ant-input-affix-wrapper,
         ::v-deep .ant-input-group > .ant-input:first-child {
+          flex: 1 1 auto;
+          min-width: 0;
+          height: 32px;
           border-radius: 6px 0 0 6px;
         }
 
         ::v-deep .ant-input-affix-wrapper .ant-input {
-          min-height: 30px;
-          border-radius: 0;
+          height: 32px;
+          border-right: 0;
+          border-radius: 6px 0 0 6px;
         }
 
-        ::v-deep .ant-input-group-addon .ant-btn {
+        ::v-deep .ant-input-group-addon {
+          display: flex;
+          flex: 0 0 auto;
+          width: auto;
+          padding: 0;
+          border: 0;
+          background: transparent;
+        }
+
+        ::v-deep .ant-input-search-button {
+          height: 32px;
           min-width: 68px;
+          margin: 0;
           border-radius: 0 6px 6px 0;
           box-shadow: none;
         }
@@ -1479,31 +1468,8 @@ export default {
     gap: 16px;
   }
 
-  .market-section-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    min-height: 38px;
-    margin-bottom: 12px;
-    color: rgba(0, 0, 0, 0.55);
+  .market-results {
     scroll-margin-top: 96px;
-
-    &__title {
-      display: flex;
-      align-items: baseline;
-      gap: 10px;
-
-      h3 {
-        margin: 0;
-        color: rgba(0, 0, 0, 0.88);
-        font-size: var(--market-font-section);
-        font-weight: 700;
-      }
-
-      span {
-        font-size: var(--market-font-small);
-      }
-    }
   }
 
   .empty-state {
@@ -1880,14 +1846,6 @@ export default {
     background: #1f1f1f;
   }
 
-  .market-section-heading {
-    color: rgba(255, 255, 255, 0.55);
-
-    &__title h3 {
-      color: rgba(255, 255, 255, 0.9);
-    }
-  }
-
   .market-risk-tip {
     color: rgba(255, 255, 255, 0.58);
     background: rgba(250, 173, 20, 0.09);
@@ -2195,10 +2153,6 @@ export default {
       gap: 12px;
     }
 
-    .market-section-heading {
-      align-items: flex-start;
-      gap: 10px;
-    }
   }
 }
 
@@ -2212,10 +2166,6 @@ export default {
         flex: 1;
         text-align: center;
       }
-    }
-
-    .market-section-heading {
-      flex-direction: column;
     }
   }
 }

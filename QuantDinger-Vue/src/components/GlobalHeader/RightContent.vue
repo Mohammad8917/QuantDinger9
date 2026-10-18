@@ -1,12 +1,17 @@
 <template>
   <div :class="wrpCls">
     <avatar-dropdown :menu="true" :current-user="currentUser" :class="prefixCls" />
-    <notice-icon :class="prefixCls" />
+    <notice-icon class="header-notice-action" />
     <select-lang :class="prefixCls" />
     <a-tooltip :title="$t('app.setting.tooltip')">
-      <span :class="prefixCls" @click="handleSettingClick">
+      <button
+        type="button"
+        :class="[prefixCls, `${prefixCls}--icon-button`]"
+        :aria-label="$t('app.setting.tooltip')"
+        @click="handleSettingClick"
+      >
         <a-icon type="setting" style="font-size: 16px;" />
-      </span>
+      </button>
     </a-tooltip>
   </div>
 </template>
@@ -83,16 +88,26 @@ export default {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    height: @layout-header-height;
-    padding: 0 9px;
+    width: 36px;
+    height: 36px;
+    margin: 0;
+    padding: 0;
+    border-radius: 6px;
     color: rgba(0, 0, 0, 0.65);
-    transition: all 0.3s;
+    transition: color 0.16s ease, background 0.16s ease;
     cursor: pointer;
     vertical-align: top;
 
     &:hover {
       color: @primary-color;
-      background: rgba(0, 0, 0, 0.04);
+      background: rgba(15, 23, 42, 0.04);
+    }
+
+    &--icon-button {
+      border: 0;
+      background: transparent;
+      font: inherit;
+      appearance: none;
     }
   }
 }

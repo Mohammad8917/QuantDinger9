@@ -1420,6 +1420,18 @@ export default {
           this.loadHistory()
         }
       })
+    },
+    currentPositions: {
+      deep: true,
+      handler () {
+        this.emitPositionOverlayChange()
+      }
+    },
+    recentTrades: {
+      deep: true,
+      handler () {
+        this.emitPositionOverlayChange()
+      }
     }
   },
   mounted () {
@@ -1615,6 +1627,54 @@ export default {
       return side === 'short'
         ? (entryPrice - markPrice) * size
         : (markPrice - entryPrice) * size
+    },
+    normalizePositionTimestamp (value) {
+      const instant = parseUtcAwareInstant(value)
+      return instant ? instant.getTime() : 0
+    },
+    positionEntryTimestamp (position) {
+      const source = position || {}
+      const explicitKeys = [
+        'entry_time', 'entryTime', 'open_time', 'openTime', 'opened_at', 'openedAt',
+        'created_at', 'createdAt', 'timestamp'
+      ]
+      for (const key of explicitKeys) {
+        const timestamp = this.normalizePositionTimestamp(source[key])
+        if (timestamp > 0) return timestamp
+      }
+
+      const expectedSide = source.side === 'short' ? 'sell' : 'buy'
+      const normalizedSymbol = String(this.currentSymbol || '').replace(/[^a-z0-9]/gi, '').toUpperCase()
+      let latestTimestamp = 0
+      for (const trade of this.recentTrades || []) {
+        if (!trade || trade.is_close === true || String(trade.is_close).toLowerCase() === 'true') continue
+        const tradeSide = String(trade.side || '').toLowerCase()
+        if (tradeSide !== expectedSide) continue
+        const tradeSymbol = String(trade.symbol || this.currentSymbol || '').replace(/[^a-z0-9]/gi, '').toUpperCase()
+        if (normalizedSymbol && tradeSymbol && tradeSymbol !== normalizedSymbol) continue
+        const timestamp = this.normalizePositionTimestamp(
+          trade.filled_at || trade.filledAt || trade.updated_at || trade.updatedAt || trade.created_at || trade.createdAt || trade.timestamp
+        )
+        if (timestamp > latestTimestamp) latestTimestamp = timestamp
+      }
+      return latestTimestamp
+    },
+    emitPositionOverlayChange () {
+      const positions = (this.currentPositions || [])
+        .filter(position => Number(position && position.size) > 1e-12 && Number(position && position.entry_price) > 0)
+        .map(position => ({
+          side: position.side === 'short' ? 'short' : 'long',
+          size: Number(position.size),
+          entryPrice: Number(position.entry_price),
+          entryTimestamp: this.positionEntryTimestamp(position),
+          costLabel: this.$t('quickTrade.entryPrice'),
+          entryLabel: this.$t(position.side === 'short' ? 'quickTrade.short' : 'quickTrade.long')
+        }))
+      this.$emit('position-overlay-change', {
+        symbol: this.currentSymbol,
+        marketType: this.effectiveMarketType,
+        positions
+      })
     },
     normalizePosition (position, options = {}) {
       const rawQty = this.pickNumber(position, ['size', 'qty', 'quantity', 'position', 'positionAmt', 'contracts'], 0)
@@ -2536,6 +2596,7 @@ export default {
   },
   beforeDestroy () {
     this.stopPolling()
+    this.$emit('position-overlay-change', { symbol: this.currentSymbol, marketType: this.effectiveMarketType, positions: [] })
   }
 }
 </script>

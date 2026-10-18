@@ -37,6 +37,8 @@ import strategyReviewMessages from './lang/strategy-review'
 import quickTradeFloatingMessages from './lang/quick-trade-floating'
 import quickTradeWorkflowMessages from './lang/quick-trade-workflow'
 import settingsFeatureMessages from './settings-feature-overrides'
+import zhTwProductMessages from './zh-tw-product-overrides'
+import navigationMessages from './navigation-overrides'
 
 Vue.use(VueI18n)
 
@@ -61,7 +63,6 @@ const messages = {
     ...(aiDecisionFilterMessages[defaultLang] || {}),
     ...(uxOverrides[defaultLang] || {}),
     ...(copilotCallsiteOverrides[defaultLang] || {}),
-    ...(generatedLocaleOverrides[defaultLang] || {}),
     ...(reviewedUiOverrides[defaultLang] || {}),
     ...(professionalReportOverrides[defaultLang] || {}),
     ...(backtestRangeOverrides[defaultLang] || {}),
@@ -78,7 +79,10 @@ const messages = {
     ...(strategyReviewMessages[defaultLang] || {}),
     ...(quickTradeFloatingMessages[defaultLang] || {}),
     ...(quickTradeWorkflowMessages[defaultLang] || {}),
-    ...(settingsFeatureMessages[defaultLang] || {})
+    ...(settingsFeatureMessages[defaultLang] || {}),
+    ...(zhTwProductMessages[defaultLang] || {}),
+    ...(navigationMessages[defaultLang] || {}),
+    ...(generatedLocaleOverrides[defaultLang] || {})
   }
 }
 
@@ -162,7 +166,6 @@ function mergeLocaleOverrides (lang) {
     ...(aiDecisionFilterMessages[lang] || {}),
     ...(uxOverrides[lang] || {}),
     ...(copilotCallsiteOverrides[lang] || {}),
-    ...(generatedLocaleOverrides[lang] || {}),
     ...(reviewedUiOverrides[lang] || {}),
     ...(professionalReportOverrides[lang] || {}),
     ...(backtestRangeOverrides[lang] || {}),
@@ -179,7 +182,10 @@ function mergeLocaleOverrides (lang) {
     ...(strategyReviewMessages[lang] || {}),
     ...(quickTradeFloatingMessages[lang] || {}),
     ...(quickTradeWorkflowMessages[lang] || {}),
-    ...(settingsFeatureMessages[lang] || {})
+    ...(settingsFeatureMessages[lang] || {}),
+    ...(zhTwProductMessages[lang] || {}),
+    ...(navigationMessages[lang] || {}),
+    ...(generatedLocaleOverrides[lang] || {})
   }
   i18n.setLocaleMessage(lang, {
     ...(i18n.getLocaleMessage(lang) || {}),
@@ -217,7 +223,6 @@ export async function loadLanguageAsync (lang = defaultLang) {
       ...(aiDecisionFilterMessages[lang] || {}),
       ...(uxOverrides[lang] || {}),
       ...(copilotCallsiteOverrides[lang] || {}),
-      ...(generatedLocaleOverrides[lang] || {}),
       ...(reviewedUiOverrides[lang] || {}),
       ...(professionalReportOverrides[lang] || {}),
       ...(backtestRangeOverrides[lang] || {}),
@@ -232,8 +237,11 @@ export async function loadLanguageAsync (lang = defaultLang) {
       ...(backtestWorkbenchMessages[lang] || {}),
       ...(strategyReviewMessages[lang] || {}),
       ...(quickTradeFloatingMessages[lang] || {}),
-    ...(quickTradeWorkflowMessages[lang] || {}),
-      ...(settingsFeatureMessages[lang] || {})
+      ...(quickTradeWorkflowMessages[lang] || {}),
+      ...(settingsFeatureMessages[lang] || {}),
+      ...(zhTwProductMessages[lang] || {}),
+      ...(navigationMessages[lang] || {}),
+      ...(generatedLocaleOverrides[lang] || {})
     })
     i18n.setLocaleMessage(lang, locale)
     loadedLanguages.push(lang)

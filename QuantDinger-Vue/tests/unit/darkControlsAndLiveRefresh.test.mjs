@@ -53,3 +53,13 @@ test('grid resting orders are visible for live and virtual grid strategies', () 
   assert.match(restingOrders, /maximumFractionDigits: 8/)
   assert.match(operations, /strategyCenter\.console\.pendingSignals/)
 })
+
+test('position ownership guidance stays compact and theme aware', () => {
+  const positions = read('src/views/strategy-center/components/PositionRecords.vue')
+
+  assert.match(positions, /class="ownership-guidance" :class="\{ 'is-dark': isDark \}"/)
+  assert.match(positions, /ownership-guidance__main/)
+  assert.match(positions, /ownership-guidance__note/)
+  assert.match(positions, /&\.is-dark/)
+  assert.doesNotMatch(positions, /class="ownership-risk-alert"/)
+})

@@ -48,7 +48,8 @@ const ignoredFiles = new Set([
 const mojibakePatterns = [
   /\uFFFD/u,
   /[\uE000-\uF8FF]/u,
-  /(?:\u00C3[\u0080-\u00BF]|\u00C2[\u0080-\u00BF]|\u00E2[\u0080-\u00BF]{1,2})/u
+  /(?:\u00C3[\u0080-\u00BF]|\u00C2[\u0080-\u00BF]|\u00E2[\u0080-\u00BF]{1,2})/u,
+  /(?:锟斤拷|鐠\?|銆|鈥|馃|鍐呯殑|鎵€鏈|澶村儚|閾炬帴|鍥炬爣|鏍峰紡)/u
 ]
 
 function shouldScan(filePath) {
