@@ -1,5 +1,5 @@
 name: One-time exact upstream mirror
-# Refresh trigger: 2026-10-19T00:00Z, validate CI against current upstream snapshots.
+# Refresh trigger: 2026-10-19T15:15Z, synchronize latest upstream snapshots only.
 on:
   push:
     branches: [main]
