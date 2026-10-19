@@ -79,20 +79,21 @@ export default {
 <style lang="less">
 @import '@/styles/antd-vars.less';
 
-.ant-pro-global-header-index-right {
+  .ant-pro-global-header-index-right {
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  gap: 6px;
 
   .ant-pro-global-header-index-action {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
     margin: 0;
     padding: 0;
-    border-radius: 6px;
+    border-radius: 8px;
     color: rgba(0, 0, 0, 0.65);
     transition: color 0.16s ease, background 0.16s ease;
     cursor: pointer;

@@ -1,11 +1,13 @@
 <template>
   <div class="user-manage-page qd-workspace-page qd-page-frame" :class="{ 'theme-dark': isDarkTheme }">
-    <div class="page-header">
-      <h2 class="page-title">
-        <a-icon type="team" />
-        <span>{{ $t('userManage.title') || 'User Management' }}</span>
-      </h2>
-      <p class="page-desc">{{ $t('userManage.description') || 'Manage system users, roles and permissions' }}</p>
+    <div class="page-header qd-page-heading">
+      <div class="qd-page-heading__copy">
+        <h2 class="page-title qd-page-heading__title">
+          <a-icon class="qd-page-heading__icon" type="team" />
+          <span>{{ $t('userManage.title') || 'User Management' }}</span>
+        </h2>
+        <p class="page-desc qd-page-heading__description">{{ $t('userManage.description') || 'Manage system users, roles and permissions' }}</p>
+      </div>
     </div>
 
     <!-- Tabs -->

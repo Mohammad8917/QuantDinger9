@@ -1,12 +1,12 @@
 <template>
   <div class="ai-skill-center qd-workspace-page qd-page-frame">
-    <div class="page-header">
-      <div class="page-header-copy">
-        <h2 class="page-title">
-          <a-icon type="robot" />
+    <div class="page-header qd-page-heading">
+      <div class="page-header-copy qd-page-heading__copy">
+        <h2 class="page-title qd-page-heading__title">
+          <a-icon class="qd-page-heading__icon" type="robot" />
           <span>{{ text.title }}</span>
         </h2>
-        <p class="page-desc">{{ text.subtitle }}</p>
+        <p class="page-desc qd-page-heading__description">{{ text.subtitle }}</p>
       </div>
       <div class="page-actions">
         <a-button icon="reload" :loading="loading" @click="loadAll">{{ text.refresh }}</a-button>
@@ -38,7 +38,7 @@
         >
           <template slot="label" slot-scope="textValue, record">
             <div class="skill-name">
-              <a-icon :type="record.icon || 'experiment'" />
+              <a-icon :type="skillIcon(record)" />
               <div>
                 <strong>{{ record.label }}</strong>
                 <span>{{ record.id }}</span>
@@ -48,8 +48,11 @@
           <template slot="source" slot-scope="textValue, record">
             <a-tag :color="record.builtin ? 'blue' : 'purple'">{{ record.builtin ? text.builtin : text.installed }}</a-tag>
           </template>
+          <template slot="category" slot-scope="textValue">
+            {{ categoryLabel(textValue) }}
+          </template>
           <template slot="risk" slot-scope="textValue, record">
-            <a-tag :color="riskColor(record.risk_level)">{{ record.risk_level }}</a-tag>
+            <a-tag :color="riskColor(record.risk_level)">{{ riskLabel(record.risk_level) }}</a-tag>
           </template>
           <template slot="enabled" slot-scope="textValue, record">
             <a-switch
@@ -77,7 +80,7 @@
           <div v-for="tool in tools" :key="tool.id" class="tool-card">
             <div class="tool-card-head">
               <strong>{{ tool.label }}</strong>
-              <a-tag :color="riskColor(tool.risk_level)">{{ tool.risk_level }}</a-tag>
+              <a-tag :color="riskColor(tool.risk_level)">{{ riskLabel(tool.risk_level) }}</a-tag>
             </div>
             <p>{{ tool.description }}</p>
             <div class="tool-meta">
@@ -130,9 +133,9 @@
         <p>{{ detailSkill.description }}</p>
         <a-descriptions :column="2" bordered size="small">
           <a-descriptions-item :label="text.id">{{ detailSkill.id }}</a-descriptions-item>
-          <a-descriptions-item :label="text.category">{{ detailSkill.category }}</a-descriptions-item>
-          <a-descriptions-item :label="text.source">{{ detailSkill.source }}</a-descriptions-item>
-          <a-descriptions-item :label="text.risk">{{ detailSkill.risk_level }}</a-descriptions-item>
+          <a-descriptions-item :label="text.category">{{ categoryLabel(detailSkill.category) }}</a-descriptions-item>
+          <a-descriptions-item :label="text.source">{{ sourceLabel(detailSkill) }}</a-descriptions-item>
+          <a-descriptions-item :label="text.risk">{{ riskLabel(detailSkill.risk_level) }}</a-descriptions-item>
           <a-descriptions-item :label="text.requires">{{ (detailSkill.requires || []).join(', ') || '-' }}</a-descriptions-item>
           <a-descriptions-item :label="text.produces">{{ (detailSkill.produces || []).join(', ') || '-' }}</a-descriptions-item>
         </a-descriptions>
@@ -230,7 +233,7 @@ export default {
     skillColumns () {
       return [
         { title: this.text.skill, dataIndex: 'label', scopedSlots: { customRender: 'label' } },
-        { title: this.text.category, dataIndex: 'category', width: 140 },
+        { title: this.text.category, dataIndex: 'category', width: 140, scopedSlots: { customRender: 'category' } },
         { title: this.text.source, dataIndex: 'source', width: 120, scopedSlots: { customRender: 'source' } },
         { title: this.text.risk, dataIndex: 'risk_level', width: 130, scopedSlots: { customRender: 'risk' } },
         { title: this.text.enabled, dataIndex: 'enabled', width: 90, scopedSlots: { customRender: 'enabled' } },
@@ -241,6 +244,13 @@ export default {
   mounted () {
     this.fillExample()
     this.loadAll()
+  },
+  watch: {
+    '$i18n.locale' () {
+      this.detailSkill = null
+      this.fillExample()
+      this.loadAll()
+    }
   },
   methods: {
     async loadAll () {
@@ -264,6 +274,25 @@ export default {
       if (risk === 'write_draft') return 'blue'
       if (risk === 'write_config') return 'orange'
       return 'default'
+    },
+    categoryLabel (category) {
+      const key = `aiSkills.categoryLabels.${category}`
+      const label = this.$t(key)
+      return label === key ? category : label
+    },
+    riskLabel (risk) {
+      const key = `aiSkills.riskLabels.${risk}`
+      const label = this.$t(key)
+      return label === key ? risk : label
+    },
+    sourceLabel (record) {
+      if (record?.builtin) return this.text.builtin
+      if (!record?.source || record.source === 'installed') return this.text.installed
+      return record.source
+    },
+    skillIcon (record) {
+      if (record?.icon === 'function') return 'file-protect'
+      return record?.icon || 'experiment'
     },
     openSkill (record) {
       this.detailSkill = record

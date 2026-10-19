@@ -1,5 +1,11 @@
 @import '@/styles/antd-vars.less';
 
+:root {
+  --qd-scrollbar-thumb: rgba(15, 23, 42, 0.22);
+  --qd-scrollbar-thumb-hover: color-mix(in srgb, var(--primary-color, #1890ff) 62%, rgba(15, 23, 42, 0.38));
+  --qd-scrollbar-track: transparent;
+}
+
 html,
 body,
 #app,
@@ -24,6 +30,35 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizelegibility;
+}
+
+* {
+  scrollbar-color: var(--qd-scrollbar-thumb) var(--qd-scrollbar-track);
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: var(--qd-scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  min-width: 32px;
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--qd-scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--qd-scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
 ul,
@@ -113,6 +148,9 @@ ol {
 
 body.dark,
 body.realdark {
+  --qd-scrollbar-thumb: rgba(255, 255, 255, 0.22);
+  --qd-scrollbar-thumb-hover: color-mix(in srgb, var(--primary-color, #1890ff) 68%, rgba(255, 255, 255, 0.36));
+
   .ant-layout-sider-dark,
   .ant-pro-sider-menu-sider,
   .ant-pro-sider-menu-sider.ant-layout-sider-dark,

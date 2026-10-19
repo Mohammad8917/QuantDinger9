@@ -156,24 +156,24 @@ export default {
 .qd-account-trigger {
   display: inline-flex !important;
   align-items: center !important;
-  gap: 10px;
+  gap: 6px;
   width: auto !important;
   min-width: 0;
   height: @layout-header-height !important;
-  margin-right: 6px;
-  padding: 0 2px !important;
+  margin-right: 0;
+  padding: 0 !important;
   line-height: normal !important;
   vertical-align: top;
 
   .account-identity {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
+    gap: 8px;
     min-width: 0;
-    height: 36px;
-    padding: 0 8px 0 4px;
-    border-radius: 6px;
-    line-height: 36px;
+    height: 38px;
+    padding: 0 10px 0 4px;
+    border-radius: 8px;
+    line-height: 38px;
     cursor: pointer;
     transition: background 0.16s ease, color 0.16s ease;
 
@@ -204,15 +204,16 @@ export default {
     align-items: center;
     justify-content: center;
     gap: 6px;
-    height: 36px;
-    padding: 0 10px;
+    min-width: 64px;
+    height: 38px;
+    padding: 0 11px;
     border: 1px solid color-mix(in srgb, var(--primary-color, #1890ff) 18%, transparent);
     border-radius: 8px;
     background: #fff;
     color: var(--primary-color, #1890ff);
     font-size: 12px;
     font-weight: 600;
-    line-height: 34px;
+    line-height: 36px;
     white-space: nowrap;
     cursor: pointer;
     transition: background 0.16s ease, border-color 0.16s ease;
@@ -237,12 +238,13 @@ export default {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    height: 36px;
+    min-width: 60px;
+    height: 38px;
     padding: 0 14px;
     border-radius: 8px;
     font-size: 12px;
     font-weight: 600;
-    line-height: 34px;
+    line-height: 36px;
     box-shadow: 0 2px 6px color-mix(in srgb, var(--primary-color, #1890ff) 18%, transparent);
 
     span {
@@ -342,17 +344,18 @@ body.realdark .qd-account-trigger,
 
 @media (max-width: 1280px) {
   .qd-account-trigger {
-    gap: 10px;
-    padding-right: 6px !important;
+    gap: 5px;
 
     .account-credits {
-      height: 30px;
-      padding: 0 9px;
+      min-width: 58px;
+      height: 38px;
+      padding: 0 8px;
     }
 
     .account-recharge {
-      height: 30px;
-      padding: 0 12px;
+      min-width: 56px;
+      height: 38px;
+      padding: 0 10px;
     }
   }
 }

@@ -16,12 +16,14 @@
       </template>
     </a-alert>
 
-    <div class="settings-header">
-      <h2 class="page-title">
-        <a-icon type="setting" />
-        <span>{{ $t('settings.title') }}</span>
-      </h2>
-      <p class="page-desc">{{ $t('settings.description') }}</p>
+    <div class="settings-header qd-page-heading qd-page-heading--sticky">
+      <div class="qd-page-heading__copy">
+        <h2 class="page-title qd-page-heading__title">
+          <a-icon class="qd-page-heading__icon" type="setting" />
+          <span>{{ $t('settings.title') }}</span>
+        </h2>
+        <p class="page-desc qd-page-heading__description">{{ $t('settings.description') }}</p>
+      </div>
     </div>
 
     <a-spin :spinning="loading">

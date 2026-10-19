@@ -962,23 +962,23 @@ export default {
 .result-tabs { margin-top: 10px; }
 .grid-accounting-alert { margin-bottom: 12px; }
 .completed-trades-table /deep/ .ant-table-body {
-  scrollbar-width: auto;
-  scrollbar-color: var(--primary-color, #52c41a) #e2e8f0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--qd-scrollbar-thumb, rgba(15, 23, 42, .22)) transparent;
 }
-.completed-trades-table /deep/ .ant-table-body::-webkit-scrollbar { width: 14px; height: 14px; }
+.completed-trades-table /deep/ .ant-table-body::-webkit-scrollbar { width: 6px; height: 6px; }
 .completed-trades-table /deep/ .ant-table-body::-webkit-scrollbar-track {
-  border-radius: 7px;
-  background: #e2e8f0;
+  background: transparent;
 }
 .completed-trades-table /deep/ .ant-table-body::-webkit-scrollbar-thumb {
   min-width: 72px;
-  border: 3px solid #e2e8f0;
-  border-radius: 7px;
-  background: var(--primary-color, #52c41a);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--qd-scrollbar-thumb, rgba(15, 23, 42, .22));
   background-clip: padding-box;
 }
 .completed-trades-table /deep/ .ant-table-body::-webkit-scrollbar-thumb:hover {
-  filter: brightness(.9);
+  background: var(--qd-scrollbar-thumb-hover, var(--primary-color, #1890ff));
+  background-clip: padding-box;
 }
 .audit-summary { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 12px; border-radius: 8px; }
 .audit-summary.passed { color: #52c41a; background: rgba(82, 196, 26, .08); }
@@ -996,15 +996,6 @@ export default {
 .liquidation-alert { margin-top: 0; margin-bottom: 10px; }
 .portfolio-result.theme-dark .chart-card, .portfolio-result.theme-dark .trade-review-card { border-color: #2d2d2d; background: #111111; }
 .portfolio-result.theme-dark .review-snapshot-empty { border-color: rgba(255,255,255,.12); background: rgba(255,255,255,.025); }
-.portfolio-result.theme-dark .completed-trades-table /deep/ .ant-table-body {
-  scrollbar-color: var(--primary-color, #52c41a) rgba(255,255,255,.14);
-}
-.portfolio-result.theme-dark .completed-trades-table /deep/ .ant-table-body::-webkit-scrollbar-track {
-  background: rgba(255,255,255,.14);
-}
-.portfolio-result.theme-dark .completed-trades-table /deep/ .ant-table-body::-webkit-scrollbar-thumb {
-  border-color: #171717;
-}
 .portfolio-result.theme-dark .result-trustbar.is-success { border-color: #315d22; background: #13200f; color: #73d13d; }
 .portfolio-result.theme-dark .result-trustbar.is-warning { border-color: #664d03; background: #211b08; color: #ffc53d; }
 .portfolio-result.theme-dark .result-trustbar.is-error { border-color: #6b2525; background: #251111; color: #ff7875; }

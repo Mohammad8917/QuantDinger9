@@ -6,10 +6,10 @@ export default {
   appVersion: BUILD_APP_VERSION,
   navTheme: 'realdark', // theme for nav menu
   primaryColor: '#52C41A', // primary color of ant design
-  layout: 'topmenu', // nav menu position: `sidemenu` or `topmenu`
+  layout: 'sidemenu', // nav menu position: `sidemenu` or `topmenu`
   contentWidth: 'Fluid', // layout of content: `Fluid` or `Fixed`, only works when layout is topmenu
   fixedHeader: true, // sticky header - 固定顶部导航栏
-  fixSiderbar: false, // sticky sidebar
+  fixSiderbar: true, // sticky sidebar
   multiTab: true, // keep page workspaces available while switching top navigation
   colorWeak: false,
   menu: {

@@ -1,6 +1,6 @@
 {
   "name": "quantdinger-vue",
-  "version": "5.0.20",
+  "version": "5.6.1",
   "private": true,
   "type": "module",
   "scripts": {

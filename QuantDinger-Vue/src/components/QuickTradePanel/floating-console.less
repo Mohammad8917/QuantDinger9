@@ -104,6 +104,12 @@
 
   .qtc-table-scroll { overflow-x: auto; }
   .qtc-positions { width: 100%; border-collapse: collapse; font-size: 12px; th { font-weight: 400; color: var(--qtc-muted); text-align: left; white-space: nowrap; } td, th { padding: 9px 6px; border-bottom: 1px solid var(--qtc-border); } td { white-space: nowrap; } td:first-child { font-weight: 600; } td:last-child, th:last-child { text-align: right; } .ant-tag { margin: 0; } }
+  .qtc-current-positions .qtc-position-main-row td { padding-top: 9px; padding-bottom: 5px; border-bottom: 0; vertical-align: middle; }
+  .qtc-position-symbol strong { display: block; color: var(--qtc-text); font-weight: 650; }
+  .qtc-position-symbol small { display: inline-flex; align-items: center; margin-top: 3px; padding: 1px 5px; color: var(--primary-color); font-size: 10px; font-weight: 650; line-height: 16px; border-radius: 4px; background: var(--qtc-muted-bg); }
+  .qtc-current-positions .qtc-position-metrics-row > td { padding: 0 0 9px; border-bottom: 1px solid var(--qtc-border); text-align: left; }
+  .qtc-position-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: hidden; border-radius: 5px; background: var(--qtc-muted-bg); }
+  .qtc-position-metric { min-width: 0; padding: 6px 10px; border-left: 1px solid var(--qtc-border); &:first-child { border-left: 0; } span { display: block; margin-bottom: 2px; color: var(--qtc-muted); font-size: 10px; font-weight: 400; } strong { display: block; overflow: hidden; color: var(--qtc-text); font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; } small { font-size: 11px; font-weight: 600; } &.qtc-positive strong, &.qtc-positive small { color: var(--qtc-green); } &.qtc-negative strong, &.qtc-negative small { color: var(--qtc-red); } }
   .qtc-close { min-width: 60px; height: 28px; font-size: 12px; color: var(--primary-color); border-color: var(--primary-color); background: transparent; }
   .qt-trade-list { min-width: 480px; }
   .qtc-record-item { padding: 0; border: 0; border-bottom: 1px solid var(--qtc-border); background: transparent; border-radius: 0; }

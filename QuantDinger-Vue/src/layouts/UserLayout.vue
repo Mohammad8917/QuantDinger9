@@ -16,7 +16,11 @@
 
         <header class="brand-header">
           <a href="/" class="brand-link" :aria-label="brandConfig.app_name">
-            <img :src="loginLogo" class="brand-logo" :alt="brandConfig.app_name">
+            <brand-identity
+              :name="brandName"
+              theme="dark"
+              :wide-logo="loginRemoteLogo"
+            />
           </a>
         </header>
 
@@ -62,12 +66,14 @@
 import { mapState } from 'vuex'
 import { deviceMixin } from '@/store/device-mixin'
 import SelectLang from '@/components/SelectLang'
-import defaultLogo from '@/assets/logo_w.png'
+import BrandIdentity from '@/components/BrandIdentity'
+import defaultSettings from '@/config/defaultSettings'
 
 export default {
   name: 'UserLayout',
   components: {
-    SelectLang
+    SelectLang,
+    BrandIdentity
   },
   mixins: [deviceMixin],
   computed: {
@@ -78,9 +84,11 @@ export default {
     themeAccent () {
       return this.appColor || '#faad14'
     },
-    loginLogo () {
-      const remote = this.brandConfig && this.brandConfig.logos && this.brandConfig.logos.dark
-      return remote || defaultLogo
+    brandName () {
+      return (this.brandConfig && this.brandConfig.app_name) || defaultSettings.title
+    },
+    loginRemoteLogo () {
+      return (this.brandConfig && this.brandConfig.logos && this.brandConfig.logos.dark) || ''
     }
   },
   mounted () {
@@ -250,11 +258,11 @@ export default {
     min-width: 0;
   }
 
-  .brand-logo {
-    display: block;
-    width: clamp(210px, 17vw, 292px);
-    max-width: 100%;
-    height: auto;
+  .brand-link ::v-deep .brand-identity__wide {
+    width: auto !important;
+    height: clamp(48px, 5vw, 64px) !important;
+    max-width: ~"min(260px, 46vw)" !important;
+    max-height: 64px !important;
   }
 
   .brand-story {
@@ -488,10 +496,6 @@ export default {
       display: none;
     }
 
-    .brand-logo {
-      width: 210px;
-    }
-
     .brand-story {
       padding: 56px 0 24px;
     }
@@ -524,10 +528,6 @@ export default {
 
     .brand-header {
       padding-right: 56px;
-    }
-
-    .brand-logo {
-      width: 174px;
     }
 
     .brand-story {

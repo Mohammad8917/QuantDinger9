@@ -662,14 +662,15 @@
             <template v-if="floatingConsole && currentPositions.length > 0">
 
               <div class="qtc-table-scroll">
-                <table class="qtc-positions">
-                  <thead><tr><th>{{ $t('ai-trading-assistant.table.symbol') }}</th><th>{{ $t('quickTrade.side') }}</th><th>{{ $t('quickTrade.posSize') }}</th><th>{{ $t(isSwapMode ? 'quickTrade.entryPrice' : 'quickTrade.workflow.unitPrice') }}</th><th>{{ $t(isSwapMode ? 'quickTrade.unrealizedPnl' : 'quickTrade.workflow.holdingValue') }} ({{ orderCurrency }})</th><th>{{ $t('common.actions') }}</th></tr></thead>
-                  <tbody><tr v-for="pos in currentPositions" :key="pos.side">
-                    <td>{{ currentSymbol }}</td>
+                <table class="qtc-positions qtc-current-positions">
+                  <thead><tr><th>{{ $t('ai-trading-assistant.table.symbol') }}</th><th>{{ $t('quickTrade.side') }}</th><th>{{ $t('quickTrade.posSize') }}</th><th>{{ $t('quickTrade.entryPrice') }}</th><th>{{ $t('quickTrade.markPrice') }}</th><th>{{ $t('common.actions') }}</th></tr></thead>
+                  <tbody><template v-for="(pos, index) in currentPositions">
+                  <tr :key="'position-main-' + index + '-' + pos.side" class="qtc-position-main-row">
+                    <td class="qtc-position-symbol"><strong>{{ pos.symbol || currentSymbol }}</strong><small v-if="isSwapMode">{{ formatLeverage(pos.effective_leverage) }}</small></td>
                     <td><a-tag :color="pos.side === 'long' ? 'green' : 'red'">{{ pos.side === 'long' ? (isSwapMode ? $t('quickTrade.long') : $t('quickTrade.spotHold')) : $t('quickTrade.short') }}</a-tag></td>
                     <td>{{ formatQuantity(pos.size) }}</td>
-                    <td>{{ isSwapMode ? (pos.entry_price > 0 ? formatPrice(pos.entry_price) : '—') : formatPrice(currentPrice || pos.mark_price) }}</td>
-                    <td :class="isSwapMode ? (pos.unrealized_pnl >= 0 ? 'qtc-positive' : 'qtc-negative') : ''">{{ isSwapMode ? (pos.entry_price > 0 && pos.unrealized_pnl != null ? formatPrice(pos.unrealized_pnl) : '—') : formatPrice(pos.size * (currentPrice || pos.mark_price)) }}</td>
+                    <td>{{ pos.entry_price > 0 ? formatPrice(pos.entry_price) : '—' }}</td>
+                    <td>{{ pos.mark_price > 0 ? formatPrice(pos.mark_price) : '—' }}</td>
                     <td><div class="qtc-position-actions">
                       <a-button size="small" class="qtc-close" :title="$t(isSwapMode ? 'quickTrade.workflow.marketExitHint' : 'quickTrade.workflow.marketSellHint')" :loading="closingPositionSide === pos.side" :disabled="!!closingPositionSide || !!submitting" @click="handleClosePosition(pos)">{{ isSwapMode ? $t('quickTrade.floating.closeAll') : $t('quickTrade.floating.sellAll') }}</a-button>
                       <a-dropdown v-if="isCryptoMarket" :trigger="['click']" :get-popup-container="qtSelectPopupContainer" :overlay-class-name="qtSelectDropdownClass">
@@ -680,7 +681,13 @@
                         </a-menu>
                       </a-dropdown>
                     </div></td>
-                  </tr></tbody>
+                  </tr>
+                  <tr :key="'position-metrics-' + index + '-' + pos.side" class="qtc-position-metrics-row"><td colspan="6"><div class="qtc-position-metrics">
+                    <div class="qtc-position-metric"><span>{{ $t('quickTrade.investedAmount') }}</span><strong>{{ formatPrice(pos.invested_amount) }} {{ orderCurrency }}</strong></div>
+                    <div class="qtc-position-metric"><span>{{ $t('quickTrade.currentValue') }}</span><strong>{{ formatPrice(pos.current_value) }} {{ orderCurrency }}</strong></div>
+                    <div class="qtc-position-metric" :class="pos.unrealized_pnl >= 0 ? 'qtc-positive' : 'qtc-negative'"><span>{{ $t('quickTrade.unrealizedPnl') }}</span><strong>{{ formatSignedPrice(pos.unrealized_pnl) }} {{ orderCurrency }} <small>({{ formatSignedPercent(pos.pnl_percent) }})</small></strong></div>
+                  </div></td></tr>
+                  </template></tbody>
                 </table>
               </div>
               <div v-if="positionEditor" class="qtc-exit-editor">
@@ -724,8 +731,12 @@
                   <span>{{ pos.size }}</span>
                 </div>
                 <div class="qt-pos-row qt-pos-row--value">
-                  <span>{{ $t('quickTrade.positionValue') }}</span>
-                  <span>{{ formatPrice(pos.notional_usdt) }} USDT</span>
+                  <span>{{ $t('quickTrade.investedAmount') }}</span>
+                  <span>{{ formatPrice(pos.invested_amount) }} USDT</span>
+                </div>
+                <div class="qt-pos-row qt-pos-row--current-value">
+                  <span>{{ $t('quickTrade.currentValue') }}</span>
+                  <span>{{ formatPrice(pos.current_value) }} USDT</span>
                 </div>
                 <div class="qt-pos-row qt-pos-row--entry">
                   <span>{{ $t('quickTrade.entryPrice') }}</span>
@@ -742,7 +753,7 @@
                 <div class="qt-pos-row qt-pos-row--pnl">
                   <span>{{ $t('quickTrade.unrealizedPnl') }}</span>
                   <span :class="pos.unrealized_pnl >= 0 ? 'qt-green' : 'qt-red'">
-                    ${{ formatPrice(pos.unrealized_pnl) }}
+                    {{ formatSignedPrice(pos.unrealized_pnl) }} USDT ({{ formatSignedPercent(pos.pnl_percent) }})
                   </span>
                 </div>
                 <a-button
@@ -948,6 +959,7 @@ import request from '@/utils/request'
 import { createVisibilityPolling } from '@/utils/visibilityPolling'
 import { parseUtcAwareInstant } from '@/utils/utcInstant'
 import { broker } from '@/api/broker'
+import { calculatePositionMetrics } from './positionMetrics'
 
 export default {
   name: 'QuickTradePanel',
@@ -1628,6 +1640,19 @@ export default {
         ? (entryPrice - markPrice) * size
         : (markPrice - entryPrice) * size
     },
+    formatLeverage (value) {
+      const leverage = Math.max(this.toFiniteNumber(value, 1), 1)
+      return `${Number.isInteger(leverage) ? leverage : leverage.toFixed(2)}x`
+    },
+    formatSignedPrice (value) {
+      const amount = this.toFiniteNumber(value, 0)
+      return `${amount > 0 ? '+' : ''}${this.formatPrice(amount)}`
+    },
+    formatSignedPercent (value) {
+      if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—'
+      const percent = Number(value)
+      return `${percent > 0 ? '+' : ''}${percent.toFixed(2)}%`
+    },
     normalizePositionTimestamp (value) {
       const instant = parseUtcAwareInstant(value)
       return instant ? instant.getTime() : 0
@@ -1692,7 +1717,7 @@ export default {
       const unrealizedPnl = shouldPreferComputed
         ? (computedPnl !== null ? computedPnl : (providedPnl !== null ? providedPnl : 0))
         : (providedPnl !== null ? providedPnl : (computedPnl !== null ? computedPnl : 0))
-      return {
+      const normalized = {
         ...position,
         side,
         size,
@@ -1700,7 +1725,12 @@ export default {
         mark_price: markPrice,
         notional_usdt: notionalUsdt,
         unrealized_pnl: unrealizedPnl,
-        leverage: this.pickNumber(position, ['leverage'], position.leverage || 1)
+        leverage: this.pickNumber(position, ['leverage'], position.leverage || 1),
+        initial_margin: this.pickNumber(position, ['initial_margin', 'initialMargin', 'positionInitialMargin', 'position_margin', 'margin'], 0)
+      }
+      return {
+        ...normalized,
+        ...calculatePositionMetrics(normalized, this.isSwapMode)
       }
     },
     applyNewPrice (price) {
@@ -3003,7 +3033,7 @@ export default {
     grid-column-start: 1;
     grid-column-end: -1;
     display: grid;
-    grid-template-columns: repeat(7, minmax(96px, 1fr)) minmax(112px, auto);
+    grid-template-columns: repeat(8, minmax(96px, 1fr)) minmax(112px, auto);
     align-items: center;
     gap: 10px 18px;
     min-height: 64px;
@@ -3409,18 +3439,19 @@ export default {
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
-  scrollbar-width: auto;
-  scrollbar-color: var(--primary-color, #52c41a) #e2e8f0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--qd-scrollbar-thumb, rgba(15, 23, 42, 0.22)) transparent;
   overscroll-behavior-x: contain;
   border-bottom: 1px solid #e2e8f0;
   background: #f8fafc;
-  &::-webkit-scrollbar { height: 7px; }
-  &::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 999px; }
+  &::-webkit-scrollbar { height: 6px; }
+  &::-webkit-scrollbar-track { background: transparent; }
   &::-webkit-scrollbar-thumb {
     min-width: 34px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid transparent;
     border-radius: 999px;
-    background: var(--primary-color, #52c41a);
+    background: var(--qd-scrollbar-thumb, rgba(15, 23, 42, 0.22));
+    background-clip: padding-box;
   }
   button {
     position: relative;
@@ -4922,9 +4953,7 @@ export default {
   .qt-dock-tabs {
     background: #191919;
     border-bottom-color: #303030;
-    scrollbar-color: var(--primary-color, #52c41a) #303030;
-    &::-webkit-scrollbar-track { background: #303030; }
-    &::-webkit-scrollbar-thumb { border-color: #303030; }
+    scrollbar-color: var(--qd-scrollbar-thumb, rgba(255, 255, 255, 0.22)) transparent;
     button { color: rgba(255, 255, 255, 0.48); }
     button.active { color: var(--primary-color, #52c41a); }
     button.active::after { background: var(--primary-color, #52c41a); }

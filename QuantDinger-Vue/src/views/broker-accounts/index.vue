@@ -1,12 +1,12 @@
 <template>
   <div class="broker-accounts qd-workspace-page qd-page-frame" :class="{ 'theme-dark': isDarkTheme }">
-    <div class="ba-header">
-      <div class="ba-header-text">
-        <div class="ba-title">
-          <a-icon type="bank" />
+    <div class="ba-header qd-page-heading">
+      <div class="ba-header-text qd-page-heading__copy">
+        <div class="ba-title qd-page-heading__title">
+          <a-icon class="qd-page-heading__icon" type="bank" />
           <span>{{ $t('brokerAccounts.commandCenterTitle') }}</span>
         </div>
-        <div class="ba-subtitle">{{ $t('brokerAccounts.commandCenterSubtitle') }}</div>
+        <div class="ba-subtitle qd-page-heading__description">{{ $t('brokerAccounts.commandCenterSubtitle') }}</div>
       </div>
       <div class="ba-header-actions">
         <div class="ba-health">

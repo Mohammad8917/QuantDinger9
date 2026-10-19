@@ -78,6 +78,63 @@
     margin-bottom: var(--qd-space-4) !important;
   }
 
+  .qd-page-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px !important;
+    min-height: 56px;
+    margin-bottom: 20px !important;
+  }
+
+  .qd-page-heading__copy {
+    display: flex !important;
+    flex: 1 1 auto;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    min-width: 0;
+  }
+
+  .qd-page-heading__title {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    min-height: 30px;
+    margin: 0 !important;
+    color: var(--qd-text) !important;
+    font-size: 22px !important;
+    font-weight: 700 !important;
+    line-height: 30px !important;
+    letter-spacing: -0.02em !important;
+  }
+
+  .qd-page-heading__icon {
+    display: inline-flex !important;
+    flex: 0 0 30px;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    color: var(--primary-color, #1890ff) !important;
+    font-size: 26px !important;
+    line-height: 30px !important;
+  }
+
+  .qd-page-heading__description {
+    max-width: 760px;
+    margin: 6px 0 0 !important;
+    overflow: hidden;
+    color: var(--qd-text-secondary) !important;
+    font-size: 14px !important;
+    line-height: 20px !important;
+    text-overflow: ellipsis;
+  }
+
+  .qd-page-heading--sticky {
+    margin: -16px -18px 20px !important;
+    padding: 16px 18px !important;
+  }
+
   .ant-btn,
   .ant-input,
   .ant-input-number,
@@ -223,6 +280,35 @@
     .settings-title,
     .universe-title {
       font-size: 18px !important;
+    }
+
+    .qd-page-heading {
+      min-height: 48px;
+      margin-bottom: 16px !important;
+    }
+
+    .qd-page-heading__title {
+      min-height: 28px;
+      font-size: 19px !important;
+      line-height: 28px !important;
+    }
+
+    .qd-page-heading__icon {
+      flex-basis: 28px;
+      width: 28px;
+      height: 28px;
+      font-size: 23px !important;
+      line-height: 28px !important;
+    }
+
+    .qd-page-heading__description {
+      font-size: 13px !important;
+      line-height: 19px !important;
+    }
+
+    .qd-page-heading--sticky {
+      margin: -12px -12px 16px !important;
+      padding: 12px !important;
     }
 
     .ant-card-body {

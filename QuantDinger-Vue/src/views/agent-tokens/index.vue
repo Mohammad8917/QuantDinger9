@@ -1,13 +1,15 @@
 <template>
   <div class="agent-tokens-page qd-workspace-page qd-page-frame" :class="{ 'theme-dark': isDarkTheme }">
-    <div class="page-header">
-      <h2 class="page-title">
-        <a-icon type="api" />
-        <span>{{ $t('agentTokens.title') || 'Agent Tokens' }}</span>
-      </h2>
-      <p class="page-desc">
-        {{ $t('agentTokens.description') || 'Issue and manage tokens that let external AI agents (Cursor, Claude Code, Codex, MCP, custom bots) call this QuantDinger instance through /api/agent/v1.' }}
-      </p>
+    <div class="page-header qd-page-heading">
+      <div class="qd-page-heading__copy">
+        <h2 class="page-title qd-page-heading__title">
+          <a-icon class="qd-page-heading__icon" type="api" />
+          <span>{{ $t('agentTokens.title') || 'Agent Tokens' }}</span>
+        </h2>
+        <p class="page-desc qd-page-heading__description">
+          {{ $t('agentTokens.description') || 'Issue and manage tokens that let external AI agents (Cursor, Claude Code, Codex, MCP, custom bots) call this QuantDinger instance through /api/agent/v1.' }}
+        </p>
+      </div>
     </div>
 
     <a-tabs v-model="activeTab" class="manage-tabs">

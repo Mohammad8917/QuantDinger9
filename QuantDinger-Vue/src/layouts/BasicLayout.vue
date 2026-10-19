@@ -13,14 +13,27 @@
 
       <template #menuHeaderRender>
         <div class="sidebar-logo-wrapper" :class="{ 'sidebar-logo-wrapper--collapsed': collapsed }">
-          <img v-if="collapsed" :src="collapsedLogo" class="sidebar-logo sidebar-logo--collapsed" :alt="brandConfig.app_name" />
-          <img v-else :src="currentLogo" class="sidebar-logo" :alt="brandConfig.app_name" />
+          <brand-identity
+            :name="brandName"
+            :theme="settings.theme"
+            :compact="collapsed"
+            :wide-logo="currentRemoteLogo"
+            :compact-logo="collapsedRemoteLogo"
+          />
         </div>
       </template>
       <template #headerContentRender>
-        <div>
+        <div class="layout-page-context">
+          <span class="layout-page-context__title">{{ currentPageTitle }}</span>
           <a-tooltip :title="$t('menu.header.refreshPage')">
-            <a-icon type="reload" style="font-size: 18px;cursor: pointer;" @click="handleRefresh" />
+            <button
+              type="button"
+              class="layout-page-context__refresh"
+              :aria-label="$t('menu.header.refreshPage')"
+              @click="handleRefresh"
+            >
+              <a-icon type="reload" />
+            </button>
           </a-tooltip>
         </div>
       </template>
@@ -237,11 +250,9 @@ import defaultSettings from '@/config/defaultSettings'
 import RightContent from '@/components/GlobalHeader/RightContent'
 import SettingDrawer from '@/components/SettingDrawer/SettingDrawer'
 import MultiTab from '@/components/MultiTab'
+import BrandIdentity from '@/components/BrandIdentity'
 import RouteView from './RouteView'
 import { Icon } from '@iconify/vue2'
-import logoLight from '@/assets/logo.png'
-import logoDark from '@/assets/logo_w.png'
-import slogoImg from '@/assets/slogo.png'
 
 export default {
   name: 'BasicLayout',
@@ -249,6 +260,7 @@ export default {
     SettingDrawer,
     RightContent,
     MultiTab,
+    BrandIdentity,
     RouteView,
     Icon
     // GlobalFooter,
@@ -262,7 +274,7 @@ export default {
       isDev: process.env.NODE_ENV === 'development' || process.env.VUE_APP_PREVIEW === 'true',
 
       // base - menus moved to computed property
-      collapsed: false,
+      collapsed: this.$store.state.app.sideCollapsed,
       title: defaultSettings.title,
       settings: {
         layout: defaultSettings.layout, // 'sidemenu', 'topmenu'
@@ -298,7 +310,7 @@ export default {
       const routes = this.mainMenu.find(item => item.path === '/')
       const children = (routes && routes.children) || []
       if (this.settings.layout !== 'topmenu') {
-        return children
+        return this.buildSideMenu(children)
       }
       return this.buildTopMenuGroups(children)
     },
@@ -308,8 +320,15 @@ export default {
         : (this.settings.theme === 'dark' ? 'dark' : 'light')
       return {
         ...this.settings,
-        theme
+        theme,
+        siderWidth: 184,
+        collapsedWidth: 60
       }
+    },
+    currentPageTitle () {
+      const title = this.$route && this.$route.meta && this.$route.meta.title
+      if (!title) return this.title
+      return this.$te && this.$te(title) ? this.$t(title) : title
     },
     showAdminMenuDivider () {
       const routes = this.mainMenu.find(item => item.path === '/')
@@ -327,16 +346,18 @@ export default {
       const buildVersion = typeof APP_VERSION !== 'undefined' ? APP_VERSION : '0.0.0-dev'
       return (this.brandConfig && this.brandConfig.app_version) || defaultSettings.appVersion || buildVersion
     },
-    currentLogo () {
+    brandName () {
+      return (this.brandConfig && this.brandConfig.app_name) || defaultSettings.title
+    },
+    currentRemoteLogo () {
       const theme = this.settings.theme
       const isDark = theme === 'dark' || theme === 'realdark'
-      const remote = isDark
+      return isDark
         ? (this.brandConfig.logos && this.brandConfig.logos.dark)
         : (this.brandConfig.logos && this.brandConfig.logos.light)
-      return remote || (isDark ? logoDark : logoLight)
     },
-    collapsedLogo () {
-      return (this.brandConfig.logos && this.brandConfig.logos.collapsed) || slogoImg
+    collapsedRemoteLogo () {
+      return (this.brandConfig.logos && this.brandConfig.logos.collapsed) || ''
     },
     topAdminPaths () {
       return ['/user-manage', '/agent-tokens', '/ai-skills', '/settings']
@@ -550,6 +571,32 @@ export default {
   },
   methods: {
     i18nRender,
+    buildSideMenu (routes) {
+      const order = [
+        '/ai-asset-analysis',
+        '/indicator-community',
+        '/indicator-ide',
+        '/strategy-ide',
+        '/backtest-center',
+        '/strategy-center',
+        '/broker-accounts',
+        '/billing',
+        '/profile',
+        '/user-manage',
+        '/agent-tokens',
+        '/ai-skills',
+        '/settings'
+      ]
+      const priorities = order.reduce((result, path, index) => {
+        result[path] = index
+        return result
+      }, {})
+      return routes.slice().sort((left, right) => {
+        const leftPriority = priorities[left.path] ?? Number.MAX_SAFE_INTEGER
+        const rightPriority = priorities[right.path] ?? Number.MAX_SAFE_INTEGER
+        return leftPriority - rightPriority
+      })
+    },
     buildTopMenuGroups (routes) {
       const accountMenuPaths = ['/billing', '/profile']
       const topAdminMenuPaths = ['/user-manage', '/agent-tokens', '/ai-skills', '/settings']
@@ -905,29 +952,15 @@ export default {
 .sidebar-logo-wrapper {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   width: 100%;
   height: 100%;
-  padding: 0 16px;
+  padding: 0;
   box-sizing: border-box;
-
-  .sidebar-logo {
-    display: block;
-    max-width: 100%;
-    max-height: 40px;
-    width: auto;
-    height: auto;
-    object-fit: contain;
-  }
-
-  .sidebar-logo--collapsed {
-    max-height: 32px;
-    max-width: 100%;
-  }
 
   &--collapsed {
     justify-content: center;
-    padding: 0 8px;
+    padding: 0;
   }
 }
 
@@ -940,15 +973,9 @@ export default {
   > div {
     display: flex;
     align-items: center;
+    justify-content: center;
     width: 100%;
     height: 100%;
-  }
-
-  img {
-    width: auto !important;
-    height: auto !important;
-    max-height: 40px;
-    max-width: 85%;
   }
 
   h1 {
@@ -960,12 +987,6 @@ export default {
   padding: 0 !important;
   justify-content: center;
 
-  img {
-    max-width: 80% !important;
-    max-height: 32px !important;
-    width: auto !important;
-    height: auto !important;
-  }
 }
 
 .ant-pro-sider-menu-sider.light .ant-menu-light {

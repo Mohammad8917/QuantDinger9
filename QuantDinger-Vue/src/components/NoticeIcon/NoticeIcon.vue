@@ -533,11 +533,11 @@ export default {
   }
 
   &.unread {
-    background: rgba(82, 196, 26, 0.06);
-    box-shadow: inset 2px 0 0 rgba(82, 196, 26, 0.72);
+    background: color-mix(in srgb, var(--primary-color, #1890ff) 7%, transparent);
+    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--primary-color, #1890ff) 76%, transparent);
 
     &:hover {
-      background: rgba(82, 196, 26, 0.11);
+      background: color-mix(in srgb, var(--primary-color, #1890ff) 12%, transparent);
     }
   }
 
@@ -1430,11 +1430,11 @@ body.realdark,
       }
 
       &.unread {
-        background: rgba(82, 196, 26, 0.07);
-        box-shadow: inset 2px 0 0 rgba(82, 196, 26, 0.58);
+        background: color-mix(in srgb, var(--primary-color, #1890ff) 10%, transparent);
+        box-shadow: inset 2px 0 0 color-mix(in srgb, var(--primary-color, #1890ff) 68%, transparent);
 
         &:hover {
-          background: rgba(82, 196, 26, 0.12);
+          background: color-mix(in srgb, var(--primary-color, #1890ff) 15%, transparent);
         }
       }
 

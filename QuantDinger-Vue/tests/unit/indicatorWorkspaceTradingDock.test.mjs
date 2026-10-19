@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import quickTradeRecords from '../../src/locales/quick-trade-records.js'
+import quickTradeFloatingMessages from '../../src/locales/lang/quick-trade-floating.js'
+import { calculatePositionMetrics } from '../../src/components/QuickTradePanel/positionMetrics.js'
 
 const read = path => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8')
 
@@ -93,6 +95,63 @@ test('exchange position values are not overwritten by the chart price source', (
 
   assert.doesNotMatch(applyPrice, /refreshPositionMarks/)
   assert.match(source, /market_value/)
+})
+
+test('position metrics distinguish invested margin from current exposure', () => {
+  const swap = calculatePositionMetrics({
+    size: 0.0061,
+    entry_price: 81093,
+    mark_price: 82828,
+    notional_usdt: 505.25,
+    initial_margin: 100,
+    unrealized_pnl: 10.5841,
+    leverage: 5
+  }, true)
+
+  assert.equal(swap.invested_amount, 100)
+  assert.equal(swap.current_value, 505.25)
+  assert.equal(swap.pnl_percent, 10.5841)
+  assert.equal(swap.effective_leverage, 5)
+
+  const inferredLeverage = calculatePositionMetrics({
+    size: 0.0061,
+    entry_price: 81093,
+    mark_price: 82828,
+    notional_usdt: 504.63,
+    initial_margin: 101.3,
+    unrealized_pnl: 9.99,
+    leverage: 1
+  }, true)
+  assert.equal(inferredLeverage.effective_leverage, 5)
+
+  const fallbackSwap = calculatePositionMetrics({
+    size: 0.01,
+    entry_price: 50000,
+    mark_price: 51000,
+    unrealized_pnl: 10,
+    leverage: 5
+  }, true)
+  assert.equal(fallbackSwap.invested_amount, 100)
+  assert.equal(fallbackSwap.current_value, 510)
+  assert.equal(fallbackSwap.pnl_percent, 10)
+
+  const spot = calculatePositionMetrics({
+    size: 2,
+    entry_price: 100,
+    mark_price: 110,
+    unrealized_pnl: 20,
+    leverage: 1
+  }, false)
+  assert.equal(spot.invested_amount, 200)
+  assert.equal(spot.current_value, 220)
+  assert.equal(spot.pnl_percent, 10)
+})
+
+test('position investment labels exist in every desktop locale', () => {
+  for (const [locale, messages] of Object.entries(quickTradeFloatingMessages)) {
+    assert.ok(messages['quickTrade.investedAmount'], `${locale} is missing invested amount`)
+    assert.ok(messages['quickTrade.currentValue'], `${locale} is missing current value`)
+  }
 })
 
 test('volume pane is represented by a toolbar toggle', () => {

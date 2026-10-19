@@ -5584,14 +5584,15 @@ body.dark .ide-signal-alert-modal-wrap {
 }
 
 .code-version-viewer::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
 }
 
 .code-version-viewer::-webkit-scrollbar-thumb {
-  border: 3px solid #15171b;
+  border: 1px solid transparent;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.26);
+  background-clip: padding-box;
 }
 
 .code-version-viewer__line {

@@ -49,7 +49,7 @@
       }
 
       .first-loading-card {
-        width: 360px;
+        width: 420px;
         max-width: calc(100% - 32px);
         display: grid;
         justify-items: center;
@@ -63,20 +63,28 @@
       }
 
       .brand-mark {
-        width: 104px;
-        height: 104px;
-        border-radius: 50%;
-        object-fit: cover;
-        filter: drop-shadow(0 18px 32px rgba(37, 99, 235, 0.18));
+        position: relative;
+        display: block;
+        width: 300px;
+        max-width: 100%;
+        line-height: 0;
         animation: qdFloat 2.8s ease-in-out infinite;
       }
 
-      .brand-title {
-        margin: 2px 0 0;
-        color: #0f172a;
-        font-size: 30px;
-        font-weight: 800;
-        letter-spacing: 0;
+      .brand-mark__image {
+        display: block;
+        width: 100%;
+        height: auto;
+        object-fit: contain;
+        filter: drop-shadow(0 18px 32px rgba(37, 99, 235, 0.18));
+      }
+
+      .brand-mark__dark-wordmark {
+        position: absolute;
+        inset: 0;
+        display: none;
+        clip-path: inset(0 0 0 19%);
+        filter: brightness(0) invert(1);
       }
 
       .brand-subtitle {
@@ -141,12 +149,12 @@
         box-shadow: 0 24px 72px rgba(0, 0, 0, 0.42);
       }
 
-      .qd-loading-dark .brand-mark {
-        filter: drop-shadow(0 16px 28px rgba(0, 0, 0, 0.36));
+      .qd-loading-dark .brand-mark__base {
+        filter: drop-shadow(0 0 0.8px rgba(255, 255, 255, 0.92));
       }
 
-      .qd-loading-dark .brand-title {
-        color: #f5f5f5;
+      .qd-loading-dark .brand-mark__dark-wordmark {
+        display: block;
       }
 
       .qd-loading-dark .brand-subtitle,
@@ -174,12 +182,12 @@
           box-shadow: 0 24px 72px rgba(0, 0, 0, 0.42);
         }
 
-        html:not(.qd-loading-light) .brand-mark {
-          filter: drop-shadow(0 16px 28px rgba(0, 0, 0, 0.36));
+        html:not(.qd-loading-light) .brand-mark__base {
+          filter: drop-shadow(0 0 0.8px rgba(255, 255, 255, 0.92));
         }
 
-        html:not(.qd-loading-light) .brand-title {
-          color: #f5f5f5;
+        html:not(.qd-loading-light) .brand-mark__dark-wordmark {
+          display: block;
         }
 
         html:not(.qd-loading-light) .brand-subtitle,
@@ -208,12 +216,7 @@
         }
 
         .brand-mark {
-          width: 88px;
-          height: 88px;
-        }
-
-        .brand-title {
-          font-size: 26px;
+          width: 260px;
         }
       }
     </style>
@@ -225,8 +228,10 @@
     <div id="app">
       <div class="first-loading-wrp">
         <div class="first-loading-card">
-          <img class="brand-mark" src="/slogo.png" alt="QuantDinger">
-          <h2 class="brand-title">QuantDinger</h2>
+          <span class="brand-mark" role="img" aria-label="QuantDinger">
+            <img class="brand-mark__image brand-mark__base" src="/logo.png" alt="">
+            <img class="brand-mark__image brand-mark__dark-wordmark" src="/logo.png" alt="" aria-hidden="true">
+          </span>
           <p class="brand-subtitle">AI quantitative trading infrastructure</p>
           <div class="loading-line" aria-hidden="true"></div>
           <p class="loading-copy">Loading workspace...</p>
