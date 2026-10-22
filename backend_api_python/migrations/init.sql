@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS qd_users (
     email_verified BOOLEAN DEFAULT FALSE,
     referred_by INTEGER,                   -- 閭€璇蜂汉ID
     notification_settings TEXT DEFAULT '',
-    chart_templates TEXT DEFAULT '',      -- 鐢ㄦ埛鍥捐〃妯℃澘 JSON锛堟寚鏍囧竷灞€/鏍峰紡锛?
+    chart_templates TEXT DEFAULT '',      -- JSON chart-template configuration
     timezone VARCHAR(64) DEFAULT '',
     token_version INTEGER DEFAULT 1,
     password_changed_at TIMESTAMP,           -- NULL only prompts when bootstrap password is still 123456
