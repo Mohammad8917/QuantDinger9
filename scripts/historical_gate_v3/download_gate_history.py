@@ -223,7 +223,7 @@ def fetch_recent_rest_candles(
     timeout_seconds: float = 30.0,
 ) -> list[dict[str, float | int | None]]:
     """Fetch a bounded recent range from Gate REST in sub-2000-candle pages."""
-    interval_seconds = {"5m": 300, "15m": 900, "1h": 3600}.get(timeframe)
+    interval_seconds = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}.get(timeframe)
     if interval_seconds is None:
         raise ValueError(f"Unsupported Gate REST timeframe: {timeframe}")
     if end_ts < start_ts:
@@ -301,7 +301,7 @@ def fetch_archive_candles(
     timeout_seconds: float = 30.0,
 ) -> list[dict[str, float | int | None]]:
     """Download and parse Gate's official monthly futures candle archive files."""
-    interval_seconds = {"5m": 300, "15m": 900, "1h": 3600}.get(timeframe)
+    interval_seconds = {"1m": 60, "5m": 300, "1h": 3600}.get(timeframe)
     if interval_seconds is None:
         raise ValueError(f"Unsupported Gate archive timeframe: {timeframe}")
     if end_ts < start_ts:
@@ -425,9 +425,9 @@ def aggregate_5m_to_15m(
         timestamps = [int(row["timestamp"]) for row in group]
         if len(set(timestamps)) != len(timestamps):
             raise DataError(f"Duplicate 5m candle timestamp in 15m bucket {bucket}")
-        # Gate's archive omits some no-trade 5m intervals. Aggregate the real
-        # sub-candles that exist within a 15m bucket; do not fabricate empty bars.
-        if not group:
+        expected = [bucket, bucket + 300, bucket + 600]
+        if timestamps != expected:
+            # Never create a partial 15m candle from fewer than three real 5m bars.
             continue
         aggregated.append({
             "timestamp": bucket,
@@ -441,6 +441,63 @@ def aggregate_5m_to_15m(
     if not aggregated:
         raise DataError("No complete groups of three contiguous 5m candles were available for 15m aggregation")
     return aggregated
+
+
+def aggregate_1m_to_timeframe(
+    rows: list[dict[str, float | int | None]], timeframe: str,
+) -> list[dict[str, float | int | None]]:
+    """Build 15m/1h bars only from complete contiguous real 1m candles."""
+    interval = TIMEFRAMES.get(timeframe)
+    if interval not in (900, 3600):
+        raise ValueError(f"Unsupported 1m aggregation target: {timeframe}")
+    group_size = interval // 60
+    groups: dict[int, list[dict[str, float | int | None]]] = {}
+    for row in rows:
+        timestamp = int(row["timestamp"])
+        if timestamp % 60:
+            raise DataError(f"Cannot aggregate unaligned 1m candle timestamp: {timestamp}")
+        bucket = (timestamp // interval) * interval
+        groups.setdefault(bucket, []).append(row)
+
+    aggregated: list[dict[str, float | int | None]] = []
+    for bucket, group in sorted(groups.items()):
+        group.sort(key=lambda row: int(row["timestamp"]))
+        timestamps = [int(row["timestamp"]) for row in group]
+        if len(set(timestamps)) != len(timestamps):
+            raise DataError(f"Duplicate 1m candle timestamp in {timeframe} bucket {bucket}")
+        expected = [bucket + index * 60 for index in range(group_size)]
+        if timestamps != expected:
+            continue
+        aggregated.append({
+            "timestamp": bucket,
+            "open": float(group[0]["open"]),
+            "high": max(float(row["high"]) for row in group),
+            "low": min(float(row["low"]) for row in group),
+            "close": float(group[-1]["close"]),
+            "volume": sum(float(row["volume"]) for row in group),
+            "quote_volume": None,
+        })
+    return aggregated
+
+
+def missing_expected_timestamps(
+    rows: list[dict[str, float | int | None]],
+    timeframe: str,
+    expected_start: int,
+    expected_end: int,
+) -> list[int]:
+    """Return expected candle opens absent from real rows without filling them."""
+    interval = TIMEFRAMES[timeframe]
+    observed = {
+        int(row["timestamp"])
+        for row in rows
+        if expected_start <= int(row["timestamp"]) <= expected_end
+    }
+    return [
+        timestamp
+        for timestamp in range(expected_start, expected_end + 1, interval)
+        if timestamp not in observed
+    ]
 
 
 def audit_rows(
@@ -529,7 +586,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "schema_version": 3,
         "data_source": "Gate official monthly futures candle archives plus public REST for the recent 10,000-point tail; public contracts REST API for create_time",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
-        "archive_intervals_downloaded": ["15m", "5m", "1h"],
+        "archive_intervals_downloaded": ["1m", "5m", "1h"],
         "recent_rest_policy": "Public REST is used only for the latest aligned window of at most 10,000 points per timeframe; older history comes from official monthly archives.",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected.",
         "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for the bounded recent tail",
@@ -541,7 +598,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
-        "fifteen_minute_policy": "Prefer native 15m monthly archive candles when available and complete; otherwise aggregate only three contiguous real 5m archive candles. The recent tail uses native 15m REST candles; sparse intervals are never synthesized.",
+        "fifteen_minute_policy": "Historical 15m candles require three contiguous real 5m archive candles. Any missing 15m/1h interval is repaired only from a complete contiguous 1m archive group; the recent tail uses native REST candles. No sparse or synthetic candles are accepted.",
         "symbols": {},
     }
     failures: list[str] = []
@@ -584,32 +641,11 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 archive_source_label = ""
                 if requested_first <= archive_last:
                     if timeframe == "15m":
-                        try:
-                            native_rows = fetch_archive_candles(
-                                session, contract, "15m", requested_first, archive_last,
-                            )
-                            native_audit = audit_rows(
-                                native_rows, "15m",
-                                expected_start=requested_first, expected_end=archive_last,
-                            )
-                            if not native_audit["complete_contiguous_history"]:
-                                raise DataError(
-                                    "native 15m archive has incomplete expected coverage "
-                                    f"({native_audit['missing_expected_bars']} bars missing)"
-                                )
-                            archive_rows = native_rows
-                            archive_source_label = "Gate official monthly 15m archive"
-                        except DataError as native_error:
-                            print(
-                                f"[fallback] {contract} native 15m archive unavailable/incomplete; "
-                                f"trying real 5m archive: {native_error}",
-                                flush=True,
-                            )
-                            source_rows = fetch_archive_candles(
-                                session, contract, "5m", requested_first, archive_last + 600,
-                            )
-                            archive_rows = aggregate_5m_to_15m(source_rows)
-                            archive_source_label = "Gate 5m archive aggregated to 15m"
+                        source_rows = fetch_archive_candles(
+                            session, contract, "5m", requested_first, archive_last + 600,
+                        )
+                        archive_rows = aggregate_5m_to_15m(source_rows)
+                        archive_source_label = "Gate 5m archive aggregated from three contiguous candles"
                     else:
                         archive_rows = fetch_archive_candles(
                             session, contract, "1h", requested_first, archive_last,
@@ -628,7 +664,46 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     source_parts.append(archive_source_label)
                 if recent_rows:
                     source_parts.append("Gate public futures REST recent tail")
-                source_label = " + ".join(source_parts) or "no source rows";
+
+                missing_before_repair = missing_expected_timestamps(
+                    rows, timeframe, requested_first, requested_last,
+                )
+                repaired_rows: list[dict[str, float | int | None]] = []
+                missing_by_month: dict[str, list[int]] = {}
+                for timestamp in missing_before_repair:
+                    month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
+                    missing_by_month.setdefault(month, []).append(timestamp)
+                for month, missing_in_month in sorted(missing_by_month.items()):
+                    repair_start = missing_in_month[0]
+                    repair_end = missing_in_month[-1] + interval - 60
+                    try:
+                        minute_rows = fetch_archive_candles(
+                            session, contract, "1m", repair_start, repair_end,
+                        )
+                        candidates = aggregate_1m_to_timeframe(minute_rows, timeframe)
+                        wanted = set(missing_in_month)
+                        accepted = [
+                            row for row in candidates if int(row["timestamp"]) in wanted
+                        ]
+                        repaired_rows.extend(accepted)
+                        print(
+                            f"[repair] {contract} {timeframe} {month}: "
+                            f"{len(accepted)}/{len(missing_in_month)} missing bars recovered "
+                            "from complete contiguous 1m candles",
+                            flush=True,
+                        )
+                    except Exception as repair_error:
+                        # Preserve original rows and let the final strict audit report
+                        # every gap that the independent 1m source could not repair.
+                        print(
+                            f"[repair-warning] {contract} {timeframe} {month}: "
+                            f"1m archive repair unavailable: {repair_error}",
+                            flush=True,
+                        )
+                if repaired_rows:
+                    rows = sorted(rows + repaired_rows, key=lambda row: int(row["timestamp"]))
+                    source_parts.append("Gate 1m archive repair for missing complete candles")
+                source_label = " + ".join(source_parts) or "no source rows"
                 audit = audit_rows(
                     rows, timeframe, expected_start=requested_first, expected_end=requested_last,
                 )
