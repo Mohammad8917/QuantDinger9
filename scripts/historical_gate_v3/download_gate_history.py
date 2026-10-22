@@ -410,7 +410,7 @@ def fetch_archive_candles(
 def aggregate_5m_to_15m(
     rows: list[dict[str, float | int | None]],
 ) -> list[dict[str, float | int | None]]:
-    """Aggregate three contiguous real 5m candles into one 15m candle."""
+    """Aggregate observed real 5m candles into 15m buckets without filling empty intervals."""
     groups: dict[int, list[dict[str, float | int | None]]] = {}
     for row in rows:
         timestamp = int(row["timestamp"])
@@ -446,7 +446,7 @@ def aggregate_5m_to_15m(
 def aggregate_1m_to_timeframe(
     rows: list[dict[str, float | int | None]], timeframe: str,
 ) -> list[dict[str, float | int | None]]:
-    """Build 15m/1h bars only from complete contiguous real 1m candles."""
+    """Aggregate observed real 1m candles into 15m/1h buckets without filling empty intervals."""
     interval = TIMEFRAMES.get(timeframe)
     if interval not in (900, 3600):
         raise ValueError(f"Unsupported 1m aggregation target: {timeframe}")
@@ -690,7 +690,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                         print(
                             f"[repair] {contract} {timeframe} {month}: "
                             f"{len(accepted)}/{len(missing_in_month)} missing bars recovered "
-                            "from complete contiguous 1m candles",
+                            "from observed real 1m candles",
                             flush=True,
                         )
                     except Exception as repair_error:
