@@ -297,7 +297,8 @@ def fetch_recent_rest_candles(
                     f"Unaligned Gate REST candle for {contract} {timeframe}: {timestamp}"
                 )
             if cursor <= timestamp <= page_end and start_ts <= timestamp <= end_ts:
-                rows.append(row)        cursor = page_end + interval_seconds
+                rows.append(row)
+        cursor = page_end + interval_seconds
         if sleep_seconds > 0 and cursor <= end_ts:
             time.sleep(sleep_seconds)
     # Preserve duplicate rows so the downstream audit can detect them; never silently repair source data.
@@ -1021,8 +1022,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
-        "fifteen_minute_policy": "Historical 15m candles prefer the native official archive and otherwise aggregate complete sets of observed real 5m archive candles; unresolved 15m/1h intervals are checked against public native REST and complete observed 1m/10s aggregates. Partial source groups remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
-        "gap_repair_policy": "Repair missing 15m/1h opens from complete observed real 1m/10s candle archives and query Gate public native REST for historical missing timestamps, grouped by month and paged at no more than 900 points per request. Only closed, aligned candles returned by Gate are accepted. Trade rows are not converted into candles because their documented schema does not expose the is_internal flag used to exclude internal trades from K-lines. Any gap not reconstructed from complete observed candle data remains unresolved and fails closed; complete_contiguous_history remains false for sparse data.",
+        "fifteen_minute_policy": "Historical 15m candles prefer the native official archive and otherwise aggregate complete sets of observed real 5m archive candles. Remaining 15m gaps may use official monthly futures trades only after at least 20 overlapping OHLCV bars match the official candle source. Buckets with no trades remain absent; a validated complete monthly trades archive can certify such buckets as zero-trade intervals. No synthetic candles are created.",
+        "gap_repair_policy": "Repair missing candle opens from complete observed real 1m/10s candle archives and recent native public REST. For unresolved 15m gaps, download only the affected official monthly futures trade archives, aggregate trades by UTC 900-second bucket, validate OHLCV against at least 20 overlapping official candles, and accept only months that match. Gate trade size is signed by direction, so reconstructed total volume sums absolute sizes. Unavailable or mismatching archives do not repair gaps; unverified gaps fail closed.",
         "symbols": {},
     }
     failures: list[str] = []
