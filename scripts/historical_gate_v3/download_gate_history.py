@@ -800,7 +800,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
         "archive_intervals_downloaded": ["10s", "1m", "5m", "1h"],
         "recent_rest_policy": "The primary recent tail uses public REST inside the configured recent window; gap recovery may query historical missing ranges after archive recovery, using from/to only and pages of at most 900 points.",
-        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing buckets are resolved only from observed real source data. Absence from a trade archive is not proof of zero trades because archive completeness is not independently verified; no candle is synthesized.",
+        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing buckets are resolved only from native observed candles or complete aggregates of observed lower-timeframe candles. Partial source groups and absent intervals are not treated as zero-trade candles; no candle is synthesized.",
         "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for the bounded recent tail",
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
@@ -811,7 +811,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
         "fifteen_minute_policy": "Historical 15m candles are aggregated only from complete sets of observed real 5m archive candles; missing 15m/1h intervals are recovered only from complete observed 1m or 10s candle sets, or recent native REST within its allowed window. Partial source groups and empty intervals remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
-        "gap_repair_policy": "Repair missing 15m/1h opens only from complete observed real 1m or 10s candle archives; use public REST only within its latest 10,000-point window with at most 900 points per request. Trade archives are not converted into candles because their documented schema does not expose the is_internal flag used to exclude internal trades from K-lines. Any gap not reconstructed from complete observed candle data remains unresolved and fails closed; complete_contiguous_history remains false for sparse data.",
+        "gap_repair_policy": "Repair missing 15m/1h opens only from complete observed real 1m or 10s candle archives; use public REST only within its latest 10,000-point window with at most 900 points per request. Trade rows are not converted into candles because their documented schema does not expose the is_internal flag used to exclude internal trades from K-lines. Any gap not reconstructed from complete observed candle data remains unresolved and fails closed; complete_contiguous_history remains false for sparse data.",
         "symbols": {},
     }
     failures: list[str] = []
@@ -882,7 +882,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     rows, timeframe, requested_first, requested_last,
                 )
                 repaired_rows: list[dict[str, float | int | None]] = []
-                    missing_by_month: dict[str, list[int]] = {}
+                missing_by_month: dict[str, list[int]] = {}
                 for timestamp in missing_before_repair:
                     month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
                     missing_by_month.setdefault(month, []).append(timestamp)
@@ -902,17 +902,16 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                         print(
                             f"[repair] {contract} {timeframe} {month}: "
                             f"{len(accepted)}/{len(missing_in_month)} missing bars recovered "
-                            "from observed real 1m candles",
+                            "from complete observed 1m candle sets",
                             flush=True,
                         )
                     except Exception as repair_error:
-                        # Preserve original rows and let the final strict audit report
-                        # every gap that the independent 1m source could not repair.
                         print(
                             f"[repair-warning] {contract} {timeframe} {month}: "
                             f"1m archive repair unavailable: {repair_error}",
                             flush=True,
                         )
+
                 archive_repaired_count = len(repaired_rows)
                 already_observed = {
                     int(row["timestamp"]) for row in rows + repaired_rows
@@ -943,17 +942,6 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     timestamp for timestamp in missing_before_repair
                     if timestamp not in already_observed
                 ]
-                historical_missing = [
-                    timestamp for timestamp in remaining_missing
-                    if not rest_start <= timestamp <= rest_end
-                ]
-                already_observed = {
-                    int(row["timestamp"]) for row in rows + repaired_rows
-                }
-                remaining_missing = [
-                    timestamp for timestamp in missing_before_repair
-                    if timestamp not in already_observed
-                ]
                 if remaining_missing:
                     native_rest_rows = fetch_missing_native_rest_candles(
                         session, contract, timeframe, remaining_missing,
@@ -963,22 +951,11 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                         repaired_rows.extend(native_rest_rows)
                         source_parts.append("Gate native public REST recovery for recent missing intervals")
 
-                # REST can omit a recent bucket even when the official monthly
-                # trades archive is available. Retry those still-missing recent
-                # buckets against the independent archive source before failing.
-                already_observed = {
-                    int(row["timestamp"]) for row in rows + repaired_rows
-                }
-                recent_unresolved = [
-                    timestamp for timestamp in missing_before_repair
-                    if timestamp not in already_observed
-                    and rest_start <= timestamp <= rest_end
-                ]
                 if repaired_rows:
                     rows = sorted(rows + repaired_rows, key=lambda row: int(row["timestamp"]))
                     if archive_repaired_count:
                         source_parts.append(
-                            "Gate 1m archive recovery for missing intervals with observed trades"
+                            "Gate 1m archive recovery for complete source buckets"
                         )
                 source_label = " + ".join(source_parts) or "no source rows"
                 audit = audit_rows(
