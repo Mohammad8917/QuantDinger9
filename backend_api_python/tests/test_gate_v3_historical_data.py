@@ -37,7 +37,6 @@ def test_candle_row_validation() -> None:
         "close": 102.0,
         "volume": 12.0,
         "quote_volume": 12000.0,
-        "quote_volume": 12000.0,
     }
     # 1800000000 is divisible by 900 and 3600.
     assert MODULE._validate_row(valid, 900) is None
@@ -133,6 +132,7 @@ def test_locked_strategy_fingerprint_is_checked(tmp_path: Path) -> None:
         assert "not found" in str(exc)
     else:
         raise AssertionError("Missing strategy file should have stopped data collection")
+
 
 def test_candle_row_rejects_non_finite_values() -> None:
     valid = {
