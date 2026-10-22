@@ -347,6 +347,45 @@ def test_public_rest_pagination_stays_within_900_candles() -> None:
     )
 
 
+def test_missing_native_rest_repair_accepts_only_requested_gap_opens() -> None:
+    start = 1735689600
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> object:
+            return [
+                {"t": start, "o": "100", "h": "102", "l": "99", "c": "101", "v": 1},
+                {"t": start + 900, "o": "101", "h": "103", "l": "100", "c": "102", "v": 2},
+                {"t": start + 1800, "o": "102", "h": "104", "l": "101", "c": "103", "v": 3},
+            ]
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            assert url == "https://api.gateio.ws/api/v4/futures/usdt/candlesticks"
+            params = kwargs.get("params")
+            assert isinstance(params, dict)
+            self.calls.append(params)
+            return FakeResponse()
+
+    session = FakeSession()
+    rows = MODULE.fetch_missing_native_rest_candles(
+        session, "BTC_USDT", "15m", [start, start + 1800], sleep_seconds=0,
+    )
+    assert [row["timestamp"] for row in rows] == [start, start + 1800]
+    assert all(row["quote_volume"] is None for row in rows)
+    assert session.calls == [{
+        "contract": "BTC_USDT", "interval": "15m",
+        "from": start, "to": start + 1800,
+    }]
+
+
 def test_archive_fetch_supports_1m_files_for_gap_repair() -> None:
     import gzip
 

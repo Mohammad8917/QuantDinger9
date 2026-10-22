@@ -500,6 +500,53 @@ def missing_expected_timestamps(
     ]
 
 
+def fetch_missing_native_rest_candles(
+    session: requests.Session,
+    contract: str,
+    timeframe: str,
+    missing_timestamps: list[int],
+    *,
+    sleep_seconds: float = 0.05,
+) -> list[dict[str, float | int | None]]:
+    """Recover only specifically missing candle opens from Gate's native public REST feed."""
+    if not missing_timestamps:
+        return []
+    if timeframe not in TIMEFRAMES:
+        raise ValueError(f"Unsupported native REST repair timeframe: {timeframe}")
+
+    missing_by_month: dict[str, list[int]] = {}
+    for timestamp in sorted(set(missing_timestamps)):
+        month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
+        missing_by_month.setdefault(month, []).append(timestamp)
+
+    recovered: list[dict[str, float | int | None]] = []
+    for month, month_timestamps in sorted(missing_by_month.items()):
+        wanted = set(month_timestamps)
+        try:
+            candidates = fetch_recent_rest_candles(
+                session, contract, timeframe, month_timestamps[0], month_timestamps[-1],
+                sleep_seconds=sleep_seconds,
+            )
+            accepted = [
+                row for row in candidates if int(row["timestamp"]) in wanted
+            ]
+            recovered.extend(accepted)
+            print(
+                f"[rest-repair] {contract} {timeframe} {month}: "
+                f"{len(accepted)}/{len(wanted)} missing bars recovered "
+                "from native public REST candles",
+                flush=True,
+            )
+        except Exception as repair_error:
+            # REST is an additional real source, not a reason to hide unresolved gaps.
+            print(
+                f"[rest-repair-warning] {contract} {timeframe} {month}: "
+                f"native REST repair unavailable: {repair_error}",
+                flush=True,
+            )
+    return recovered
+
+
 def audit_rows(
     rows: list[dict[str, float | int | None]], timeframe: str, *,
     expected_start: int | None = None, expected_end: int | None = None,
@@ -599,7 +646,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
         "fifteen_minute_policy": "Historical 15m candles are aggregated from observed real 5m archive candles; missing 15m/1h intervals are recovered from observed real 1m candles within that interval. Empty intervals remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
-        "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m candles within the interval. Empty intervals are not synthesized; any remaining expected gaps make the collection fail.",
+        "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m archive candles, then native public REST candles. Empty intervals are not synthesized; any remaining expected gaps make the collection fail.",
         "symbols": {},
     }
     failures: list[str] = []
@@ -701,9 +748,27 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                             f"1m archive repair unavailable: {repair_error}",
                             flush=True,
                         )
+                already_observed = {
+                    int(row["timestamp"]) for row in rows + repaired_rows
+                }
+                remaining_missing = [
+                    timestamp for timestamp in missing_before_repair
+                    if timestamp not in already_observed
+                ]
+                if remaining_missing:
+                    native_rest_rows = fetch_missing_native_rest_candles(
+                        session, contract, timeframe, remaining_missing,
+                    )
+                    if native_rest_rows:
+                        repaired_rows.extend(native_rest_rows)
+                        source_parts.append("Gate native public REST recovery for missing intervals")
+
                 if repaired_rows:
                     rows = sorted(rows + repaired_rows, key=lambda row: int(row["timestamp"]))
-                    source_parts.append("Gate 1m archive recovery for missing intervals with observed trades")
+                    if repaired_rows and not any(
+                        "Gate 1m archive recovery" in part for part in source_parts
+                    ) and not any("Gate native public REST recovery" in part for part in source_parts):
+                        source_parts.append("Gate 1m archive recovery for missing intervals with observed trades")
                 source_label = " + ".join(source_parts) or "no source rows"
                 audit = audit_rows(
                     rows, timeframe, expected_start=requested_first, expected_end=requested_last,
