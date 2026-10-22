@@ -1,6 +1,9 @@
 name: Gate V3 Historical Dataset
 
 on:
+  push:
+    branches:
+      - work/gate-v3-historical-data
   workflow_dispatch:
     inputs:
       start:
