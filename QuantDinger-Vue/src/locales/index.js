@@ -39,6 +39,7 @@ import quickTradeWorkflowMessages from './lang/quick-trade-workflow'
 import settingsFeatureMessages from './settings-feature-overrides'
 import zhTwProductMessages from './zh-tw-product-overrides'
 import navigationMessages from './navigation-overrides'
+import bitgetAccountModeMessages from './lang/bitget-account-mode'
 
 Vue.use(VueI18n)
 
@@ -82,6 +83,7 @@ const messages = {
     ...(settingsFeatureMessages[defaultLang] || {}),
     ...(zhTwProductMessages[defaultLang] || {}),
     ...(navigationMessages[defaultLang] || {}),
+    ...(bitgetAccountModeMessages[defaultLang] || {}),
     ...(generatedLocaleOverrides[defaultLang] || {})
   }
 }
@@ -185,6 +187,7 @@ function mergeLocaleOverrides (lang) {
     ...(settingsFeatureMessages[lang] || {}),
     ...(zhTwProductMessages[lang] || {}),
     ...(navigationMessages[lang] || {}),
+    ...(bitgetAccountModeMessages[lang] || {}),
     ...(generatedLocaleOverrides[lang] || {})
   }
   i18n.setLocaleMessage(lang, {

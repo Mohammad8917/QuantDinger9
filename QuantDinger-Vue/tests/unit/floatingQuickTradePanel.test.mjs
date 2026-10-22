@@ -67,6 +67,7 @@ test('indicator IDE keeps every required quick-trade capability in the floating 
   assert.match(panel, /this\.\$emit\('exchange-change', \{/)
   assert.match(panel, /syncCredentialToExchange \(exchangeId\)/)
   assert.match(panel, /String\(selected\.exchange_id \|\| ''\).*=== normalizedExchangeId/)
+  assert.match(panel, /if \(this\.balanceLoading \|\| this\.balanceErrorMessage\) return false/)
   assert.doesNotMatch(ide, /this\.qtPrice = 0\s*\n\s*this\.quickTradeMinimized/)
   assert.doesNotMatch(panel, /ai_decision_filter/)
   assert.doesNotMatch(panel, /eventRadar/)

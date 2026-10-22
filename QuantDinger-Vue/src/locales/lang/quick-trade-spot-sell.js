@@ -12,7 +12,15 @@ const enUS = {
   'quickTrade.insufficientSpotQuantity': 'The sell quantity exceeds the available asset balance.',
   'quickTrade.insufficientFundsTitle': 'Insufficient funds',
   'quickTrade.insufficientBuyingPower': 'Insufficient buying power: this order needs about {required} {currency}, but only {available} {currency} is available. Reduce the order value or add funds.',
-  'quickTrade.insufficientSpotBalance': 'Insufficient available balance: this order needs about {required} {currency}, but only {available} {currency} is available. Reduce the order value or add funds.'
+  'quickTrade.alpacaBuyingPowerRejected': 'Alpaca rejected this order under its account or asset rules. Overall buying power is not always usable for this symbol; fractional-share eligibility, non-marginable buying power, open orders, or account restrictions may apply.',
+  'quickTrade.alpacaFractionalNotSupported': 'This symbol does not support notional or fractional-share orders at Alpaca. Switch to quantity and enter a whole-share amount.',
+  'quickTrade.alpacaAssetNotTradable': 'This symbol is not currently tradable at Alpaca.',
+  'quickTrade.dustBalance': 'Micro balance',
+  'quickTrade.dustBalanceHint': 'This balance is real, but it is below the exchange minimum quantity or minimum order value and cannot currently be sold.',
+  'quickTrade.lockedBalance': 'Locked balance',
+  'quickTrade.lockedBalanceHint': 'This balance is currently locked by an open order or the exchange. Cancel or finish the conflicting order before selling it.',
+  'quickTrade.insufficientSpotBalance': 'Insufficient available balance: this order needs about {required} {currency}, but only {available} {currency} is available. Reduce the order value or add funds.',
+  'quickTrade.errorHints.positionConflict': 'The exchange rejected this close. Refresh the position; if it remains, verify the exchange position mode and side before retrying.'
 }
 
 export default {
@@ -32,7 +40,15 @@ export default {
     'quickTrade.insufficientSpotQuantity': '卖出数量超过当前币种可用持仓。',
     'quickTrade.insufficientFundsTitle': '可用资金不足',
     'quickTrade.insufficientBuyingPower': '购买力不足：本次买入预计需要 {required} {currency}，当前可用 {available} {currency}。请减少买入金额或补充资金。',
-    'quickTrade.insufficientSpotBalance': '可用余额不足：本次买入预计需要 {required} {currency}，当前可用 {available} {currency}。请减少买入金额或补充资金。'
+    'quickTrade.alpacaBuyingPowerRejected': 'Alpaca 按账户或标的规则拒绝了该订单。页面显示的总购买力不一定都能用于此标的；请检查是否支持碎股、非保证金购买力、未完成委托及账户限制。',
+    'quickTrade.alpacaFractionalNotSupported': '该标的在 Alpaca 不支持按金额或碎股下单。请切换为按数量，并输入整数股数。',
+    'quickTrade.alpacaAssetNotTradable': '该标的当前无法在 Alpaca 交易。',
+    'quickTrade.dustBalance': '微量余额',
+    'quickTrade.dustBalanceHint': '该余额真实存在，但低于交易所最小数量或最小订单金额，当前无法卖出。',
+    'quickTrade.lockedBalance': '余额已锁定',
+    'quickTrade.lockedBalanceHint': '该余额当前被未完成委托或交易所锁定。请先撤销或完成冲突委托，再进行卖出。',
+    'quickTrade.insufficientSpotBalance': '可用余额不足：本次买入预计需要 {required} {currency}，当前可用 {available} {currency}。请减少买入金额或补充资金。',
+    'quickTrade.errorHints.positionConflict': '交易所未接受本次平仓。请刷新持仓；若仓位仍存在，请核对交易所持仓模式和方向后重试。'
   },
   'zh-TW': {
     ...enUS,
@@ -49,7 +65,15 @@ export default {
     'quickTrade.insufficientSpotQuantity': '賣出數量超過目前幣種可用持倉。',
     'quickTrade.insufficientFundsTitle': '可用資金不足',
     'quickTrade.insufficientBuyingPower': '購買力不足：本次買入預計需要 {required} {currency}，目前可用 {available} {currency}。請減少買入金額或補充資金。',
-    'quickTrade.insufficientSpotBalance': '可用餘額不足：本次買入預計需要 {required} {currency}，目前可用 {available} {currency}。請減少買入金額或補充資金。'
+    'quickTrade.alpacaBuyingPowerRejected': 'Alpaca 依帳戶或標的規則拒絕了此訂單。頁面顯示的總購買力不一定都能用於此標的；請檢查是否支援碎股、非保證金購買力、未完成委託及帳戶限制。',
+    'quickTrade.alpacaFractionalNotSupported': '該標的在 Alpaca 不支援按金額或碎股下單。請切換為按數量，並輸入整數股數。',
+    'quickTrade.alpacaAssetNotTradable': '該標的目前無法在 Alpaca 交易。',
+    'quickTrade.dustBalance': '微量餘額',
+    'quickTrade.dustBalanceHint': '此餘額真實存在，但低於交易所最小數量或最小訂單金額，目前無法賣出。',
+    'quickTrade.lockedBalance': '餘額已鎖定',
+    'quickTrade.lockedBalanceHint': '此餘額目前被未完成委託或交易所鎖定。請先撤銷或完成衝突委託，再進行賣出。',
+    'quickTrade.insufficientSpotBalance': '可用餘額不足：本次買入預計需要 {required} {currency}，目前可用 {available} {currency}。請減少買入金額或補充資金。',
+    'quickTrade.errorHints.positionConflict': '交易所未接受本次平倉。請重新整理持倉；若部位仍存在，請核對交易所持倉模式和方向後重試。'
   },
   'de-DE': {
     ...enUS,
@@ -63,7 +87,15 @@ export default {
     'quickTrade.sellAmount': 'Verkaufswert',
     'quickTrade.enterSellQuantity': 'Verkaufsmenge eingeben',
     'quickTrade.enterSellAmount': 'Verkaufswert eingeben',
-    'quickTrade.insufficientSpotQuantity': 'Die Verkaufsmenge übersteigt den verfügbaren Bestand.'
+    'quickTrade.insufficientSpotQuantity': 'Die Verkaufsmenge übersteigt den verfügbaren Bestand.',
+    'quickTrade.alpacaBuyingPowerRejected': 'Alpaca hat diese Order aufgrund der Konto- oder Wertpapierregeln abgelehnt. Die gesamte Kaufkraft ist nicht immer für dieses Wertpapier verfügbar; prüfen Sie Bruchstückfähigkeit, nicht beleihbare Kaufkraft, offene Orders und Kontobeschränkungen.',
+    'quickTrade.alpacaFractionalNotSupported': 'Dieses Wertpapier unterstützt bei Alpaca keine Betrags- oder Bruchstückorders. Wechseln Sie zur Menge und geben Sie eine ganze Stückzahl ein.',
+    'quickTrade.alpacaAssetNotTradable': 'Dieses Wertpapier ist bei Alpaca derzeit nicht handelbar.',
+    'quickTrade.dustBalance': 'Kleinstbestand',
+    'quickTrade.dustBalanceHint': 'Dieser Bestand ist vorhanden, liegt aber unter der Mindestmenge oder dem Mindestorderwert der Börse und kann derzeit nicht verkauft werden.',
+    'quickTrade.lockedBalance': 'Gesperrter Bestand',
+    'quickTrade.lockedBalanceHint': 'Dieser Bestand ist durch eine offene Order oder die Börse gesperrt. Stornieren oder beenden Sie die betreffende Order vor dem Verkauf.',
+    'quickTrade.errorHints.positionConflict': 'Die Börse hat diese Schließung abgelehnt. Aktualisieren Sie die Position und prüfen Sie bei fortbestehender Position den Positionsmodus und die Seite, bevor Sie es erneut versuchen.'
   },
   'fr-FR': {
     ...enUS,
@@ -77,7 +109,15 @@ export default {
     'quickTrade.sellAmount': 'Valeur à vendre',
     'quickTrade.enterSellQuantity': 'Saisissez la quantité à vendre',
     'quickTrade.enterSellAmount': 'Saisissez la valeur à vendre',
-    'quickTrade.insufficientSpotQuantity': 'La quantité à vendre dépasse le solde disponible.'
+    'quickTrade.insufficientSpotQuantity': 'La quantité à vendre dépasse le solde disponible.',
+    'quickTrade.alpacaBuyingPowerRejected': 'Alpaca a refusé cet ordre selon les règles du compte ou de l’actif. Le pouvoir d’achat total n’est pas toujours utilisable pour ce titre ; vérifiez l’éligibilité aux fractions, le pouvoir d’achat non marginable, les ordres ouverts et les restrictions du compte.',
+    'quickTrade.alpacaFractionalNotSupported': 'Ce titre ne prend pas en charge les ordres en valeur ou fractionnés chez Alpaca. Passez en mode quantité et saisissez un nombre entier d’actions.',
+    'quickTrade.alpacaAssetNotTradable': 'Ce titre n’est actuellement pas négociable chez Alpaca.',
+    'quickTrade.dustBalance': 'Solde résiduel',
+    'quickTrade.dustBalanceHint': 'Ce solde existe, mais il est inférieur à la quantité minimale ou à la valeur minimale d’ordre de la plateforme et ne peut pas être vendu actuellement.',
+    'quickTrade.lockedBalance': 'Solde verrouillé',
+    'quickTrade.lockedBalanceHint': 'Ce solde est verrouillé par un ordre ouvert ou par la plateforme. Annulez ou terminez l’ordre en conflit avant de vendre.',
+    'quickTrade.errorHints.positionConflict': 'La plateforme a refusé cette clôture. Actualisez la position ; si elle demeure, vérifiez le mode et le sens de position avant de réessayer.'
   },
   'ja-JP': {
     ...enUS,
@@ -91,7 +131,15 @@ export default {
     'quickTrade.sellAmount': '売却金額',
     'quickTrade.enterSellQuantity': '売却数量を入力',
     'quickTrade.enterSellAmount': '売却金額を入力',
-    'quickTrade.insufficientSpotQuantity': '売却数量が利用可能な保有数量を超えています。'
+    'quickTrade.insufficientSpotQuantity': '売却数量が利用可能な保有数量を超えています。',
+    'quickTrade.alpacaBuyingPowerRejected': 'Alpaca の口座または銘柄ルールにより注文が拒否されました。表示される総買付余力をこの銘柄にすべて利用できるとは限りません。端株対応、非証拠金買付余力、未約定注文、口座制限を確認してください。',
+    'quickTrade.alpacaFractionalNotSupported': 'この銘柄は Alpaca で金額指定または端株注文に対応していません。数量指定に切り替え、整数株を入力してください。',
+    'quickTrade.alpacaAssetNotTradable': 'この銘柄は現在 Alpaca で取引できません。',
+    'quickTrade.dustBalance': '微小残高',
+    'quickTrade.dustBalanceHint': '残高は存在しますが、取引所の最小数量または最小注文金額を下回るため、現在は売却できません。',
+    'quickTrade.lockedBalance': 'ロック中の残高',
+    'quickTrade.lockedBalanceHint': 'この残高は未約定注文または取引所によってロックされています。競合する注文をキャンセルまたは完了してから売却してください。',
+    'quickTrade.errorHints.positionConflict': '取引所が決済を拒否しました。ポジションを更新し、残っている場合は取引所のポジションモードと売買方向を確認してから再試行してください。'
   },
   'ko-KR': {
     ...enUS,
@@ -105,7 +153,15 @@ export default {
     'quickTrade.sellAmount': '매도 금액',
     'quickTrade.enterSellQuantity': '매도 수량 입력',
     'quickTrade.enterSellAmount': '매도 금액 입력',
-    'quickTrade.insufficientSpotQuantity': '매도 수량이 사용 가능한 보유량을 초과합니다.'
+    'quickTrade.insufficientSpotQuantity': '매도 수량이 사용 가능한 보유량을 초과합니다.',
+    'quickTrade.alpacaBuyingPowerRejected': 'Alpaca가 계정 또는 자산 규칙에 따라 주문을 거부했습니다. 표시된 전체 구매력이 이 종목에 모두 사용 가능한 것은 아닙니다. 소수점 주식 지원, 비증거금 구매력, 미체결 주문 및 계정 제한을 확인하세요.',
+    'quickTrade.alpacaFractionalNotSupported': '이 종목은 Alpaca에서 금액 지정 또는 소수점 주식 주문을 지원하지 않습니다. 수량 방식으로 전환하고 정수 주식 수를 입력하세요.',
+    'quickTrade.alpacaAssetNotTradable': '이 종목은 현재 Alpaca에서 거래할 수 없습니다.',
+    'quickTrade.dustBalance': '소액 잔고',
+    'quickTrade.dustBalanceHint': '실제 잔고이지만 거래소의 최소 수량 또는 최소 주문 금액보다 작아 현재 매도할 수 없습니다.',
+    'quickTrade.lockedBalance': '잠긴 잔고',
+    'quickTrade.lockedBalanceHint': '이 잔고는 미체결 주문 또는 거래소에 의해 잠겨 있습니다. 충돌하는 주문을 취소하거나 완료한 후 매도하세요.',
+    'quickTrade.errorHints.positionConflict': '거래소가 포지션 종료를 거부했습니다. 포지션을 새로고침하고 계속 남아 있으면 거래소 포지션 모드와 방향을 확인한 후 다시 시도하세요.'
   },
   'ru-RU': {
     ...enUS,
@@ -119,7 +175,15 @@ export default {
     'quickTrade.sellAmount': 'Стоимость продажи',
     'quickTrade.enterSellQuantity': 'Введите количество для продажи',
     'quickTrade.enterSellAmount': 'Введите стоимость продажи',
-    'quickTrade.insufficientSpotQuantity': 'Количество для продажи превышает доступный баланс.'
+    'quickTrade.insufficientSpotQuantity': 'Количество для продажи превышает доступный баланс.',
+    'quickTrade.alpacaBuyingPowerRejected': 'Alpaca отклонила ордер согласно правилам счёта или инструмента. Общая покупательная способность не всегда полностью доступна для этого инструмента; проверьте поддержку дробных акций, немаржинальную покупательную способность, открытые ордера и ограничения счёта.',
+    'quickTrade.alpacaFractionalNotSupported': 'Этот инструмент не поддерживает в Alpaca ордера по сумме или на дробные акции. Переключитесь на количество и укажите целое число акций.',
+    'quickTrade.alpacaAssetNotTradable': 'Этот инструмент сейчас недоступен для торговли в Alpaca.',
+    'quickTrade.dustBalance': 'Малый остаток',
+    'quickTrade.dustBalanceHint': 'Остаток существует, но он ниже минимального количества или минимальной суммы ордера биржи и сейчас не может быть продан.',
+    'quickTrade.lockedBalance': 'Заблокированный остаток',
+    'quickTrade.lockedBalanceHint': 'Этот остаток заблокирован открытым ордером или биржей. Отмените или завершите конфликтующий ордер перед продажей.',
+    'quickTrade.errorHints.positionConflict': 'Биржа отклонила закрытие. Обновите позицию; если она остаётся, проверьте режим и сторону позиции на бирже перед повторной попыткой.'
   },
   'th-TH': {
     ...enUS,
@@ -133,7 +197,15 @@ export default {
     'quickTrade.sellAmount': 'มูลค่าขาย',
     'quickTrade.enterSellQuantity': 'ป้อนจำนวนขาย',
     'quickTrade.enterSellAmount': 'ป้อนมูลค่าขาย',
-    'quickTrade.insufficientSpotQuantity': 'จำนวนขายมากกว่ายอดสินทรัพย์ที่ใช้ได้'
+    'quickTrade.insufficientSpotQuantity': 'จำนวนขายมากกว่ายอดสินทรัพย์ที่ใช้ได้',
+    'quickTrade.alpacaBuyingPowerRejected': 'Alpaca ปฏิเสธคำสั่งนี้ตามกฎของบัญชีหรือสินทรัพย์ กำลังซื้อรวมอาจใช้กับสินทรัพย์นี้ได้ไม่ทั้งหมด โปรดตรวจสอบการรองรับหุ้นเศษส่วน กำลังซื้อที่ใช้มาร์จินไม่ได้ คำสั่งที่เปิดอยู่ และข้อจำกัดของบัญชี',
+    'quickTrade.alpacaFractionalNotSupported': 'สินทรัพย์นี้ไม่รองรับคำสั่งตามมูลค่าหรือหุ้นเศษส่วนบน Alpaca โปรดเปลี่ยนเป็นจำนวนและกรอกจำนวนหุ้นเต็มหน่วย',
+    'quickTrade.alpacaAssetNotTradable': 'ขณะนี้สินทรัพย์นี้ไม่สามารถซื้อขายบน Alpaca ได้',
+    'quickTrade.dustBalance': 'ยอดคงเหลือขนาดเล็ก',
+    'quickTrade.dustBalanceHint': 'ยอดคงเหลือนี้มีอยู่จริง แต่ต่ำกว่าจำนวนขั้นต่ำหรือมูลค่าคำสั่งขั้นต่ำของตลาด จึงยังขายไม่ได้',
+    'quickTrade.lockedBalance': 'ยอดคงเหลือถูกล็อก',
+    'quickTrade.lockedBalanceHint': 'ยอดคงเหลือนี้ถูกล็อกโดยคำสั่งที่เปิดอยู่หรือตลาด โปรดยกเลิกหรือดำเนินการคำสั่งที่ขัดแย้งให้เสร็จก่อนขาย',
+    'quickTrade.errorHints.positionConflict': 'ตลาดปฏิเสธการปิดสถานะ โปรดรีเฟรชสถานะ หากยังคงอยู่ให้ตรวจสอบโหมดและฝั่งของสถานะก่อนลองอีกครั้ง'
   },
   'vi-VN': {
     ...enUS,
@@ -147,7 +219,15 @@ export default {
     'quickTrade.sellAmount': 'Giá trị bán',
     'quickTrade.enterSellQuantity': 'Nhập số lượng bán',
     'quickTrade.enterSellAmount': 'Nhập giá trị bán',
-    'quickTrade.insufficientSpotQuantity': 'Số lượng bán vượt quá số dư tài sản khả dụng.'
+    'quickTrade.insufficientSpotQuantity': 'Số lượng bán vượt quá số dư tài sản khả dụng.',
+    'quickTrade.alpacaBuyingPowerRejected': 'Alpaca đã từ chối lệnh theo quy tắc của tài khoản hoặc tài sản. Tổng sức mua không phải lúc nào cũng dùng được hết cho mã này; hãy kiểm tra khả năng giao dịch cổ phiếu lẻ, sức mua không ký quỹ, lệnh đang mở và giới hạn tài khoản.',
+    'quickTrade.alpacaFractionalNotSupported': 'Mã này không hỗ trợ lệnh theo giá trị hoặc cổ phiếu lẻ trên Alpaca. Hãy chuyển sang số lượng và nhập số cổ phiếu nguyên.',
+    'quickTrade.alpacaAssetNotTradable': 'Mã này hiện không thể giao dịch trên Alpaca.',
+    'quickTrade.dustBalance': 'Số dư nhỏ',
+    'quickTrade.dustBalanceHint': 'Số dư này có thật nhưng thấp hơn số lượng tối thiểu hoặc giá trị lệnh tối thiểu của sàn nên hiện chưa thể bán.',
+    'quickTrade.lockedBalance': 'Số dư bị khóa',
+    'quickTrade.lockedBalanceHint': 'Số dư này đang bị khóa bởi một lệnh mở hoặc bởi sàn. Hãy hủy hoặc hoàn tất lệnh xung đột trước khi bán.',
+    'quickTrade.errorHints.positionConflict': 'Sàn đã từ chối đóng vị thế. Hãy làm mới vị thế; nếu vị thế vẫn còn, kiểm tra chế độ và phía vị thế trên sàn trước khi thử lại.'
   },
   'ar-SA': {
     ...enUS,
@@ -161,6 +241,14 @@ export default {
     'quickTrade.sellAmount': 'قيمة البيع',
     'quickTrade.enterSellQuantity': 'أدخل كمية البيع',
     'quickTrade.enterSellAmount': 'أدخل قيمة البيع',
-    'quickTrade.insufficientSpotQuantity': 'كمية البيع تتجاوز رصيد الأصل المتاح.'
+    'quickTrade.insufficientSpotQuantity': 'كمية البيع تتجاوز رصيد الأصل المتاح.',
+    'quickTrade.alpacaBuyingPowerRejected': 'رفضت Alpaca هذا الأمر وفقًا لقواعد الحساب أو الأصل. قد لا تكون القوة الشرائية الإجمالية متاحة بالكامل لهذا الرمز؛ تحقق من أهلية الأسهم الكسرية والقوة الشرائية غير القابلة للهامش والأوامر المفتوحة وقيود الحساب.',
+    'quickTrade.alpacaFractionalNotSupported': 'لا يدعم هذا الرمز في Alpaca الأوامر بالقيمة أو الأسهم الكسرية. انتقل إلى الكمية وأدخل عددًا صحيحًا من الأسهم.',
+    'quickTrade.alpacaAssetNotTradable': 'هذا الرمز غير متاح حاليًا للتداول في Alpaca.',
+    'quickTrade.dustBalance': 'رصيد ضئيل',
+    'quickTrade.dustBalanceHint': 'هذا الرصيد موجود، لكنه أقل من الحد الأدنى للكمية أو لقيمة الأمر في المنصة، لذلك لا يمكن بيعه حاليًا.',
+    'quickTrade.lockedBalance': 'رصيد مقفل',
+    'quickTrade.lockedBalanceHint': 'هذا الرصيد مقفل بواسطة أمر مفتوح أو بواسطة المنصة. ألغِ الأمر المتعارض أو أكمله قبل البيع.',
+    'quickTrade.errorHints.positionConflict': 'رفضت المنصة إغلاق المركز. حدّث المركز، وإذا بقي مفتوحًا فتحقق من وضع المركز واتجاهه قبل إعادة المحاولة.'
   }
 }

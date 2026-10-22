@@ -3,7 +3,14 @@
     <div class="qtc-activity-toolbar">
       <span v-if="history" class="qtc-history-context"><strong>{{ symbol }}</strong><span v-if="rows.length">{{ $t('quickTrade.workflow.recent', { count: rows.length }) }}</span><a-tooltip :title="$t('quickTrade.workflow.historyHint')"><a-icon type="info-circle" /></a-tooltip></span>
       <span v-else>{{ $t('quickTrade.workflow.nativeOrders') }}</span>
-      <button type="button" class="qtc-refresh" :disabled="loading" :title="$t('quickTrade.workflow.refresh')" :aria-label="$t('quickTrade.workflow.refresh')" @click="load"><a-icon :type="loading ? 'loading' : 'reload'" /></button>
+      <button
+        type="button"
+        class="qtc-refresh"
+        :disabled="loading"
+        :title="$t('quickTrade.workflow.refresh')"
+        :aria-label="$t('quickTrade.workflow.refresh')"
+        @click="load"
+      ><a-icon :type="loading ? 'loading' : 'reload'" /></button>
     </div>
     <div v-if="error" class="qtc-activity-empty">{{ error }}</div>
     <div v-else-if="loading && !rows.length" class="qtc-activity-empty" role="status"><a-icon type="loading" /><span>{{ $t(history ? 'quickTrade.workflow.loading' : 'quickTrade.workflow.loadingOrders') }}</span></div>
