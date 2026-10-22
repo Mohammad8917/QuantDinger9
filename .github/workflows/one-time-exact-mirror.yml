@@ -1,5 +1,5 @@
 name: One-time exact upstream mirror
-# Refresh trigger: 2026-10-19T15:15Z, synchronize latest upstream snapshots only.
+# Refresh trigger: 2026-10-22T00:00Z, synchronize latest upstream snapshots only.
 # Manual sync request: trigger exact mirror run.
 on:
   push:
