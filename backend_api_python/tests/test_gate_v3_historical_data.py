@@ -179,3 +179,66 @@ def test_archive_month_iteration_spans_year_boundary() -> None:
     end = MODULE.utc_timestamp("2025-02-01")
     assert [d.strftime("%Y%m") for d in MODULE._month_starts(start, end)] == ["202412", "202501", "202502"]
 
+
+def test_parse_public_rest_candle_keeps_quote_volume_unknown() -> None:
+    row = MODULE._parse_rest_row({
+        "t": 1800000000, "o": "100", "h": "105", "l": "95",
+        "c": "102", "v": 12.5,
+    })
+    assert row == {
+        "timestamp": 1800000000, "open": 100.0, "high": 105.0,
+        "low": 95.0, "close": 102.0, "volume": 12.5, "quote_volume": None,
+    }
+    assert MODULE._validate_row(row, 300) is None
+
+
+def test_current_month_archive_404_uses_public_rest_fallback() -> None:
+    from datetime import datetime, timezone
+
+    class FakeResponse:
+        def __init__(self, status_code: int, payload: object = None, text: str = "") -> None:
+            self.status_code = status_code
+            self._payload = payload
+            self.text = text
+            self.content = b""
+
+        def raise_for_status(self) -> None:
+            if self.status_code >= 400:
+                raise MODULE.requests.HTTPError(f"HTTP {self.status_code}")
+
+        def json(self) -> object:
+            return self._payload
+
+    class FakeSession:
+        def __init__(self, candle: dict[str, object]) -> None:
+            self.candle = candle
+            self.calls: list[tuple[str, dict[str, object] | None]] = []
+
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            params = kwargs.get("params")
+            self.calls.append((url, params if isinstance(params, dict) else None))
+            if url.startswith(MODULE.ARCHIVE_BASE_URL):
+                return FakeResponse(404, text="not published yet")
+            return FakeResponse(200, payload=[self.candle])
+
+    now_ts = int(MODULE.time.time())
+    month_start = int(datetime.fromtimestamp(now_ts, timezone.utc).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    ).timestamp())
+    last_closed = MODULE.last_closed_candle_start(now_ts, 3600, now_ts=now_ts)
+    candle = {
+        "t": last_closed, "o": "100", "h": "105", "l": "95",
+        "c": "102", "v": 12.5,
+    }
+    session = FakeSession(candle)
+    rows = MODULE.fetch_archive_candles(
+        session, "BTC_USDT", "1h", month_start, last_closed, sleep_seconds=0,
+    )
+    assert rows == [{
+        "timestamp": last_closed, "open": 100.0, "high": 105.0,
+        "low": 95.0, "close": 102.0, "volume": 12.5, "quote_volume": None,
+    }]
+    assert len(session.calls) == 2
+    assert session.calls[0][0].startswith(MODULE.ARCHIVE_BASE_URL)
+    assert session.calls[1][0] == "https://api.gateio.ws/api/v4/futures/usdt/candlesticks"
+
