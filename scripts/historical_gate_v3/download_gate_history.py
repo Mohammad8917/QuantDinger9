@@ -598,8 +598,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
-        "fifteen_minute_policy": "Historical 15m candles require exactly three contiguous real 5m archive candles. Missing 15m/1h intervals are repaired only from exactly 15/60 contiguous real 1m candles; recent tails use native REST. Partial groups are omitted and unresolved gaps fail closed.",
-        "gap_repair_policy": "Repair missing 15m/1h opens only from complete contiguous groups of exactly 15/60 real 1m candles. Partial minute groups are omitted; any remaining expected gaps make the collection fail.",
+        "fifteen_minute_policy": "Historical 15m candles are aggregated from observed real 5m archive candles; missing 15m/1h intervals are recovered from observed real 1m candles within that interval. Empty intervals remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
+        "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m candles within the interval. Empty intervals are not synthesized; any remaining expected gaps make the collection fail.",
         "symbols": {},
     }
     failures: list[str] = []
