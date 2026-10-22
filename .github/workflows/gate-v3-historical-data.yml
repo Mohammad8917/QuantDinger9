@@ -1,6 +1,10 @@
 name: Gate V3 Historical Dataset
 
 on:
+  push:
+    branches: [work/gate-v3-historical-data]
+    paths:
+      - '.github/workflows/gate-v3-historical-data.yml'
   workflow_dispatch:
     inputs:
       start:
@@ -16,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: gate-v3-historical-dataset
+  group: gate-v3-historical-dataset-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
