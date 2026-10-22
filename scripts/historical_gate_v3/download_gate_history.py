@@ -317,7 +317,7 @@ def fetch_archive_candles(
     timeout_seconds: float = 30.0,
 ) -> list[dict[str, float | int | None]]:
     """Download and parse Gate's official monthly futures candle archive files."""
-    interval_seconds = {"10s": 10, "1m": 60, "5m": 300, "1h": 3600}.get(timeframe)
+    interval_seconds = {"10s": 10, "1m": 60, "5m": 300, "15m": 900, "1h": 3600}.get(timeframe)
     if interval_seconds is None:
         raise ValueError(f"Unsupported Gate archive timeframe: {timeframe}")
     if end_ts < start_ts:
@@ -465,6 +465,44 @@ def aggregate_5m_to_15m(
     if not aggregated:
         raise DataError("No complete groups of three contiguous 5m candles were available for 15m aggregation")
     return aggregated
+
+
+def fetch_15m_archive_candles(
+    session: requests.Session,
+    contract: str,
+    start_ts: int,
+    end_ts: int,
+    *,
+    sleep_seconds: float = 0.05,
+) -> tuple[list[dict[str, float | int | None]], str]:
+    """Prefer Gate's native 15m archive; fall back to complete real 5m groups only if unavailable."""
+    try:
+        native_rows = fetch_archive_candles(
+            session, contract, "15m", start_ts, end_ts,
+            sleep_seconds=sleep_seconds,
+        )
+    except DataError as exc:
+        # A missing native archive is an availability limitation, not permission
+        # to invent candles. Other errors (bad gzip, malformed rows, HTTP 5xx)
+        # must remain visible instead of being silently hidden by fallback.
+        if "Gate archive HTTP 404" not in str(exc):
+            raise
+        native_rows = []
+        print(
+            f"[15m-archive-fallback] {contract}: native 15m archive unavailable; "
+            "using complete observed 5m archive groups",
+            flush=True,
+        )
+
+    if native_rows:
+        return native_rows, "Gate official native 15m candle archive"
+
+    source_rows = fetch_archive_candles(
+        session, contract, "5m", start_ts, end_ts + 600,
+        sleep_seconds=sleep_seconds,
+    )
+    aggregated_rows = aggregate_5m_to_15m(source_rows)
+    return aggregated_rows, "Gate 5m archive aggregated from observed real candles"
 
 
 def aggregate_1m_to_timeframe(
@@ -867,11 +905,9 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 archive_source_label = ""
                 if requested_first <= archive_last:
                     if timeframe == "15m":
-                        source_rows = fetch_archive_candles(
-                            session, contract, "5m", requested_first, archive_last + 600,
+                        archive_rows, archive_source_label = fetch_15m_archive_candles(
+                            session, contract, requested_first, archive_last,
                         )
-                        archive_rows = aggregate_5m_to_15m(source_rows)
-                        archive_source_label = "Gate 5m archive aggregated from observed real candles"
                     else:
                         archive_rows = fetch_archive_candles(
                             session, contract, "1h", requested_first, archive_last,
