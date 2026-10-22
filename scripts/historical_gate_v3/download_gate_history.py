@@ -527,12 +527,12 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
     session = requests.Session()
     manifest: dict[str, Any] = {
         "schema_version": 3,
-        "data_source": "Gate official public historical USDT-perpetual candle archives; public contracts REST API for create_time",
+        "data_source": "Gate official monthly futures candle archives plus public REST for the recent 10,000-point tail; public contracts REST API for create_time",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
         "archive_intervals_downloaded": ["5m", "1h"],
-        "current_month_policy": "If the current-month archive is not yet published, fetch only that month from public REST in pages of at most 1000 candles; older missing archive months fail closed.",
+        "recent_rest_policy": "Public REST is used only for the latest aligned window of at most 10,000 points per timeframe; older history comes from official monthly archives.",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected.",
-        "endpoint": "Gate public monthly archive; current-month fallback https://api.gateio.ws/api/v4/futures/usdt/candlesticks",
+        "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for the bounded recent tail",
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
         "start_timestamp_requested": start_ts,
