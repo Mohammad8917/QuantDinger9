@@ -547,6 +547,10 @@ def _fetch_trade_archive_month_candles(
         raise DataError(f"Gate trade archive returned no response for {contract} {month}")
 
     states: dict[int, dict[str, Any]] = {}
+    rows_scanned = 0
+    matched_trade_rows = 0
+    first_trade_timestamp: float | None = None
+    last_trade_timestamp: float | None = None
     try:
         raw = getattr(response, "raw", None)
         if raw is not None:
@@ -562,6 +566,7 @@ def _fetch_trade_archive_month_candles(
             for line_number, values in enumerate(reader, start=1):
                 if not values:
                     continue
+                rows_scanned += 1
                 if len(values) != 4:
                     raise DataError(
                         f"Malformed Gate trade row {line_number} for {contract} {month}: "
@@ -590,9 +595,15 @@ def _fetch_trade_archive_month_candles(
                         f"Invalid Gate trade row {line_number} for {contract} {month}"
                     )
 
+                if first_trade_timestamp is None or timestamp_value < first_trade_timestamp:
+                    first_trade_timestamp = timestamp_value
+                if last_trade_timestamp is None or timestamp_value > last_trade_timestamp:
+                    last_trade_timestamp = timestamp_value
+
                 bucket = (int(timestamp_value) // interval) * interval
                 if bucket not in wanted:
                     continue
+                matched_trade_rows += 1
                 key = (timestamp_value, deal_id_value)
                 state = states.get(bucket)
                 if state is None:
@@ -627,6 +638,14 @@ def _fetch_trade_archive_month_candles(
         if callable(close):
             close()
 
+    print(
+        f"[trade-archive-audit] {contract} {timeframe} {month}: "
+        f"rows_scanned={rows_scanned}; matched_trade_rows={matched_trade_rows}; "
+        f"wanted_buckets={len(wanted)}; recovered_buckets={len(states)}; "
+        f"trade_timestamp_min={first_trade_timestamp}; "
+        f"trade_timestamp_max={last_trade_timestamp}",
+        flush=True,
+    )
     return [
         {
             "timestamp": bucket,
