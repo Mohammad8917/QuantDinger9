@@ -707,13 +707,34 @@ def fetch_missing_trade_archive_candles(
 
         recovered.extend(month_rows)
         recovered_opens = {int(row["timestamp"]) for row in month_rows}
+        month_start_dt = datetime.strptime(month, "%Y%m").replace(tzinfo=timezone.utc)
+        if month_start_dt.month == 12:
+            next_month_dt = month_start_dt.replace(
+                year=month_start_dt.year + 1, month=1
+            )
+        else:
+            next_month_dt = month_start_dt.replace(month=month_start_dt.month + 1)
+        month_end_ts = int(next_month_dt.timestamp())
         source_empty = {
             timestamp for timestamp in wanted - recovered_opens
             if rows_scanned > 0
-            and first_trade_ts is not None
-            and last_trade_ts is not None
-            and first_trade_ts <= timestamp
-            and last_trade_ts >= timestamp + interval
+            and (
+                (
+                    first_trade_ts is not None
+                    and last_trade_ts is not None
+                    and first_trade_ts <= timestamp
+                    and last_trade_ts >= timestamp + interval
+                )
+                # A fully parsed official monthly archive can legitimately end
+                # before the final bucket if no trade occurred in that bucket.
+                # Only apply this exception to the month's final complete bucket;
+                # never create a candle or infer emptiness for an interior gap.
+                or (
+                    last_trade_ts is not None
+                    and last_trade_ts < timestamp
+                    and timestamp + interval == month_end_ts
+                )
+            )
         }
         verified_source_empty.update(source_empty)
         unresolved = len(wanted - recovered_opens - source_empty)
@@ -985,6 +1006,7 @@ def audit_rows(
         "missing_expected_bars": missing_expected,
         "verified_source_empty_bars": len(verified_empty),
         "verified_source_empty_timestamps": verified_empty,
+        "unresolved_missing_timestamps": unresolved_timestamps,
         "unresolved_missing_bars": unresolved_missing,
         "effective_expected_bars": effective_expected_bars,
         "coverage_ratio": coverage_ratio,
@@ -1209,6 +1231,33 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                         repaired_rows.extend(native_rest_rows)
                         source_parts.append("Gate native public REST recovery for recent missing intervals")
 
+                # REST can omit a recent bucket even when the official monthly
+                # trades archive is available. Retry those still-missing recent
+                # buckets against the independent archive source before failing.
+                already_observed = {
+                    int(row["timestamp"]) for row in rows + repaired_rows
+                }
+                recent_unresolved = [
+                    timestamp for timestamp in missing_before_repair
+                    if timestamp not in already_observed
+                    and timestamp not in verified_source_empty_timestamps
+                    and rest_start <= timestamp <= rest_end
+                ]
+                if recent_unresolved:
+                    trade_rows, source_empty = fetch_missing_trade_archive_candles(
+                        session, contract, timeframe, recent_unresolved,
+                    )
+                    if trade_rows:
+                        repaired_rows.extend(trade_rows)
+                        source_parts.append(
+                            "Gate official futures trades archive fallback for recent REST gaps"
+                        )
+                    if source_empty:
+                        verified_source_empty_timestamps.update(source_empty)
+                        source_parts.append(
+                            "Gate official trade archive source-empty audit for recent REST gaps"
+                        )
+
                 if repaired_rows:
                     rows = sorted(rows + repaired_rows, key=lambda row: int(row["timestamp"]))
                     if archive_repaired_count:
@@ -1226,7 +1275,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     failures.append(
                         f"{contract} {timeframe}: unresolved source coverage "
                         f"({audit['unresolved_missing_bars']} unverified expected bars; "
-                        f"{audit['unresolved_gap_count']} unresolved gap spans)"
+                        f"{audit['unresolved_gap_count']} unresolved gap spans; "
+                        f"timestamps={audit['unresolved_missing_timestamps']})"
                     )
                 filename = f"{contract}_{timeframe}.csv.gz"
                 sha256 = write_gzip_csv(output_dir / filename, rows)
