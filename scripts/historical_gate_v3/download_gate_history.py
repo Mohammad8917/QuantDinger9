@@ -222,7 +222,7 @@ def fetch_recent_rest_candles(
     sleep_seconds: float = 0.05,
     timeout_seconds: float = 30.0,
 ) -> list[dict[str, float | int | None]]:
-    """Fetch a bounded time range from Gate REST in pages of at most 900 candles."""
+    """Fetch any supported Gate REST time range in pages of at most 900 candles."""
     interval_seconds = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}.get(timeframe)
     if interval_seconds is None:
         raise ValueError(f"Unsupported Gate REST timeframe: {timeframe}")
@@ -661,7 +661,7 @@ def fetch_missing_native_rest_candles(
     sleep_seconds: float = 0.05,
     now_ts: int | None = None,
 ) -> list[dict[str, float | int | None]]:
-    """Recover missing opens only inside Gate REST's configured recent-data window."""
+    """Recover missing candle opens from public REST, including historical gaps outside the recent tail."""
     if not missing_timestamps:
         return []
     if timeframe not in TIMEFRAMES:
@@ -669,18 +669,16 @@ def fetch_missing_native_rest_candles(
 
     interval = TIMEFRAMES[timeframe]
     effective_now = int(time.time()) if now_ts is None else now_ts
-    rest_start = recent_rest_window_start(interval, now_ts=effective_now)
-    rest_end = last_closed_candle_start(effective_now, interval, now_ts=effective_now)
+    last_closed = last_closed_candle_start(effective_now, interval, now_ts=effective_now)
     eligible_timestamps = sorted({
         timestamp for timestamp in missing_timestamps
-        if rest_start <= timestamp <= rest_end
+        if timestamp <= last_closed and timestamp % interval == 0
     })
     skipped_count = len(set(missing_timestamps)) - len(eligible_timestamps)
     if skipped_count:
         print(
             f"[rest-repair-skip] {contract} {timeframe}: skipped {skipped_count} "
-            f"missing timestamps outside the bounded recent REST window "
-            f"({rest_start}..{rest_end}); historical gaps require archive-backed recovery",
+            f"timestamps that are not aligned closed candles (latest closed={last_closed})",
             flush=True,
         )
     if not eligible_timestamps:
@@ -850,9 +848,9 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "data_source": "Gate official monthly futures 15m/10s/1m/5m/1h candle archives, public REST only inside the recent 10,000-point window, and public contracts REST API for create_time",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
         "archive_intervals_downloaded": ["15m", "10s", "1m", "5m", "1h"],
-        "recent_rest_policy": "The primary recent tail uses public REST inside the configured recent window; gap recovery may query historical missing ranges after archive recovery, using from/to only and pages of at most 900 points.",
+        "recent_rest_policy": "The recent tail uses public REST; unresolved historical gaps are also checked against public REST using from/to ranges, pages of at most 900 points, and only closed aligned candles.",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing buckets are resolved only from native observed candles or complete aggregates of observed lower-timeframe candles. Partial source groups and absent intervals are not treated as zero-trade candles; no candle is synthesized.",
-        "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for the bounded recent tail",
+        "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for recent candles and historical gap recovery",
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
         "start_timestamp_requested": start_ts,
@@ -861,8 +859,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
-        "fifteen_minute_policy": "Historical 15m candles are aggregated only from complete sets of observed real 5m archive candles; missing 15m/1h intervals are recovered only from complete observed 1m or 10s candle sets, or recent native REST within its allowed window. Partial source groups and empty intervals remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
-        "gap_repair_policy": "Repair missing 15m/1h opens only from complete observed real 1m or 10s candle archives; use public REST only within its latest 10,000-point window with at most 900 points per request. Trade rows are not converted into candles because their documented schema does not expose the is_internal flag used to exclude internal trades from K-lines. Any gap not reconstructed from complete observed candle data remains unresolved and fails closed; complete_contiguous_history remains false for sparse data.",
+        "fifteen_minute_policy": "Historical 15m candles prefer the native official archive and otherwise aggregate complete sets of observed real 5m archive candles; unresolved 15m/1h intervals are checked against public native REST and complete observed 1m/10s aggregates. Partial source groups remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
+        "gap_repair_policy": "Repair missing 15m/1h opens from complete observed real 1m/10s candle archives and query Gate public native REST for historical missing timestamps, grouped by month and paged at no more than 900 points per request. Only closed, aligned candles returned by Gate are accepted. Trade rows are not converted into candles because their documented schema does not expose the is_internal flag used to exclude internal trades from K-lines. Any gap not reconstructed from complete observed candle data remains unresolved and fails closed; complete_contiguous_history remains false for sparse data.",
         "symbols": {},
     }
     failures: list[str] = []
