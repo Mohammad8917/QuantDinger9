@@ -778,6 +778,11 @@ def fetch_monthly_futures_trades(
     if response is None or response.status_code != 200:
         raise DataError(f"Gate trade archive returned no usable response for {contract} {month}")
 
+    month_start_dt = datetime.strptime(month, "%Y%m").replace(tzinfo=timezone.utc)
+    next_month_dt = (month_start_dt.replace(day=28) + timedelta(days=4)).replace(day=1)
+    month_start_ts = month_start_dt.timestamp()
+    next_month_ts = next_month_dt.timestamp()
+    seen_deal_ids: set[int] = set()
     trades: list[tuple[float, int, float, float]] = []
     try:
         with gzip.GzipFile(fileobj=io.BytesIO(response.content), mode="rb") as zipped:
@@ -786,7 +791,15 @@ def fetch_monthly_futures_trades(
                 if not values:
                     continue
                 try:
-                    trades.append(parse_futures_trade_row(values))
+                    trade = parse_futures_trade_row(values)
+                    if not month_start_ts <= trade[0] < next_month_ts:
+                        raise DataError(
+                            f"trade timestamp {trade[0]} falls outside requested month {month}"
+                        )
+                    if trade[1] in seen_deal_ids:
+                        raise DataError(f"duplicate dealid {trade[1]}")
+                    seen_deal_ids.add(trade[1])
+                    trades.append(trade)
                 except DataError as exc:
                     raise DataError(
                         f"Invalid Gate futures trade row {line_number} for {contract} {month}: {exc}"
@@ -1133,7 +1146,15 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     for timestamp in remaining_missing:
                         month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
                         missing_trade_months.setdefault(month, []).append(timestamp)
+                    current_month = datetime.now(timezone.utc).strftime("%Y%m")
                     for month, missing_in_month in sorted(missing_trade_months.items()):
+                        if month == current_month:
+                            print(
+                                f"[trade-repair-skip] {contract} {month}: current month is not finalized; "
+                                "monthly trades cannot prove complete coverage",
+                                flush=True,
+                            )
+                            continue
                         try:
                             monthly_trades = fetch_monthly_futures_trades(session, contract, month)
                             if monthly_trades is None:

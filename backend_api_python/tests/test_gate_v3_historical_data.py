@@ -805,6 +805,58 @@ def test_trade_reconstruction_rejects_any_ohlcv_mismatch() -> None:
     assert validation["mismatches"]
 
 
+def test_monthly_trade_archive_rejects_duplicate_deal_ids() -> None:
+    import gzip
+
+    content = gzip.compress(
+        (
+            "1735689600.1,42,100.0,1\n"
+            "1735689600.2,42,100.5,-1\n"
+        ).encode("utf-8")
+    )
+
+    class FakeResponse:
+        status_code = 200
+        content = content
+        text = ""
+
+    class FakeSession:
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            return FakeResponse()
+
+    try:
+        MODULE.fetch_monthly_futures_trades(FakeSession(), "BTC_USDT", "202501")
+    except MODULE.DataError as exc:
+        assert "duplicate dealid 42" in str(exc)
+    else:
+        raise AssertionError("Duplicate trade IDs must reject the archive")
+
+
+def test_monthly_trade_archive_rejects_rows_outside_requested_month() -> None:
+    import gzip
+
+    # 2024-12-31 23:59:59 UTC is outside the requested 2025-01 archive.
+    content = gzip.compress(
+        "1735689599,43,100.0,1\n".encode("utf-8")
+    )
+
+    class FakeResponse:
+        status_code = 200
+        content = content
+        text = ""
+
+    class FakeSession:
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            return FakeResponse()
+
+    try:
+        MODULE.fetch_monthly_futures_trades(FakeSession(), "BTC_USDT", "202501")
+    except MODULE.DataError as exc:
+        assert "falls outside requested month 202501" in str(exc)
+    else:
+        raise AssertionError("Out-of-month trades must reject the archive")
+
+
 def test_monthly_trade_archive_404_is_unavailable_not_zero_trade() -> None:
     class FakeResponse:
         status_code = 404
