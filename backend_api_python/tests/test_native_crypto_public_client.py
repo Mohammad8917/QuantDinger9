@@ -196,3 +196,42 @@ def test_bitget_ticker_parses_change_rate_without_unbound_state(market_type, mon
     assert ticker["percentage"] == 1.25
     assert ticker["changePercent"] == 1.25
     assert ticker["timestamp"] == 1700000000123
+
+
+@pytest.mark.parametrize("timeframe", ["15m", "1h", "4h", "1d"])
+def test_gate_usdt_perpetual_historical_candles_use_public_futures_endpoint(
+    timeframe, monkeypatch
+):
+    client = NativeCryptoPublicClient("gate", "swap")
+    captured = {}
+
+    def fake_get(url, params):
+        captured["url"] = url
+        captured["params"] = dict(params)
+        return [
+            {
+                "t": 1700000000,
+                "v": "12",
+                "c": "105",
+                "h": "110",
+                "l": "90",
+                "o": "100",
+                "sum": "1260",
+            }
+        ]
+
+    monkeypatch.setattr(client, "_get", fake_get)
+    rows = client.fetch_ohlcv(
+        "BTC/USDT:USDT",
+        timeframe,
+        since=1700000000000,
+        limit=2,
+    )
+
+    assert captured["url"] == "https://api.gateio.ws/api/v4/futures/usdt/candlesticks"
+    assert captured["params"]["contract"] == "BTC_USDT"
+    assert captured["params"]["interval"] == timeframe
+    assert captured["params"]["from"] == 1700000000
+    assert captured["params"]["to"] > captured["params"]["from"]
+    assert "limit" not in captured["params"]
+    assert rows == [[1700000000000, 100.0, 110.0, 90.0, 105.0, 12.0]]
