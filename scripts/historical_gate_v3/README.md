@@ -16,7 +16,7 @@ perpetual futures, for 15-minute and 1-hour timeframes.
   changes, collection stops rather than silently testing a different version.
 - Missing historical candles are not synthesized. Internal gaps, duplicate timestamps, invalid OHLCV, and missing leading/trailing bars are audited.
 - The public contract metadata `create_time` is used as the earliest expected-history boundary (rounded up to a candle boundary); this avoids falsely treating pre-listing time as missing history.
-- The manifest records expected vs observed bar counts, coverage ratio, leading/trailing missing bars, internal gap spans, and duplicate/invalid row counts. Any incomplete coverage makes the collection exit non-zero.
+- The manifest records expected vs observed bar counts, coverage ratio, leading/trailing missing bars, internal gap spans, and duplicate/invalid row counts. No-trade intervals are never filled with fabricated candles; any expected interval that remains absent after 1m-source recovery makes the collection exit non-zero.
 - Files are gzip-compressed CSVs plus a manifest with time coverage, bar counts, gap counts,
   and SHA-256 checksums.
 - `volume` preserves Gate contract-size volume from the selected source: archive `size` or public REST `v`. Neither source used here provides quote-currency turnover, so `quote_volume` is blank and explicitly marked unavailable. The downloader never estimates it or presents it as exact.
