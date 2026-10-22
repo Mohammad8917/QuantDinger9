@@ -153,26 +153,25 @@ def test_parse_gate_archive_row_preserves_real_ohlcv_and_missing_quote_volume() 
     assert MODULE._validate_row(row, 300) is None
 
 
-def test_aggregate_15m_requires_three_contiguous_real_5m_bars() -> None:
+def test_aggregate_15m_uses_observed_real_5m_bars_without_filling_gaps() -> None:
+    start = 1800000000
     rows = [
-        {"timestamp": 1800000000, "open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0, "volume": 1.0, "quote_volume": None},
-        {"timestamp": 1800000300, "open": 101.0, "high": 104.0, "low": 100.0, "close": 103.0, "volume": 2.0, "quote_volume": None},
-        {"timestamp": 1800000600, "open": 103.0, "high": 105.0, "low": 102.0, "close": 104.0, "volume": 3.0, "quote_volume": None},
-        {"timestamp": 1800000900, "open": 104.0, "high": 106.0, "low": 103.0, "close": 105.0, "volume": 4.0, "quote_volume": None},
-        {"timestamp": 1800001500, "open": 105.0, "high": 107.0, "low": 104.0, "close": 106.0, "volume": 5.0, "quote_volume": None},
+        {"timestamp": start, "open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0, "volume": 1.0, "quote_volume": None},
+        {"timestamp": start + 300, "open": 101.0, "high": 104.0, "low": 100.0, "close": 103.0, "volume": 2.0, "quote_volume": None},
+        {"timestamp": start + 600, "open": 103.0, "high": 105.0, "low": 102.0, "close": 104.0, "volume": 3.0, "quote_volume": None},
+        {"timestamp": start + 900, "open": 104.0, "high": 106.0, "low": 103.0, "close": 105.0, "volume": 4.0, "quote_volume": None},
+        {"timestamp": start + 1500, "open": 105.0, "high": 107.0, "low": 104.0, "close": 106.0, "volume": 5.0, "quote_volume": None},
     ]
     aggregated = MODULE.aggregate_5m_to_15m(rows)
-    assert len(aggregated) == 1
+    assert len(aggregated) == 2
     assert aggregated[0] == {
-        "timestamp": 1800000000,
-        "open": 100.0,
-        "high": 105.0,
-        "low": 99.0,
-        "close": 104.0,
-        "volume": 6.0,
-        "quote_volume": None,
+        "timestamp": start, "open": 100.0, "high": 105.0, "low": 99.0,
+        "close": 104.0, "volume": 6.0, "quote_volume": None,
     }
-
+    assert aggregated[1] == {
+        "timestamp": start + 900, "open": 104.0, "high": 107.0, "low": 103.0,
+        "close": 106.0, "volume": 9.0, "quote_volume": None,
+    }
 
 def test_aggregate_15m_rejects_duplicate_5m_timestamps() -> None:
     row = {"timestamp": 1800000000, "open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0, "volume": 1.0, "quote_volume": None}
@@ -183,7 +182,7 @@ def test_aggregate_15m_rejects_duplicate_5m_timestamps() -> None:
     else:
         raise AssertionError("Duplicate source candles must not be silently aggregated")
 
-def test_aggregate_1m_to_15m_requires_all_fifteen_minutes() -> None:
+def test_aggregate_1m_to_15m_uses_observed_real_minutes_without_filling_gaps() -> None:
     start = 1800000000
     rows = [
         {
@@ -196,6 +195,7 @@ def test_aggregate_1m_to_15m_requires_all_fifteen_minutes() -> None:
             "quote_volume": None,
         }
         for index in range(15)
+        if index != 7
     ]
     aggregated = MODULE.aggregate_1m_to_timeframe(rows, "15m")
     assert len(aggregated) == 1
@@ -204,11 +204,10 @@ def test_aggregate_1m_to_15m_requires_all_fifteen_minutes() -> None:
     assert aggregated[0]["high"] == 115.0
     assert aggregated[0]["low"] == 99.0
     assert aggregated[0]["close"] == 114.5
-    assert aggregated[0]["volume"] == 15.0
-    assert MODULE.aggregate_1m_to_timeframe(rows[:-1], "15m") == []
+    assert aggregated[0]["volume"] == 14.0
 
 
-def test_aggregate_1m_to_1h_requires_all_sixty_minutes() -> None:
+def test_aggregate_1m_to_1h_uses_observed_real_minutes_without_filling_gaps() -> None:
     start = 1800000000
     rows = [
         {
@@ -221,15 +220,16 @@ def test_aggregate_1m_to_1h_requires_all_sixty_minutes() -> None:
             "quote_volume": None,
         }
         for index in range(60)
+        if index != 30
     ]
     aggregated = MODULE.aggregate_1m_to_timeframe(rows, "1h")
     assert len(aggregated) == 1
     assert aggregated[0]["timestamp"] == start
-    assert aggregated[0]["volume"] == 60.0
+    assert aggregated[0]["volume"] == 59.0
     assert aggregated[0]["high"] == 160.0
     assert aggregated[0]["low"] == 99.0
     assert aggregated[0]["close"] == 159.5
-    assert MODULE.aggregate_1m_to_timeframe(rows[:-1], "1h") == []
+
 
 
 def test_missing_expected_timestamps_are_reported_not_filled() -> None:
