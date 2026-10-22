@@ -153,7 +153,7 @@ def test_parse_gate_archive_row_preserves_real_ohlcv_and_missing_quote_volume() 
     assert MODULE._validate_row(row, 300) is None
 
 
-def test_aggregate_15m_uses_available_real_5m_bars_without_fabricating_empty_bars() -> None:
+def test_aggregate_15m_requires_three_contiguous_real_5m_bars() -> None:
     rows = [
         {"timestamp": 1800000000, "open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0, "volume": 1.0, "quote_volume": None},
         {"timestamp": 1800000300, "open": 101.0, "high": 104.0, "low": 100.0, "close": 103.0, "volume": 2.0, "quote_volume": None},
@@ -162,7 +162,7 @@ def test_aggregate_15m_uses_available_real_5m_bars_without_fabricating_empty_bar
         {"timestamp": 1800001500, "open": 105.0, "high": 107.0, "low": 104.0, "close": 106.0, "volume": 5.0, "quote_volume": None},
     ]
     aggregated = MODULE.aggregate_5m_to_15m(rows)
-    assert len(aggregated) == 2
+    assert len(aggregated) == 1
     assert aggregated[0] == {
         "timestamp": 1800000000,
         "open": 100.0,
@@ -170,15 +170,6 @@ def test_aggregate_15m_uses_available_real_5m_bars_without_fabricating_empty_bar
         "low": 99.0,
         "close": 104.0,
         "volume": 6.0,
-        "quote_volume": None,
-    }
-    assert aggregated[1] == {
-        "timestamp": 1800000900,
-        "open": 104.0,
-        "high": 107.0,
-        "low": 103.0,
-        "close": 106.0,
-        "volume": 9.0,
         "quote_volume": None,
     }
 
@@ -191,6 +182,40 @@ def test_aggregate_15m_rejects_duplicate_5m_timestamps() -> None:
         assert "Duplicate 5m candle timestamp" in str(exc)
     else:
         raise AssertionError("Duplicate source candles must not be silently aggregated")
+
+def test_aggregate_1m_to_15m_requires_all_fifteen_minutes() -> None:
+    start = 1800000000
+    rows = [
+        {
+            "timestamp": start + index * 60,
+            "open": 100.0 + index,
+            "high": 101.0 + index,
+            "low": 99.0 + index,
+            "close": 100.5 + index,
+            "volume": 1.0,
+            "quote_volume": None,
+        }
+        for index in range(15)
+    ]
+    aggregated = MODULE.aggregate_1m_to_timeframe(rows, "15m")
+    assert len(aggregated) == 1
+    assert aggregated[0]["timestamp"] == start
+    assert aggregated[0]["open"] == 100.0
+    assert aggregated[0]["high"] == 115.0
+    assert aggregated[0]["low"] == 99.0
+    assert aggregated[0]["close"] == 114.5
+    assert aggregated[0]["volume"] == 15.0
+    assert MODULE.aggregate_1m_to_timeframe(rows[:-1], "15m") == []
+
+
+def test_missing_expected_timestamps_are_reported_not_filled() -> None:
+    start = 1800000000
+    rows = [
+        {"timestamp": start, "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.5, "volume": 1.0, "quote_volume": None},
+        {"timestamp": start + 1800, "open": 101.0, "high": 102.0, "low": 100.0, "close": 101.5, "volume": 1.0, "quote_volume": None},
+    ]
+    assert MODULE.missing_expected_timestamps(rows, "15m", start, start + 1800) == [start + 900]
+
 
 def test_archive_month_iteration_spans_year_boundary() -> None:
     start = MODULE.utc_timestamp("2024-12-31")
@@ -297,7 +322,7 @@ def test_public_rest_pagination_stays_within_900_candles() -> None:
     )
 
 
-def test_archive_fetch_supports_native_15m_files() -> None:
+def test_archive_fetch_supports_1m_files_for_gap_repair() -> None:
     import gzip
 
     timestamp = 1735689600
@@ -318,15 +343,15 @@ def test_archive_fetch_supports_native_15m_files() -> None:
 
     session = FakeSession()
     rows = MODULE.fetch_archive_candles(
-        session, "BTC_USDT", "15m", timestamp, timestamp, sleep_seconds=0,
+        session, "BTC_USDT", "1m", timestamp, timestamp, sleep_seconds=0,
     )
     assert rows == [{
         "timestamp": timestamp, "volume": 12.5, "close": 102.0,
         "high": 105.0, "low": 95.0, "open": 100.0, "quote_volume": None,
     }]
-    assert MODULE._validate_row(rows[0], 900) is None
+    assert MODULE._validate_row(rows[0], 60) is None
     assert session.urls == [
-        f"{MODULE.ARCHIVE_BASE_URL}/candlesticks_15m/202501/BTC_USDT-202501.csv.gz"
+        f"{MODULE.ARCHIVE_BASE_URL}/candlesticks_1m/202501/BTC_USDT-202501.csv.gz"
     ]
 
 
