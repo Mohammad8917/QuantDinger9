@@ -621,6 +621,52 @@ def test_trade_archive_reconstructs_real_candles_and_confirms_spanned_empty_buck
 
 
 
+def test_trade_archive_confirms_final_month_bucket_empty_without_synthesizing_candle() -> None:
+    import gzip
+
+    month_end = MODULE.utc_timestamp("2025-02-01")
+    final_bucket = month_end - 900
+    trade_timestamp = final_bucket - 30
+    archive_bytes = gzip.compress(
+        f"{trade_timestamp},1,100,1\\n".encode("utf-8")
+    )
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+        content = archive_bytes
+        raw = None
+
+        def close(self) -> None:
+            return None
+
+    class FakeSession:
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            assert url == (
+                f"{MODULE.ARCHIVE_BASE_URL}/trades/202501/BTC_USDT-202501.csv.gz"
+            )
+            return FakeResponse()
+
+    rows, source_empty = MODULE.fetch_missing_trade_archive_candles(
+        FakeSession(), "BTC_USDT", "15m", [final_bucket], sleep_seconds=0,
+    )
+    assert rows == []
+    assert source_empty == {final_bucket}
+
+
+def test_audit_reports_exact_unresolved_timestamps() -> None:
+    start = 1800000000
+    rows = [
+        {"timestamp": start, "open": 100.0, "high": 101.0, "low": 99.0,
+         "close": 100.5, "volume": 1.0, "quote_volume": None},
+    ]
+    audit = MODULE.audit_rows(
+        rows, "15m", expected_start=start, expected_end=start + 1800,
+    )
+    assert audit["unresolved_missing_timestamps"] == [start + 900, start + 1800]
+    assert audit["unresolved_missing_bars"] == 2
+
+
 def test_public_rest_http_400_is_not_retried_and_body_is_reported() -> None:
     import pytest
 
