@@ -426,7 +426,7 @@ def fetch_archive_candles(
 def aggregate_5m_to_15m(
     rows: list[dict[str, float | int | None]],
 ) -> list[dict[str, float | int | None]]:
-    """Aggregate observed real 5m candles into 15m buckets without filling empty intervals."""
+    """Aggregate only 15m buckets with all three observed real 5m candles."""
     groups: dict[int, list[dict[str, float | int | None]]] = {}
     for row in rows:
         timestamp = int(row["timestamp"])
@@ -441,9 +441,9 @@ def aggregate_5m_to_15m(
         timestamps = [int(row["timestamp"]) for row in group]
         if len(set(timestamps)) != len(timestamps):
             raise DataError(f"Duplicate 5m candle timestamp in 15m bucket {bucket}")
-        # Official Gate archives omit some no-trade sub-intervals. Aggregate
-        # only observed real source candles; an entirely empty bucket stays missing.
-        if not group:
+        # Without independent proof that a missing sub-interval had no trades,
+        # partial groups cannot establish complete target OHLCV. Leave them absent.
+        if timestamps != list(range(bucket, bucket + 900, 300)):
             continue
         aggregated.append({
             "timestamp": bucket,
@@ -462,7 +462,7 @@ def aggregate_5m_to_15m(
 def aggregate_1m_to_timeframe(
     rows: list[dict[str, float | int | None]], timeframe: str,
 ) -> list[dict[str, float | int | None]]:
-    """Aggregate observed real 1m candles into 15m/1h buckets without filling empty intervals."""
+    """Aggregate only target buckets with complete observed 1m source coverage."""
     interval = TIMEFRAMES.get(timeframe)
     if interval not in (900, 3600):
         raise ValueError(f"Unsupported 1m aggregation target: {timeframe}")
@@ -480,9 +480,9 @@ def aggregate_1m_to_timeframe(
         timestamps = [int(row["timestamp"]) for row in group]
         if len(set(timestamps)) != len(timestamps):
             raise DataError(f"Duplicate 1m candle timestamp in {timeframe} bucket {bucket}")
-        # Missing minutes are not filled. Real minute candles that do exist
-        # determine target OHLCV; a bucket with no rows stays missing.
-        if not group:
+        # A partial minute set cannot prove full target OHLCV. Do not assume
+        # missing minutes were zero-trade intervals; keep this target bucket absent.
+        if timestamps != list(range(bucket, bucket + interval, 60)):
             continue
         aggregated.append({
             "timestamp": bucket,
@@ -743,7 +743,7 @@ def fetch_missing_trade_archive_candles(
 def aggregate_10s_to_timeframe(
     rows: list[dict[str, float | int | None]], timeframe: str,
 ) -> list[dict[str, float | int | None]]:
-    """Aggregate observed official 10s candles into 15m/1h buckets without filling gaps."""
+    """Aggregate only target buckets with complete observed official 10s coverage."""
     interval = TIMEFRAMES.get(timeframe)
     if interval not in (900, 3600):
         raise ValueError(f"Unsupported 10s aggregation target: {timeframe}")
@@ -761,6 +761,9 @@ def aggregate_10s_to_timeframe(
         timestamps = [int(row["timestamp"]) for row in group]
         if len(set(timestamps)) != len(timestamps):
             raise DataError(f"Duplicate 10s candle timestamp in {timeframe} bucket {bucket}")
+        # Never promote a partial 10s window to a full 15m/1h candle.
+        if timestamps != list(range(bucket, bucket + interval, 10)):
+            continue
         aggregated.append({
             "timestamp": bucket,
             "open": float(group[0]["open"]),
