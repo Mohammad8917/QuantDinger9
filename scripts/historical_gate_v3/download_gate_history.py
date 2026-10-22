@@ -1227,6 +1227,55 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                         )
 
                 archive_repaired_count = len(repaired_rows) - trade_repaired_count
+                already_observed = {
+                    int(row["timestamp"]) for row in rows + repaired_rows
+                }
+                remaining_missing = [
+                    timestamp for timestamp in missing_before_repair
+                    if timestamp not in already_observed
+                    and timestamp not in verified_trade_empty_timestamps
+                ]
+                repair_now = int(time.time())
+                rest_start = recent_rest_window_start(interval, now_ts=repair_now)
+                rest_end = last_closed_candle_start(repair_now, interval, now_ts=repair_now)
+                historical_missing = [
+                    timestamp for timestamp in remaining_missing
+                    if not rest_start <= timestamp <= rest_end
+                ]
+                if historical_missing:
+                    ten_second_rows = fetch_missing_10s_archive_candles(
+                        session, contract, timeframe, historical_missing,
+                    )
+                    if ten_second_rows:
+                        repaired_rows.extend(ten_second_rows)
+                        source_parts.append("Gate official 10s candle archive recovery")
+
+                already_observed = {
+                    int(row["timestamp"]) for row in rows + repaired_rows
+                }
+                remaining_missing = [
+                    timestamp for timestamp in missing_before_repair
+                    if timestamp not in already_observed
+                    and timestamp not in verified_trade_empty_timestamps
+                ]
+                if remaining_missing:
+                    native_rest_rows = fetch_missing_native_rest_candles(
+                        session, contract, timeframe, remaining_missing,
+                        now_ts=repair_now,
+                    )
+                    if native_rest_rows:
+                        repaired_rows.extend(native_rest_rows)
+                        source_parts.append("Gate native public REST recovery for recent missing intervals")
+
+                already_observed = {
+                    int(row["timestamp"]) for row in rows + repaired_rows
+                }
+                remaining_missing = [
+                    timestamp for timestamp in missing_before_repair
+                    if timestamp not in already_observed
+                    and timestamp not in verified_trade_empty_timestamps
+                ]
+
                 if repaired_rows:
                     rows = sorted(rows + repaired_rows, key=lambda row: int(row["timestamp"]))
                     if archive_repaired_count:
