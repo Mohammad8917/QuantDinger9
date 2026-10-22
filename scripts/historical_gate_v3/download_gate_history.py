@@ -1161,6 +1161,15 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                         repaired_rows.extend(native_rest_rows)
                         source_parts.append("Gate native public REST recovery for recent missing intervals")
 
+                # Recompute after all earlier repair sources so trades never duplicate
+                # a timestamp already recovered from 1m/10s/REST data.
+                already_observed = {
+                    int(row["timestamp"]) for row in rows + repaired_rows
+                }
+                remaining_missing = [
+                    timestamp for timestamp in missing_before_repair
+                    if timestamp not in already_observed
+                ]
                 verified_trade_empty_timestamps: set[int] = set()
                 if timeframe == "15m" and remaining_missing:
                     missing_trade_months: dict[str, list[int]] = {}
