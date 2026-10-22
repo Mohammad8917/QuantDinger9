@@ -36,7 +36,7 @@ jobs:
       - name: Install downloader and test dependencies
         run: python -m pip install --disable-pip-version-check "requests>=2.31,<3" "pytest>=8,<9"
       - name: Run offline historical-data tests before downloading
-        run: python -m pytest backend_api_python/tests/test_gate_v3_historical_data.py -q
+        run: python -m pytest --noconftest backend_api_python/tests/test_gate_v3_historical_data.py -q
       - name: Download and audit real public candles
         env:
           START_DATE: ${{ inputs.start }}
