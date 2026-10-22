@@ -10,8 +10,8 @@ perpetual futures, for 15-minute and 1-hour timeframes.
 - It does **not** simulate fills, calculate PnL, or send orders.
 - Uses Gate's official monthly historical archives for older candles and the public futures candlestick REST endpoint only for the recent tail; no API key is required.
 - Gate's public REST endpoint rejects older historical ranges outside its recent 10,000-point window. The downloader uses monthly archives for older history and native REST candles only inside that recent window, fetching at most 900 points per request to stay below the observed request limit.
-- A historical 15m candle is created only when all three consecutive 5m archive candles exist. Older 1h candles come from the 1h archive. Missing 15m/1h buckets are repaired only when the 1m archive contains exactly 15/60 contiguous minute candles for that bucket. Partial source groups are omitted. The recent 15m/1h tails come directly from REST; the downloader never retries a multi-year range against REST.
-- Gap repair uses actual 1m OHLCV only; it does not interpolate prices or manufacture empty candles. If even one required minute is missing, that candidate repair is discarded. The final audit reports any remaining gaps and the run fails closed when coverage is incomplete.
+- Historical 15m candles are aggregated from observed real 5m archive candles. Older 1h candles come from the 1h archive. Missing 15m/1h buckets are repaired only when observed real 1m candles exist within that bucket. Empty intervals are not synthesized. The recent 15m/1h tails come directly from REST; the downloader never retries a multi-year range against REST.
+- Gap repair uses actual 1m OHLCV only; it does not interpolate prices or manufacture empty candles. A bucket with observed 1m candles is aggregated from those real rows; a bucket with no observed 1m candles remains missing. The final audit reports any remaining gaps and the run fails closed when coverage is incomplete.
 - It verifies the locked strategy's Git blob SHA-1 before collecting data. If the strategy
   changes, collection stops rather than silently testing a different version.
 - Missing historical candles are not synthesized. Internal gaps, duplicate timestamps, invalid OHLCV, and missing leading/trailing bars are audited.
@@ -51,7 +51,7 @@ py -3.13 scripts/historical_gate_v3/download_gate_history.py --output "D:\QuantD
 
 ## Output
 
-- `<BASE>_USDT_15m.csv.gz` (strict 3×5m aggregation plus native recent REST tail, with missing buckets recovered only from complete 15×1m groups) and `<BASE>_USDT_1h.csv.gz` (older 1h archive plus native recent REST tail, with missing buckets recovered only from complete 60×1m groups) per contract. The `quote_volume` column is blank because the public sources do not provide it and the downloader keeps the schema consistent.
+- `<BASE>_USDT_15m.csv.gz` (observed 5m archive aggregation plus native recent REST tail, with missing buckets recovered only from observed 1m candles) and `<BASE>_USDT_1h.csv.gz` (older 1h archive plus native recent REST tail, with missing buckets recovered only from observed 1m candles) per contract. The `quote_volume` column is blank because the public sources do not provide it and the downloader keeps the schema consistent.
 - `manifest.json` (schema version 3) records the requested range, source endpoint, locked strategy fingerprint,
   actual and expected first/last candle, expected/observed bar counts, coverage ratio, missing leading/trailing/internal bars, duplicate/invalid row counts, and file SHA-256.
 
