@@ -79,32 +79,6 @@ def test_audit_detects_missing_range_edges() -> None:
     assert audit["complete_contiguous_history"] is False
 
 
-def test_fetch_candles_preserves_duplicate_timestamps(monkeypatch) -> None:
-    start = 1800000000
-    end = start + 1800
-    monkeypatch.setattr(MODULE, "time", type("FakeTime", (), {"time": staticmethod(lambda: end), "sleep": staticmethod(lambda _: None)})())
-    item = {"t": start, "o": "100", "h": "105", "l": "95", "c": "102", "v": "1", "sum": "1000"}
-
-    class FakeResponse:
-        status_code = 200
-
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self):
-            return [dict(item), dict(item)]
-
-    class FakeSession:
-        def get(self, *args, **kwargs):
-            return FakeResponse()
-
-    rows = MODULE.fetch_candles(FakeSession(), "BTC_USDT", "15m", start, end, sleep_seconds=0)
-    assert len(rows) == 2
-    assert rows[0]["timestamp"] == rows[1]["timestamp"] == start
-    assert rows[0]["volume"] == 1.0
-    assert rows[0]["quote_volume"] == 1000.0
-
-
 def test_audit_detects_duplicate_timestamps_before_deduplication() -> None:
     row = {"timestamp": 1800000000, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1.0, "quote_volume": 1000.0}
     audit = MODULE.audit_rows([row, dict(row)], "15m", expected_start=1800000000, expected_end=1800000000)
@@ -165,28 +139,43 @@ def test_candle_row_rejects_non_finite_values() -> None:
     assert MODULE._validate_row({**valid, "quote_volume": float("inf")}, 900) == "non_finite_value"
     assert MODULE._validate_row({**valid, "quote_volume": -1.0}, 900) == "negative_quote_volume"
 
-def test_fetch_candles_reports_gate_http_error_body(monkeypatch) -> None:
-    start = 1800000000
-    end = start + 900
-    monkeypatch.setattr(MODULE, "time", type("FakeTime", (), {"time": staticmethod(lambda: end), "sleep": staticmethod(lambda _: None)})())
+def test_parse_gate_archive_row_preserves_real_ohlcv_and_missing_quote_volume() -> None:
+    row = MODULE._parse_archive_row(["1800000000", "12.5", "102", "105", "95", "100"])
+    assert row == {
+        "timestamp": 1800000000,
+        "volume": 12.5,
+        "close": 102.0,
+        "high": 105.0,
+        "low": 95.0,
+        "open": 100.0,
+        "quote_volume": None,
+    }
+    assert MODULE._validate_row(row, 300) is None
 
-    class FakeResponse:
-        status_code = 400
-        text = '{"label":"INVALID_PARAM_VALUE","message":"invalid test parameters"}'
 
-        def raise_for_status(self) -> None:
-            raise AssertionError("Non-retryable 400 must be reported without generic raise_for_status")
+def test_aggregate_15m_requires_three_contiguous_real_5m_bars() -> None:
+    rows = [
+        {"timestamp": 1800000000, "open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0, "volume": 1.0, "quote_volume": None},
+        {"timestamp": 1800000300, "open": 101.0, "high": 104.0, "low": 100.0, "close": 103.0, "volume": 2.0, "quote_volume": None},
+        {"timestamp": 1800000600, "open": 103.0, "high": 105.0, "low": 102.0, "close": 104.0, "volume": 3.0, "quote_volume": None},
+        {"timestamp": 1800000900, "open": 104.0, "high": 106.0, "low": 103.0, "close": 105.0, "volume": 4.0, "quote_volume": None},
+        {"timestamp": 1800001500, "open": 105.0, "high": 107.0, "low": 104.0, "close": 106.0, "volume": 5.0, "quote_volume": None},
+    ]
+    aggregated = MODULE.aggregate_5m_to_15m(rows)
+    assert len(aggregated) == 1
+    assert aggregated[0] == {
+        "timestamp": 1800000000,
+        "open": 100.0,
+        "high": 105.0,
+        "low": 99.0,
+        "close": 104.0,
+        "volume": 6.0,
+        "quote_volume": None,
+    }
 
-    class FakeSession:
-        def get(self, *args, **kwargs):
-            return FakeResponse()
 
-    try:
-        MODULE.fetch_candles(FakeSession(), "BTC_USDT", "15m", start, end, sleep_seconds=0)
-    except MODULE.DataError as exc:
-        assert "HTTP 400" in str(exc)
-        assert "INVALID_PARAM_VALUE" in str(exc)
-        assert "invalid test parameters" in str(exc)
-    else:
-        raise AssertionError("HTTP 400 should fail with the response body exposed")
+def test_archive_month_iteration_spans_year_boundary() -> None:
+    start = MODULE.utc_timestamp("2024-12-31")
+    end = MODULE.utc_timestamp("2025-02-01")
+    assert [d.strftime("%Y%m") for d in MODULE._month_starts(start, end)] == ["202412", "202501", "202502"]
 
