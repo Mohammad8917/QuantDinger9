@@ -208,6 +208,28 @@ def test_aggregate_1m_to_15m_requires_all_fifteen_minutes() -> None:
     assert MODULE.aggregate_1m_to_timeframe(rows[:-1], "15m") == []
 
 
+def test_aggregate_1m_to_1h_requires_all_sixty_minutes() -> None:
+    start = 1800000000
+    rows = [
+        {
+            "timestamp": start + index * 60,
+            "open": 100.0 + index,
+            "high": 101.0 + index,
+            "low": 99.0 + index,
+            "close": 100.5 + index,
+            "volume": 1.0,
+            "quote_volume": None,
+        }
+        for index in range(60)
+    ]
+    aggregated = MODULE.aggregate_1m_to_timeframe(rows, "1h")
+    assert len(aggregated) == 1
+    assert aggregated[0]["timestamp"] == start
+    assert aggregated[0]["volume"] == 60.0
+    assert aggregated[0]["close"] == 159.5
+    assert MODULE.aggregate_1m_to_timeframe(rows[:-1], "1h") == []
+
+
 def test_missing_expected_timestamps_are_reported_not_filled() -> None:
     start = 1800000000
     rows = [
