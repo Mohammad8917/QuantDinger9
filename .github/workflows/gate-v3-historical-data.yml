@@ -1,6 +1,10 @@
 name: Gate V3 Historical Dataset
 
 on:
+  push:
+    branches: [work/gate-v3-historical-data]
+    paths:
+      - '.github/workflows/gate-v3-historical-data.yml'
   workflow_dispatch:
     inputs:
       start:
@@ -41,7 +45,28 @@ jobs:
           args=(--repo-root . --output "$RUNNER_TEMP/gate-v3-history")
           if [[ -n "$START_DATE" ]]; then args+=(--start "$START_DATE"); fi
           if [[ -n "$END_DATE" ]]; then args+=(--end "$END_DATE"); fi
-          python scripts/historical_gate_v3/download_gate_history.py "${args[@]}"
+          python - <<'PY'
+          import csv, gzip, io
+          import requests
+          from datetime import datetime, timezone
+          start = int(datetime(2025, 7, 1, tzinfo=timezone.utc).timestamp())
+          for contract in ("BTC_USDT", "POL_USDT", "ATOM_USDT"):
+              for timeframe, step in (("1m", 60), ("5m", 300)):
+                  month = "202507"
+                  url = f"https://download.gatedata.org/futures_usdt/candlesticks_{timeframe}/{month}/{contract}-{month}.csv.gz"
+                  response = requests.get(url, timeout=30)
+                  print(f"PROBE {contract} {timeframe}: HTTP {response.status_code}, bytes={len(response.content)}", flush=True)
+                  if response.status_code != 200:
+                      continue
+                  with gzip.GzipFile(fileobj=io.BytesIO(response.content), mode="rb") as zipped:
+                      rows = list(csv.reader(io.TextIOWrapper(zipped, encoding="utf-8", newline="")))
+                  timestamps = [int(float(row[0])) for row in rows if row]
+                  expected = (31 * 24 * 60) // step
+                  unique = sorted(set(timestamps))
+                  missing = expected - len(unique)
+                  gaps = sum(1 for a, b in zip(unique, unique[1:]) if b - a > step)
+                  print(f"PROBE_RESULT {contract} {timeframe}: rows={len(timestamps)} unique={len(unique)} expected={expected} missing={missing} duplicate_rows={len(timestamps)-len(unique)} gap_spans={gaps}", flush=True)
+          PY
       - name: Upload dataset and manifest
         if: always()
         uses: actions/upload-artifact@v4
