@@ -100,9 +100,9 @@ def _parse_row(item: Any) -> dict[str, float | int] | None:
 
 def _validate_row(row: dict[str, float | int], interval: int) -> str | None:
     ts = int(row["timestamp"])
-    o, h, low, close, volume = (
+    o, h, low, close, volume, quote_volume = (
         float(row["open"]), float(row["high"]), float(row["low"]),
-        float(row["close"]), float(row["volume"]),
+        float(row["close"]), float(row["volume"]), float(row["quote_volume"]),
     )
     if ts % interval:
         return "timestamp_not_aligned"
@@ -116,6 +116,8 @@ def _validate_row(row: dict[str, float | int], interval: int) -> str | None:
         return "invalid_low"
     if volume < 0:
         return "negative_volume"
+    if quote_volume < 0:
+        return "negative_quote_volume"
     return None
 
 
