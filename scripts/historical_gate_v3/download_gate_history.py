@@ -310,7 +310,7 @@ def aggregate_5m_to_15m(
 
 
 def audit_rows(
-    rows: list[dict[str, float | int]], timeframe: str, *,
+    rows: list[dict[str, float | int | None]], timeframe: str, *,
     expected_start: int | None = None, expected_end: int | None = None,
 ) -> dict[str, Any]:
     """Audit OHLCV validity, duplicate timestamps, internal gaps, and range-edge coverage."""
@@ -392,16 +392,19 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
     output_dir.mkdir(parents=True, exist_ok=True)
     session = requests.Session()
     manifest: dict[str, Any] = {
-        "schema_version": 2,
-        "data_source": "Gate.io public USDT perpetual futures REST API",
+        "schema_version": 3,
+        "data_source": "Gate official public historical USDT-perpetual candle archives; public contracts REST API for create_time",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected.",
-        "endpoint": API_URL,
+        "endpoint": "https://download.gatedata.org/futures_usdt/candlesticks_{5m,1h}/{YYYYMM}/{CONTRACT}-{YYYYMM}.csv.gz",
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
         "start_timestamp_requested": start_ts,
         "end_timestamp_requested": end_ts,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
+        "quote_volume_available": False,
+        "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
+        "fifteen_minute_policy": "15m candles are aggregated from three contiguous official 5m archive candles; incomplete groups are omitted and then detected by coverage audit.",
         "symbols": {},
     }
     failures: list[str] = []
@@ -435,7 +438,15 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 }
                 continue
             try:
-                rows = fetch_candles(session, contract, timeframe, requested_first, end_ts)
+                if timeframe == "15m":
+                    source_rows = fetch_archive_candles(
+                        session, contract, "5m", requested_first, requested_last + 600,
+                    )
+                    rows = aggregate_5m_to_15m(source_rows)
+                else:
+                    rows = fetch_archive_candles(
+                        session, contract, "1h", requested_first, requested_last,
+                    )
                 audit = audit_rows(
                     rows, timeframe, expected_start=requested_first, expected_end=requested_last,
                 )
@@ -451,7 +462,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 sha256 = write_gzip_csv(output_dir / filename, rows)
                 manifest["symbols"][contract][timeframe] = {
                     **audit, "file": filename, "sha256": sha256, "interval_seconds": interval,
-                    "contract_create_time": create_time,
+                    "contract_create_time": create_time, "quote_volume_available": False,
+                    "volume_source": "Gate archive contract-size volume (size)",
                     "coverage_status": "complete" if audit["complete_contiguous_history"] else "partial",
                 }
                 print(
@@ -488,7 +500,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--end", help="UTC date/time; default: current UTC time")
     parser.add_argument(
         "--probe-only", action="store_true",
-        help="Make one real BTC_USDT 15m historical API request and print diagnostics; do not save a dataset",
+        help="Probe Gate official monthly 5m and 1h archive files for BTC_USDT; do not save a dataset",
     )
     parser.add_argument("--output", type=Path, default=default_output_dir(),
                         help="Output directory (default is outside the Git checkout)")
