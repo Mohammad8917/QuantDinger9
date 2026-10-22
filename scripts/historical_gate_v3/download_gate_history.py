@@ -11,6 +11,7 @@ import argparse
 import csv
 import gzip
 import hashlib
+import io
 import json
 import math
 import os
@@ -22,7 +23,8 @@ from typing import Any
 
 import requests
 
-API_URL = "https://api.gateio.ws/api/v4/futures/usdt/candlesticks"
+ARCHIVE_BASE_URL = "https://download.gatedata.org/futures_usdt"
+ARCHIVE_FIRST_MONTH = "202301"
 CONTRACT_API_URL = "https://api.gateio.ws/api/v4/futures/usdt/contracts"
 STRATEGY_PATH = "docs/strategies/QD_Adaptive_Quant_Portfolio_20_Risk_Controlled_V3.py"
 LOCKED_STRATEGY_BLOB_SHA = "3cd1fbbcf3e57ad5031791b944ce764aad6151b1"
@@ -80,33 +82,39 @@ def verify_locked_strategy(repo_root: Path) -> None:
         )
 
 
-def _parse_row(item: Any) -> dict[str, float | int] | None:
-    if not isinstance(item, dict):
+def _parse_archive_row(values: list[str]) -> dict[str, float | int | None] | None:
+    """Parse Gate official monthly archive row: timestamp,size,close,high,low,open."""
+    if len(values) != 6:
         return None
     try:
-        row: dict[str, float | int] = {
-            "timestamp": int(item["t"]),
-            "open": float(item["o"]),
-            "high": float(item["h"]),
-            "low": float(item["l"]),
-            "close": float(item["c"]),
-            "volume": float(item["v"]),
-            "quote_volume": float(item["sum"]),
+        timestamp_value = float(values[0])
+        if not math.isfinite(timestamp_value) or not timestamp_value.is_integer():
+            return None
+        return {
+            "timestamp": int(timestamp_value),
+            "volume": float(values[1]),
+            "close": float(values[2]),
+            "high": float(values[3]),
+            "low": float(values[4]),
+            "open": float(values[5]),
+            "quote_volume": None,
         }
-    except (KeyError, TypeError, ValueError, OverflowError):
+    except (TypeError, ValueError, OverflowError):
         return None
-    return row
 
 
-def _validate_row(row: dict[str, float | int], interval: int) -> str | None:
+def _validate_row(row: dict[str, float | int | None], interval: int) -> str | None:
     ts = int(row["timestamp"])
-    o, h, low, close, volume, quote_volume = (
+    o, h, low, close, volume = (
         float(row["open"]), float(row["high"]), float(row["low"]),
-        float(row["close"]), float(row["volume"]), float(row["quote_volume"]),
+        float(row["close"]), float(row["volume"]),
     )
+    quote_raw = row.get("quote_volume")
+    quote_volume = None if quote_raw is None else float(quote_raw)
+    values = (o, h, low, close, volume) + (() if quote_volume is None else (quote_volume,))
     if ts % interval:
         return "timestamp_not_aligned"
-    if not all(math.isfinite(value) for value in (o, h, low, close, volume, quote_volume)):
+    if not all(math.isfinite(value) for value in values):
         return "non_finite_value"
     if min(o, h, low, close) <= 0:
         return "non_positive_price"
@@ -116,7 +124,7 @@ def _validate_row(row: dict[str, float | int], interval: int) -> str | None:
         return "invalid_low"
     if volume < 0:
         return "negative_volume"
-    if quote_volume < 0:
+    if quote_volume is not None and quote_volume < 0:
         return "negative_quote_volume"
     return None
 
