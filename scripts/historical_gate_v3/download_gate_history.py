@@ -504,7 +504,7 @@ def _fetch_trade_archive_month_candles(
     wanted: set[int],
     *,
     timeout_seconds: float,
-) -> list[dict[str, float | int | None]]:
+) -> tuple[list[dict[str, float | int | None]], int, float | None, float | None]:
     """Read one Gate monthly futures-trade archive and aggregate wanted buckets."""
     interval = TIMEFRAMES[timeframe]
     url = f"{ARCHIVE_BASE_URL}/trades/{month}/{contract}-{month}.csv.gz"
@@ -646,7 +646,7 @@ def _fetch_trade_archive_month_candles(
         f"trade_timestamp_max={last_trade_timestamp}",
         flush=True,
     )
-    return [
+    month_rows = [
         {
             "timestamp": bucket,
             "open": float(state["open"]),
@@ -658,6 +658,7 @@ def _fetch_trade_archive_month_candles(
         }
         for bucket, state in sorted(states.items())
     ]
+    return month_rows, rows_scanned, first_trade_timestamp, last_trade_timestamp
 
 
 def fetch_missing_trade_archive_candles(
@@ -668,17 +669,18 @@ def fetch_missing_trade_archive_candles(
     *,
     sleep_seconds: float = 0.05,
     timeout_seconds: float = 60.0,
-) -> list[dict[str, float | int | None]]:
-    """Rebuild missing candles from real trades, keeping only requested buckets.
+) -> tuple[list[dict[str, float | int | None]], set[int]]:
+    """Rebuild real candles and verify source-empty buckets conservatively.
 
-    Monthly files are streamed and processed independently. A missing/unavailable
-    month is logged and does not prevent later months from being checked. A bucket
-    with no actual trades produces no candle.
+    A missing bucket is source-accounted only when its official monthly trade file
+    parses successfully, has valid rows before the bucket and at least one full
+    interval after it, and contains no trades in that bucket. This records absence
+    in the official source; it does not fabricate a candle or claim continuous bars.
     """
     if timeframe not in TIMEFRAMES:
         raise ValueError(f"Unsupported trade archive timeframe: {timeframe}")
     if not missing_timestamps:
-        return []
+        return [], set()
 
     missing_by_month: dict[str, list[int]] = {}
     for timestamp in sorted(set(missing_timestamps)):
@@ -686,10 +688,12 @@ def fetch_missing_trade_archive_candles(
         missing_by_month.setdefault(month, []).append(timestamp)
 
     recovered: list[dict[str, float | int | None]] = []
+    verified_source_empty: set[int] = set()
+    interval = TIMEFRAMES[timeframe]
     for month, month_timestamps in sorted(missing_by_month.items()):
         wanted = set(month_timestamps)
         try:
-            month_rows = _fetch_trade_archive_month_candles(
+            month_rows, rows_scanned, first_trade_ts, last_trade_ts = _fetch_trade_archive_month_candles(
                 session, contract, timeframe, month, wanted,
                 timeout_seconds=timeout_seconds,
             )
@@ -702,16 +706,27 @@ def fetch_missing_trade_archive_candles(
             continue
 
         recovered.extend(month_rows)
+        recovered_opens = {int(row["timestamp"]) for row in month_rows}
+        source_empty = {
+            timestamp for timestamp in wanted - recovered_opens
+            if rows_scanned > 0
+            and first_trade_ts is not None
+            and last_trade_ts is not None
+            and first_trade_ts <= timestamp
+            and last_trade_ts >= timestamp + interval
+        }
+        verified_source_empty.update(source_empty)
+        unresolved = len(wanted - recovered_opens - source_empty)
         print(
             f"[trade-repair] {contract} {timeframe} {month}: "
-            f"{len(month_rows)}/{len(wanted)} missing bars reconstructed "
-            "from observed real trades",
+            f"reconstructed={len(month_rows)}/{len(wanted)}, "
+            f"source_empty={len(source_empty)}, unresolved={unresolved}",
             flush=True,
         )
         if sleep_seconds > 0:
             time.sleep(sleep_seconds)
 
-    return sorted(recovered, key=lambda row: int(row["timestamp"]))
+    return sorted(recovered, key=lambda row: int(row["timestamp"])), verified_source_empty
 
 
 def aggregate_10s_to_timeframe(
@@ -886,6 +901,7 @@ def fetch_missing_native_rest_candles(
 def audit_rows(
     rows: list[dict[str, float | int | None]], timeframe: str, *,
     expected_start: int | None = None, expected_end: int | None = None,
+    verified_source_empty_timestamps: set[int] | None = None,
 ) -> dict[str, Any]:
     """Audit OHLCV validity, duplicate timestamps, internal gaps, and range-edge coverage."""
     interval = TIMEFRAMES[timeframe]
@@ -906,17 +922,45 @@ def audit_rows(
         max(0, (b - a) // interval - 1) for a, b in zip(ordered, ordered[1:])
     )
     has_range = expected_start is not None and expected_end is not None and expected_start <= expected_end
+    verified_source_empty_set = verified_source_empty_timestamps or set()
     if has_range:
         expected_bars = ((expected_end - expected_start) // interval) + 1
         in_range = [ts for ts in ordered if expected_start <= ts <= expected_end]
         leading_missing = max(0, (in_range[0] - expected_start) // interval) if in_range else expected_bars
         trailing_missing = max(0, (expected_end - in_range[-1]) // interval) if in_range else expected_bars
         observed_expected = len(in_range)
-        missing_expected = max(0, expected_bars - observed_expected)
+        missing_timestamps = [
+            timestamp for timestamp in range(expected_start, expected_end + 1, interval)
+            if timestamp not in seen
+        ]
+        verified_empty = sorted(
+            timestamp for timestamp in missing_timestamps
+            if timestamp in verified_source_empty_set
+        )
+        unresolved_timestamps = [
+            timestamp for timestamp in missing_timestamps
+            if timestamp not in verified_source_empty_set
+        ]
+        missing_expected = len(missing_timestamps)
+        unresolved_missing = len(unresolved_timestamps)
         coverage_ratio = observed_expected / expected_bars
+        source_coverage_ratio = (observed_expected + len(verified_empty)) / expected_bars
+        effective_expected_bars = expected_bars - len(verified_empty)
+        effective_coverage_ratio = (
+            observed_expected / effective_expected_bars if effective_expected_bars else None
+        )
+        unresolved_gap_count = 0
+        previous_unresolved: int | None = None
+        for timestamp in unresolved_timestamps:
+            if previous_unresolved is None or timestamp - previous_unresolved > interval:
+                unresolved_gap_count += 1
+            previous_unresolved = timestamp
     else:
         expected_bars = leading_missing = trailing_missing = observed_expected = missing_expected = 0
-        coverage_ratio = None
+        unresolved_missing = unresolved_gap_count = effective_expected_bars = 0
+        verified_empty = []
+        unresolved_timestamps = []
+        coverage_ratio = source_coverage_ratio = effective_coverage_ratio = None
 
     out_of_range_timestamps = (
         sum(1 for ts in ordered if not expected_start <= ts <= expected_end)
@@ -927,6 +971,10 @@ def audit_rows(
         and out_of_range_timestamps == 0
         and gap_count == 0 and not invalid and leading_missing == 0 and trailing_missing == 0
     )
+    source_coverage_complete = bool(
+        has_range and expected_bars > 0 and unresolved_missing == 0
+        and out_of_range_timestamps == 0 and not invalid
+    )
     return {
         "bars": len(rows), "unique_timestamps": len(ordered),
         "first_timestamp": ordered[0] if ordered else None,
@@ -934,12 +982,22 @@ def audit_rows(
         "expected_first_timestamp": expected_start if has_range else None,
         "expected_last_timestamp": expected_end if has_range else None,
         "expected_bars": expected_bars, "observed_expected_bars": observed_expected,
-        "missing_expected_bars": missing_expected, "leading_missing_bars": leading_missing,
-        "trailing_missing_bars": trailing_missing, "coverage_ratio": coverage_ratio,
+        "missing_expected_bars": missing_expected,
+        "verified_source_empty_bars": len(verified_empty),
+        "verified_source_empty_timestamps": verified_empty,
+        "unresolved_missing_bars": unresolved_missing,
+        "effective_expected_bars": effective_expected_bars,
+        "coverage_ratio": coverage_ratio,
+        "source_coverage_ratio": source_coverage_ratio,
+        "effective_coverage_ratio": effective_coverage_ratio,
+        "unresolved_gap_count": unresolved_gap_count,
+        "leading_missing_bars": leading_missing,
+        "trailing_missing_bars": trailing_missing,
         "out_of_range_timestamps": out_of_range_timestamps,
         "invalid_rows": invalid, "gap_count": gap_count,
         "internal_missing_bars": internal_missing_bars,
         "complete_contiguous_history": complete,
+        "complete_source_coverage": source_coverage_complete,
     }
 
 
@@ -966,12 +1024,12 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
     output_dir.mkdir(parents=True, exist_ok=True)
     session = requests.Session()
     manifest: dict[str, Any] = {
-        "schema_version": 3,
+        "schema_version": 4,
         "data_source": "Gate official monthly futures 10s/1m/5m/1h candle and trades archives, public REST only inside the recent 10,000-point window, and public contracts REST API for create_time",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
         "archive_intervals_downloaded": ["10s", "1m", "5m", "1h", "trades"],
         "recent_rest_policy": "The primary recent tail uses public REST inside the configured recent window; gap recovery may query historical missing ranges after archive recovery, using from/to only and pages of at most 900 points.",
-        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected.",
+        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. A missing bucket is source-accounted only when the official monthly trade archive parses successfully and valid trade timestamps span the full bucket while no trade falls inside it; no candle is synthesized.",
         "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for the bounded recent tail",
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
@@ -982,7 +1040,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
         "fifteen_minute_policy": "Historical 15m candles are aggregated from observed real 5m archive candles; missing 15m/1h intervals are recovered from observed real 1m candles, then official 10s candles, historical real futures trades, or recent native REST within its allowed window. Empty intervals remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
-        "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m archive candles, then official 10s candle archives, then actual trades in Gate monthly trade archives; use public REST only within its latest 10,000-point window with at most 900 points per request. Empty intervals are not synthesized; any remaining expected gaps make the collection fail.",
+        "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m archive candles, then official 10s candle archives, then actual trades in Gate monthly trade archives; use public REST only within its latest 10,000-point window with at most 900 points per request. Empty intervals are never synthesized. The source audit passes only when every absent bucket is either reconstructed from real source data or verified empty by a successfully parsed official trade archive spanning the entire bucket; complete_contiguous_history remains false for sparse data.",
         "symbols": {},
     }
     failures: list[str] = []
@@ -1053,6 +1111,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     rows, timeframe, requested_first, requested_last,
                 )
                 repaired_rows: list[dict[str, float | int | None]] = []
+                verified_source_empty_timestamps: set[int] = set()
                 missing_by_month: dict[str, list[int]] = {}
                 for timestamp in missing_before_repair:
                     month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
@@ -1119,13 +1178,18 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     if not rest_start <= timestamp <= rest_end
                 ]
                 if historical_missing:
-                    trade_rows = fetch_missing_trade_archive_candles(
+                    trade_rows, source_empty = fetch_missing_trade_archive_candles(
                         session, contract, timeframe, historical_missing,
                     )
                     if trade_rows:
                         repaired_rows.extend(trade_rows)
                         source_parts.append(
                             "Gate official futures trades archive reconstruction"
+                        )
+                    if source_empty:
+                        verified_source_empty_timestamps.update(source_empty)
+                        source_parts.append(
+                            "Gate official trade archive source-empty interval audit"
                         )
 
                 already_observed = {
@@ -1134,6 +1198,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 remaining_missing = [
                     timestamp for timestamp in missing_before_repair
                     if timestamp not in already_observed
+                    and timestamp not in verified_source_empty_timestamps
                 ]
                 if remaining_missing:
                     native_rest_rows = fetch_missing_native_rest_candles(
@@ -1153,14 +1218,15 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 source_label = " + ".join(source_parts) or "no source rows"
                 audit = audit_rows(
                     rows, timeframe, expected_start=requested_first, expected_end=requested_last,
+                    verified_source_empty_timestamps=verified_source_empty_timestamps,
                 )
                 if audit["invalid_rows"]:
                     raise DataError(f"Invalid candle rows: {audit['invalid_rows']}")
-                if not audit["complete_contiguous_history"]:
+                if not audit["complete_source_coverage"]:
                     failures.append(
-                        f"{contract} {timeframe}: incomplete coverage "
-                        f"({audit['missing_expected_bars']} expected bars missing; "
-                        f"{audit['gap_count']} internal gap spans)"
+                        f"{contract} {timeframe}: unresolved source coverage "
+                        f"({audit['unresolved_missing_bars']} unverified expected bars; "
+                        f"{audit['unresolved_gap_count']} unresolved gap spans)"
                     )
                 filename = f"{contract}_{timeframe}.csv.gz"
                 sha256 = write_gzip_csv(output_dir / filename, rows)
@@ -1169,12 +1235,20 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     "contract_create_time": create_time, "quote_volume_available": False,
                     "volume_source": "Gate contract-size volume (archive size / REST v / sum of absolute signed trade sizes for trade-derived candles)",
                     "source": source_label,
-                    "coverage_status": "complete" if audit["complete_contiguous_history"] else "partial",
+                    "coverage_status": (
+                        "complete_contiguous"
+                        if audit["complete_contiguous_history"]
+                        else "source_complete_with_empty_intervals"
+                        if audit["complete_source_coverage"]
+                        else "partial_unverified_gaps"
+                    ),
                 }
                 print(
                     f"[ok] {contract} {timeframe}: {audit['bars']} bars; "
                     f"expected={audit['expected_bars']}; missing={audit['missing_expected_bars']}; "
-                    f"gap_spans={audit['gap_count']}; sha256={sha256}", flush=True,
+                    f"source_empty={audit['verified_source_empty_bars']}; "
+                    f"unresolved={audit['unresolved_missing_bars']}; "
+                    f"contiguous={audit['complete_contiguous_history']}; sha256={sha256}", flush=True,
                 )
             except Exception as exc:
                 failures.append(f"{contract} {timeframe}: {exc}")
@@ -1186,7 +1260,18 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     "complete_contiguous_history": False,
                 }
                 print(f"[error] {contract} {timeframe}: {exc}", file=sys.stderr, flush=True)
+    series_entries = [
+        series for symbol_data in manifest["symbols"].values()
+        for key, series in symbol_data.items()
+        if key in TIMEFRAMES and isinstance(series, dict) and "expected_bars" in series
+        and series.get("expected_bars", 0) > 0
+    ]
     manifest["failures"] = failures
+    manifest["source_coverage_complete"] = not failures
+    manifest["complete_contiguous_history"] = bool(series_entries) and all(
+        series.get("complete_contiguous_history") is True for series in series_entries
+    )
+    manifest["backtest_ready"] = manifest["complete_contiguous_history"] and not failures
     manifest_path = output_dir / "manifest.json"
     manifest_path.write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"

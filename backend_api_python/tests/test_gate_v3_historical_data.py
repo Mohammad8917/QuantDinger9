@@ -99,6 +99,25 @@ def test_audit_marks_exact_expected_coverage_complete() -> None:
     assert audit["missing_expected_bars"] == 0
     assert audit["gap_count"] == 0
     assert audit["complete_contiguous_history"] is True
+    assert audit["complete_source_coverage"] is True
+
+
+def test_audit_accepts_verified_source_empty_buckets_without_claiming_contiguous_history() -> None:
+    start = 1800000000
+    rows = [
+        {"timestamp": start, "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.5, "volume": 1.0, "quote_volume": None},
+        {"timestamp": start + 1800, "open": 100.5, "high": 102.0, "low": 100.0, "close": 101.5, "volume": 2.0, "quote_volume": None},
+    ]
+    audit = MODULE.audit_rows(
+        rows, "15m", expected_start=start, expected_end=start + 2700,
+        verified_source_empty_timestamps={start + 900, start + 2700},
+    )
+    assert audit["missing_expected_bars"] == 2
+    assert audit["verified_source_empty_bars"] == 2
+    assert audit["unresolved_missing_bars"] == 0
+    assert audit["source_coverage_ratio"] == 1.0
+    assert audit["complete_source_coverage"] is True
+    assert audit["complete_contiguous_history"] is False
 
 
 def test_audit_rejects_rows_outside_expected_coverage() -> None:
@@ -543,15 +562,15 @@ def test_missing_native_rest_repair_skips_timestamps_outside_recent_window() -> 
     assert session.calls == 0
 
 
-def test_trade_archive_reconstructs_only_buckets_with_real_trades(capsys: Any) -> None:
+def test_trade_archive_reconstructs_real_candles_and_confirms_spanned_empty_buckets(capsys: Any) -> None:
     import gzip
 
     start = 1735689600
     payload = (
-        f"{start + 2}.1,10,100,2\n"
-        f"{start + 100}.2,11,101,-3\n"
-        f"{start + 200}.3,12,98,1\n"
-        f"{start + 901}.1,13,200,5\n"
+        f"{start + 2.1},10,100,2\n"
+        f"{start + 100.2},11,101,-3\n"
+        f"{start + 200.3},12,98,1\n"
+        f"{start + 2701.1},13,105,-4\n"
     ).encode("utf-8")
     archive_bytes = gzip.compress(payload)
 
@@ -573,8 +592,9 @@ def test_trade_archive_reconstructs_only_buckets_with_real_trades(capsys: Any) -
             return FakeResponse()
 
     session = FakeSession()
-    rows = MODULE.fetch_missing_trade_archive_candles(
-        session, "BTC_USDT", "15m", [start, start + 1800], sleep_seconds=0,
+    rows, source_empty = MODULE.fetch_missing_trade_archive_candles(
+        session, "BTC_USDT", "15m", [start, start + 900, start + 1800],
+        sleep_seconds=0,
     )
     assert rows == [{
         "timestamp": start,
@@ -585,6 +605,7 @@ def test_trade_archive_reconstructs_only_buckets_with_real_trades(capsys: Any) -
         "volume": 6.0,
         "quote_volume": None,
     }]
+    assert source_empty == {start + 900, start + 1800}
     assert len(session.calls) == 1
     assert session.calls[0][0] == (
         f"{MODULE.ARCHIVE_BASE_URL}/trades/202501/BTC_USDT-202501.csv.gz"
@@ -593,10 +614,11 @@ def test_trade_archive_reconstructs_only_buckets_with_real_trades(capsys: Any) -
     output = capsys.readouterr().out
     assert "rows_scanned=4" in output
     assert "matched_trade_rows=3" in output
-    assert "wanted_buckets=2" in output
+    assert "wanted_buckets=3" in output
     assert "recovered_buckets=1" in output
     assert f"trade_timestamp_min={start + 2.1}" in output
-    assert f"trade_timestamp_max={start + 901.1}" in output
+    assert f"trade_timestamp_max={start + 2701.1}" in output
+
 
 
 def test_public_rest_http_400_is_not_retried_and_body_is_reported() -> None:
