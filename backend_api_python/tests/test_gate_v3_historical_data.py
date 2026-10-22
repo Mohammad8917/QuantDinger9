@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = REPO_ROOT / "scripts" / "historical_gate_v3" / "download_gate_history.py"
@@ -542,7 +543,7 @@ def test_missing_native_rest_repair_skips_timestamps_outside_recent_window() -> 
     assert session.calls == 0
 
 
-def test_trade_archive_reconstructs_only_buckets_with_real_trades(capsys: object) -> None:
+def test_trade_archive_reconstructs_only_buckets_with_real_trades(capsys: Any) -> None:
     import gzip
 
     start = 1735689600
