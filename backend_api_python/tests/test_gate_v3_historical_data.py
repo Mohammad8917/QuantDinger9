@@ -210,6 +210,46 @@ def test_parse_public_rest_candle_keeps_quote_volume_unknown() -> None:
     assert MODULE._validate_row(row, 300) is None
 
 
+def test_public_rest_fetch_supports_native_15m_candles() -> None:
+    timestamp = 1800000000
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> object:
+            return [{
+                "t": timestamp, "o": "100", "h": "105", "l": "95",
+                "c": "102", "v": 12.5,
+            }]
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            assert url == "https://api.gateio.ws/api/v4/futures/usdt/candlesticks"
+            params = kwargs.get("params")
+            assert isinstance(params, dict)
+            self.calls.append(params)
+            return FakeResponse()
+
+    session = FakeSession()
+    rows = MODULE.fetch_recent_rest_candles(
+        session, "BTC_USDT", "15m", timestamp, timestamp, sleep_seconds=0,
+    )
+    assert rows == [{
+        "timestamp": timestamp, "open": 100.0, "high": 105.0,
+        "low": 95.0, "close": 102.0, "volume": 12.5, "quote_volume": None,
+    }]
+    assert session.calls == [{
+        "contract": "BTC_USDT", "interval": "15m",
+        "from": timestamp, "to": timestamp,
+    }]
+
+
 def test_current_month_archive_404_uses_public_rest_fallback() -> None:
     from datetime import datetime, timezone
 
