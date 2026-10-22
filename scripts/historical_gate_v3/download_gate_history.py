@@ -2,7 +2,7 @@
 """Download real Gate.io USDT-perpetual OHLCV for the locked QD V3 universe.
 
 This is a DATA ACQUISITION tool only. It does not execute a strategy, simulate
-fills, or submit orders. It never uses private exchange endpoints or API keys.
+fills, or submit orders. It uses Gate's public historical archive and public contract metadata; no API key is required.
 Large data files are written outside the Git checkout by default.
 """
 from __future__ import annotations
@@ -369,7 +369,7 @@ def audit_rows(
     }
 
 
-def write_gzip_csv(path: Path, rows: list[dict[str, float | int]]) -> str:
+def write_gzip_csv(path: Path, rows: list[dict[str, float | int | None]]) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("wb") as raw:
         with gzip.GzipFile(fileobj=raw, mode="wb", mtime=0, compresslevel=6) as zipped:
