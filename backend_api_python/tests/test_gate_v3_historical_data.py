@@ -101,6 +101,8 @@ def test_fetch_candles_preserves_duplicate_timestamps(monkeypatch) -> None:
     rows = MODULE.fetch_candles(FakeSession(), "BTC_USDT", "15m", start, end, sleep_seconds=0)
     assert len(rows) == 2
     assert rows[0]["timestamp"] == rows[1]["timestamp"] == start
+    assert rows[0]["volume"] == 1.0
+    assert rows[0]["quote_volume"] == 1000.0
 
 
 def test_audit_detects_duplicate_timestamps_before_deduplication() -> None:
