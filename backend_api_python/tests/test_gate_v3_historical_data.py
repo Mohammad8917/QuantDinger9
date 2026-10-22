@@ -747,6 +747,49 @@ def test_trade_reconstruction_requires_minimum_overlap_and_exact_ohlcv() -> None
     assert "insufficient overlap" in insufficient["reason"]
 
 
+def test_trade_reconstruction_rejects_missing_official_positive_volume_candle() -> None:
+    start = 1800000000
+    trades = [
+        (start + index * 900 + 1.0, index, 100.0 + index, 2.0)
+        for index in range(MODULE.MIN_TRADE_VALIDATION_OVERLAP)
+    ]
+    reconstructed = MODULE.aggregate_futures_trades_to_15m(trades)
+    official = [dict(row) for row in reconstructed]
+    official.append({
+        "timestamp": start + MODULE.MIN_TRADE_VALIDATION_OVERLAP * 900,
+        "open": 250.0, "high": 251.0, "low": 249.0, "close": 250.5,
+        "volume": 5.0, "quote_volume": None,
+    })
+
+    validation = MODULE.validate_trade_reconstruction(reconstructed, official)
+
+    assert validation["overlap_bars"] == MODULE.MIN_TRADE_VALIDATION_OVERLAP
+    assert validation["valid"] is False
+    assert validation["reason"] == "OHLCV mismatch"
+    assert any("missing_trade_candle" in item["fields"] for item in validation["mismatches"])
+
+
+def test_trade_reconstruction_allows_official_zero_volume_candle_without_trade() -> None:
+    start = 1800000000
+    trades = [
+        (start + index * 900 + 1.0, index, 100.0 + index, 2.0)
+        for index in range(MODULE.MIN_TRADE_VALIDATION_OVERLAP)
+    ]
+    reconstructed = MODULE.aggregate_futures_trades_to_15m(trades)
+    official = [dict(row) for row in reconstructed]
+    official.append({
+        "timestamp": start + MODULE.MIN_TRADE_VALIDATION_OVERLAP * 900,
+        "open": 199.0, "high": 199.0, "low": 199.0, "close": 199.0,
+        "volume": 0.0, "quote_volume": None,
+    })
+
+    validation = MODULE.validate_trade_reconstruction(reconstructed, official)
+
+    assert validation["overlap_bars"] == MODULE.MIN_TRADE_VALIDATION_OVERLAP
+    assert validation["valid"] is True
+    assert validation["reason"] == "OHLCV matches"
+
+
 def test_trade_reconstruction_rejects_any_ohlcv_mismatch() -> None:
     start = 1800000000
     trades = [
