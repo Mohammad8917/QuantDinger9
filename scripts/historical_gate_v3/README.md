@@ -16,7 +16,7 @@ perpetual futures, for 15-minute and 1-hour timeframes.
   changes, collection stops rather than silently testing a different version.
 - Missing historical candles are not synthesized. Internal gaps, duplicate timestamps, invalid OHLCV, and missing leading/trailing bars are audited.
 - The public contract metadata `create_time` is used as the earliest expected-history boundary (rounded up to a candle boundary); this avoids falsely treating pre-listing time as missing history.
-- The manifest records raw expected/observed counts, source-empty intervals, unresolved gaps, and separate source-coverage and contiguous-history flags. A missing bucket is source-accounted only when the official monthly trade archive parses successfully and its valid trade timestamps span the full bucket with no trade inside it. No candles are synthesized. Any absent bucket not reconstructed from real data or supported by that evidence makes collection exit non-zero. A green source audit does not mean the CSV is contiguous: `complete_contiguous_history` and `backtest_ready` remain false when any candle is absent.
+- The manifest records raw expected/observed counts, unresolved gaps, and separate source-coverage and contiguous-history flags. A missing bucket is resolved only when reconstructed from observed real source data. A successfully parsed trade archive with no row inside a bucket is not enough to prove that no trades occurred, because archive completeness is not independently verified here. Such gaps remain unresolved and collection exits non-zero; no candles are synthesized. `complete_contiguous_history` and `backtest_ready` remain false when any expected candle is absent.
 - Files are gzip-compressed CSVs plus a manifest with time coverage, bar counts, gap counts,
   and SHA-256 checksums.
 - `volume` preserves Gate contract-size volume from the selected source: archive `size` or public REST `v`. Neither source used here provides quote-currency turnover, so `quote_volume` is blank and explicitly marked unavailable. The downloader never estimates it or presents it as exact.
@@ -55,7 +55,7 @@ py -3.13 scripts/historical_gate_v3/download_gate_history.py --output "D:\QuantD
 - `manifest.json` (schema version 4) records the requested range, source endpoint, locked strategy fingerprint,
   actual and expected first/last candle, expected/observed bar counts, coverage ratio, missing leading/trailing/internal bars, duplicate/invalid row counts, and file SHA-256.
 
-A non-zero exit code means source coverage remains unresolved or data validation failed. Inspect the manifest's `failures` and per-market entries. `source_coverage_complete` means each expected timestamp has either a real candle or verified source-empty evidence. `complete_contiguous_history` is stricter, and `backtest_ready` remains false if any expected candle is absent.
+A non-zero exit code means source coverage remains unresolved or data validation failed. Inspect the manifest's `failures` and per-market entries. `source_coverage_complete` means every expected timestamp has a real observed or reconstructed candle; unverified absences remain unresolved and make the run fail. `complete_contiguous_history` is stricter, and `backtest_ready` remains false if any expected candle is absent.
 
 ## Important limitation: this is not the backtest
 
