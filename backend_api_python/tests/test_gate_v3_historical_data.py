@@ -320,6 +320,7 @@ def test_archive_fetch_supports_native_15m_files() -> None:
         "timestamp": timestamp, "volume": 12.5, "close": 102.0,
         "high": 105.0, "low": 95.0, "open": 100.0, "quote_volume": None,
     }]
+    assert MODULE._validate_row(rows[0], 900) is None
     assert session.urls == [
         f"{MODULE.ARCHIVE_BASE_URL}/candlesticks_15m/202501/BTC_USDT-202501.csv.gz"
     ]
