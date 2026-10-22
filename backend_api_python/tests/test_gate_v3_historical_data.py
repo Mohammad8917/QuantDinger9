@@ -675,7 +675,7 @@ def test_trade_archive_rejects_rows_outside_requested_month() -> None:
     import pytest
 
     timestamp = MODULE.utc_timestamp("2024-12-31T23:59:59Z")
-    archive_bytes = gzip.compress(f"{timestamp},1,100,1\\n".encode("utf-8"))
+    archive_bytes = gzip.compress(f"{timestamp},1,100,1\n".encode("utf-8"))
 
     class FakeResponse:
         status_code = 200
