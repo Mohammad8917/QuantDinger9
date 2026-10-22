@@ -17,7 +17,7 @@ import math
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -172,73 +172,141 @@ def last_closed_candle_start(end_ts: int, interval: int, now_ts: int | None = No
     return (effective_end // interval) * interval - interval
 
 
-def fetch_candles(
-    session: requests.Session, contract: str, timeframe: str, start_ts: int, end_ts: int,
-    *, sleep_seconds: float = 0.12, timeout_seconds: float = 20.0,
-    max_pages: int | None = None,
-) -> list[dict[str, float | int]]:
-    """Fetch candle rows without deduplicating; the audit must detect duplicates."""
-    interval = TIMEFRAMES[timeframe]
-    last_closed_start = last_closed_candle_start(end_ts, interval)
-    if last_closed_start < start_ts:
-        raise DataError(f"No fully closed candles available for {contract} {timeframe}")
+def _month_starts(start_ts: int, end_ts: int) -> list[datetime]:
+    """Return UTC first-of-month values spanning the inclusive timestamp range."""
+    current = datetime.fromtimestamp(start_ts, timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    end = datetime.fromtimestamp(end_ts, timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    months: list[datetime] = []
+    while current <= end:
+        months.append(current)
+        current = (current.replace(day=28) + timedelta(days=4)).replace(day=1)
+    return months
 
-    cursor = ceil_to_interval(start_ts, interval)
-    rows: list[dict[str, float | int]] = []
-    pages_fetched = 0
-    while cursor <= last_closed_start:
-        window_end = min(cursor + interval * 999, last_closed_start)
-        params = {"contract": contract, "interval": timeframe, "from": cursor, "to": window_end}
-        payload: Any = None
+
+def fetch_archive_candles(
+    session: requests.Session,
+    contract: str,
+    timeframe: str,
+    start_ts: int,
+    end_ts: int,
+    *,
+    sleep_seconds: float = 0.05,
+    timeout_seconds: float = 30.0,
+) -> list[dict[str, float | int | None]]:
+    """Download and parse Gate's official monthly futures candle archive files."""
+    interval_seconds = {"5m": 300, "1h": 3600}.get(timeframe)
+    if interval_seconds is None:
+        raise ValueError(f"Unsupported Gate archive timeframe: {timeframe}")
+    if end_ts < start_ts:
+        raise DataError(f"Invalid archive range for {contract} {timeframe}")
+    first_month = datetime.fromtimestamp(start_ts, timezone.utc).strftime("%Y%m")
+    if first_month < ARCHIVE_FIRST_MONTH:
+        raise DataError(
+            f"Gate's documented public candle archive begins at {ARCHIVE_FIRST_MONTH}; "
+            f"requested first month is {first_month}"
+        )
+
+    rows: list[dict[str, float | int | None]] = []
+    for month_dt in _month_starts(start_ts, end_ts):
+        month = month_dt.strftime("%Y%m")
+        url = f"{ARCHIVE_BASE_URL}/candlesticks_{timeframe}/{month}/{contract}-{month}.csv.gz"
+        response = None
         for attempt in range(5):
             try:
                 response = session.get(
-                    API_URL, params=params, timeout=timeout_seconds,
-                    headers={"User-Agent": USER_AGENT},
+                    url, timeout=timeout_seconds, headers={"User-Agent": USER_AGENT}
                 )
                 if response.status_code in (429, 500, 502, 503, 504):
                     if attempt == 4:
-                        response.raise_for_status()
+                        body = str(getattr(response, "text", ""))[:500]
+                        raise DataError(
+                            f"Gate archive HTTP {response.status_code} for {contract} "
+                            f"{timeframe} {month}: {body or '<empty>'}"
+                        )
                     time.sleep(min(2 ** attempt, 12))
                     continue
                 if response.status_code >= 400:
-                    body = str(getattr(response, "text", ""))[:1000]
+                    body = str(getattr(response, "text", ""))[:500]
                     raise DataError(
-                        f"Gate returned HTTP {response.status_code} for {contract} {timeframe}; "
-                        f"response body: {body or '<empty>'}"
+                        f"Gate archive HTTP {response.status_code} for {contract} "
+                        f"{timeframe} {month}: {body or '<empty>'}"
                     )
-                payload = response.json()
                 break
-            except (requests.RequestException, ValueError) as exc:
+            except requests.RequestException as exc:
                 if attempt == 4:
                     raise DataError(
-                        f"Gate request failed for {contract} {timeframe} at {cursor}: {exc}"
+                        f"Gate archive request failed for {contract} {timeframe} {month}: {exc}"
                     ) from exc
                 time.sleep(min(2 ** attempt, 12))
-        if not isinstance(payload, list):
-            raise DataError(f"Unexpected Gate response for {contract} {timeframe}: expected list")
-        for item in payload:
-            row = _parse_row(item)
-            if row is None:
-                raise DataError(
-                    f"Malformed candle row for {contract} {timeframe} at request window {cursor}"
-                )
-            ts = int(row["timestamp"])
-            if ts < cursor or ts > window_end:
-                continue
-            if ts % interval:
-                raise DataError(f"Unaligned candle timestamp for {contract} {timeframe}: {ts}")
-            rows.append(row)
-        cursor = window_end + interval
-        pages_fetched += 1
-        if max_pages is not None and pages_fetched >= max_pages:
-            break
+        if response is None or response.status_code >= 400:
+            raise DataError(f"Gate archive request failed for {contract} {timeframe} {month}")
+        try:
+            with gzip.GzipFile(fileobj=io.BytesIO(response.content), mode="rb") as zipped:
+                text_stream = io.TextIOWrapper(zipped, encoding="utf-8", newline="")
+                reader = csv.reader(text_stream)
+                for line_number, values in enumerate(reader, start=1):
+                    if not values:
+                        continue
+                    row = _parse_archive_row(values)
+                    if row is None:
+                        raise DataError(
+                            f"Malformed Gate archive row {line_number} for "
+                            f"{contract} {timeframe} {month}: expected six numeric fields"
+                        )
+                    timestamp = int(row["timestamp"])
+                    if timestamp % interval_seconds:
+                        raise DataError(
+                            f"Unaligned timestamp in Gate archive for {contract} "
+                            f"{timeframe} {month}: {timestamp}"
+                        )
+                    if start_ts <= timestamp <= end_ts:
+                        rows.append(row)
+        except (OSError, EOFError, gzip.BadGzipFile, UnicodeError, csv.Error) as exc:
+            raise DataError(
+                f"Could not decode Gate archive for {contract} {timeframe} {month}: {exc}"
+            ) from exc
         if sleep_seconds > 0:
             time.sleep(sleep_seconds)
+
     rows.sort(key=lambda row: int(row["timestamp"]))
     if not rows:
-        raise DataError(f"Gate returned no valid candles for {contract} {timeframe}")
+        raise DataError(
+            f"Gate archive returned no candles for {contract} {timeframe} "
+            f"in {start_ts}..{end_ts}"
+        )
     return rows
+
+
+def aggregate_5m_to_15m(
+    rows: list[dict[str, float | int | None]],
+) -> list[dict[str, float | int | None]]:
+    """Aggregate three contiguous real 5m candles into one 15m candle."""
+    groups: dict[int, list[dict[str, float | int | None]]] = {}
+    for row in rows:
+        timestamp = int(row["timestamp"])
+        if timestamp % 300:
+            raise DataError(f"Cannot aggregate unaligned 5m candle timestamp: {timestamp}")
+        bucket = (timestamp // 900) * 900
+        groups.setdefault(bucket, []).append(row)
+
+    aggregated: list[dict[str, float | int | None]] = []
+    for bucket, group in sorted(groups.items()):
+        group.sort(key=lambda row: int(row["timestamp"]))
+        expected = [bucket, bucket + 300, bucket + 600]
+        if [int(row["timestamp"]) for row in group] != expected:
+            continue
+        aggregated.append({
+            "timestamp": bucket,
+            "open": float(group[0]["open"]),
+            "high": max(float(row["high"]) for row in group),
+            "low": min(float(row["low"]) for row in group),
+            "close": float(group[-1]["close"]),
+            "volume": sum(float(row["volume"]) for row in group),
+            "quote_volume": None,
+        })
+    if not aggregated:
+        raise DataError("No complete groups of three contiguous 5m candles were available for 15m aggregation")
+    return aggregated
 
 
 def audit_rows(
