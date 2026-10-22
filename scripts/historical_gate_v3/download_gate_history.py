@@ -232,7 +232,7 @@ def fetch_recent_rest_candles(
     rows: list[dict[str, float | int | None]] = []
     cursor = start_ts
     while cursor <= end_ts:
-        page_end = min(end_ts, cursor + interval_seconds * 999)
+        page_end = min(end_ts, cursor + interval_seconds * 899)
         response = None
         for attempt in range(5):
             try:
@@ -301,7 +301,7 @@ def fetch_archive_candles(
     timeout_seconds: float = 30.0,
 ) -> list[dict[str, float | int | None]]:
     """Download and parse Gate's official monthly futures candle archive files."""
-    interval_seconds = {"5m": 300, "1h": 3600}.get(timeframe)
+    interval_seconds = {"5m": 300, "15m": 900, "1h": 3600}.get(timeframe)
     if interval_seconds is None:
         raise ValueError(f"Unsupported Gate archive timeframe: {timeframe}")
     if end_ts < start_ts:
@@ -529,7 +529,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "schema_version": 3,
         "data_source": "Gate official monthly futures candle archives plus public REST for the recent 10,000-point tail; public contracts REST API for create_time",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
-        "archive_intervals_downloaded": ["5m", "1h"],
+        "archive_intervals_downloaded": ["15m", "5m", "1h"],
         "recent_rest_policy": "Public REST is used only for the latest aligned window of at most 10,000 points per timeframe; older history comes from official monthly archives.",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected.",
         "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for the bounded recent tail",
@@ -541,7 +541,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
-        "fifteen_minute_policy": "15m history before the recent REST window is aggregated from real 5m archive candles; the recent tail uses native 15m REST candles. Sparse intervals are not synthesized.",
+        "fifteen_minute_policy": "Prefer native 15m monthly archive candles when available and complete; otherwise aggregate only three contiguous real 5m archive candles. The recent tail uses native 15m REST candles; sparse intervals are never synthesized.",
         "symbols": {},
     }
     failures: list[str] = []
@@ -583,10 +583,30 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 recent_rows: list[dict[str, float | int | None]] = []
                 if requested_first <= archive_last:
                     if timeframe == "15m":
-                        source_rows = fetch_archive_candles(
-                            session, contract, "5m", requested_first, archive_last + 600,
-                        )
-                        archive_rows = aggregate_5m_to_15m(source_rows)
+                        try:
+                            native_rows = fetch_archive_candles(
+                                session, contract, "15m", requested_first, archive_last,
+                            )
+                            native_audit = audit_rows(
+                                native_rows, "15m",
+                                expected_start=requested_first, expected_end=archive_last,
+                            )
+                            if not native_audit["complete_contiguous_history"]:
+                                raise DataError(
+                                    "native 15m archive has incomplete expected coverage "
+                                    f"({native_audit['missing_expected_bars']} bars missing)"
+                                )
+                            archive_rows = native_rows
+                        except DataError as native_error:
+                            print(
+                                f"[fallback] {contract} native 15m archive unavailable/incomplete; "
+                                f"trying real 5m archive: {native_error}",
+                                flush=True,
+                            )
+                            source_rows = fetch_archive_candles(
+                                session, contract, "5m", requested_first, archive_last + 600,
+                            )
+                            archive_rows = aggregate_5m_to_15m(source_rows)
                     else:
                         archive_rows = fetch_archive_candles(
                             session, contract, "1h", requested_first, archive_last,
