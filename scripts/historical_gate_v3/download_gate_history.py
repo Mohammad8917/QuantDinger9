@@ -31,7 +31,7 @@ SYMBOLS = (
     "ATOM", "NEAR", "APT", "ARB", "OP", "LTC", "BCH", "DOGE", "UNI", "ETC",
 )
 TIMEFRAMES = {"15m": 900, "1h": 3600}
-FIELDS = ("timestamp", "open", "high", "low", "close", "volume")
+FIELDS = ("timestamp", "open", "high", "low", "close", "volume", "quote_volume")
 USER_AGENT = "QuantDinger9-V3-HistoricalData/1.0 (public-market-data-only)"
 
 
@@ -91,6 +91,7 @@ def _parse_row(item: Any) -> dict[str, float | int] | None:
             "low": float(item["l"]),
             "close": float(item["c"]),
             "volume": float(item["v"]),
+            "quote_volume": float(item["sum"]),
         }
     except (KeyError, TypeError, ValueError, OverflowError):
         return None
@@ -105,7 +106,7 @@ def _validate_row(row: dict[str, float | int], interval: int) -> str | None:
     )
     if ts % interval:
         return "timestamp_not_aligned"
-    if not all(math.isfinite(value) for value in (o, h, low, close, volume)):
+    if not all(math.isfinite(value) for value in (o, h, low, close, volume, quote_volume)):
         return "non_finite_value"
     if min(o, h, low, close) <= 0:
         return "non_positive_price"
@@ -297,7 +298,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
     output_dir.mkdir(parents=True, exist_ok=True)
     session = requests.Session()
     manifest: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "data_source": "Gate.io public USDT perpetual futures REST API",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected.",
         "endpoint": API_URL,
