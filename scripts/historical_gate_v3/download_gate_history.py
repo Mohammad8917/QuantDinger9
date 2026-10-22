@@ -167,6 +167,7 @@ def last_closed_candle_start(end_ts: int, interval: int, now_ts: int | None = No
 def fetch_candles(
     session: requests.Session, contract: str, timeframe: str, start_ts: int, end_ts: int,
     *, sleep_seconds: float = 0.12, timeout_seconds: float = 20.0,
+    max_pages: int | None = None,
 ) -> list[dict[str, float | int]]:
     """Fetch candle rows without deduplicating; the audit must detect duplicates."""
     interval = TIMEFRAMES[timeframe]
@@ -176,6 +177,7 @@ def fetch_candles(
 
     cursor = ceil_to_interval(start_ts, interval)
     rows: list[dict[str, float | int]] = []
+    pages_fetched = 0
     while cursor <= last_closed_start:
         window_end = min(cursor + interval * 999, last_closed_start)
         params = {"contract": contract, "interval": timeframe, "from": cursor, "to": window_end}
@@ -191,7 +193,12 @@ def fetch_candles(
                         response.raise_for_status()
                     time.sleep(min(2 ** attempt, 12))
                     continue
-                response.raise_for_status()
+                if response.status_code >= 400:
+                    body = str(getattr(response, "text", ""))[:1000]
+                    raise DataError(
+                        f"Gate returned HTTP {response.status_code} for {contract} {timeframe}; "
+                        f"response body: {body or '<empty>'}"
+                    )
                 payload = response.json()
                 break
             except (requests.RequestException, ValueError) as exc:
@@ -215,6 +222,9 @@ def fetch_candles(
                 raise DataError(f"Unaligned candle timestamp for {contract} {timeframe}: {ts}")
             rows.append(row)
         cursor = window_end + interval
+        pages_fetched += 1
+        if max_pages is not None and pages_fetched >= max_pages:
+            break
         if sleep_seconds > 0:
             time.sleep(sleep_seconds)
     rows.sort(key=lambda row: int(row["timestamp"]))
@@ -400,6 +410,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--start", help="UTC date/time; default: two years before --end (YYYY-MM-DD)")
     parser.add_argument("--end", help="UTC date/time; default: current UTC time")
+    parser.add_argument(
+        "--probe-only", action="store_true",
+        help="Make one real BTC_USDT 15m historical API request and print diagnostics; do not save a dataset",
+    )
     parser.add_argument("--output", type=Path, default=default_output_dir(),
                         help="Output directory (default is outside the Git checkout)")
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[2],
@@ -407,6 +421,24 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     end_ts = utc_end_timestamp(args.end) if args.end else int(time.time())
     start_ts = utc_timestamp(args.start) if args.start else end_ts - 2 * 365 * 24 * 60 * 60
+    if args.probe_only:
+        try:
+            verify_locked_strategy(args.repo_root.resolve())
+            session = requests.Session()
+            create_time = fetch_contract_create_time(session, "BTC_USDT")
+            probe_start = ceil_to_interval(max(start_ts, create_time), TIMEFRAMES["15m"])
+            rows = fetch_candles(
+                session, "BTC_USDT", "15m", probe_start, end_ts,
+                sleep_seconds=0, max_pages=1,
+            )
+            print(
+                f"PROBE_OK: Gate returned {len(rows)} real BTC_USDT 15m candles "
+                f"from the first historical page; no files or orders were created."
+            )
+            return 0
+        except (DataError, ValueError, OSError) as exc:
+            print(f"PROBE_FAILED: {exc}", file=sys.stderr)
+            return 1
     try:
         manifest = run_download(args.repo_root.resolve(), args.output.expanduser().resolve(), start_ts, end_ts)
     except (DataError, ValueError, OSError) as exc:
