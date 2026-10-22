@@ -153,7 +153,7 @@ def test_parse_gate_archive_row_preserves_real_ohlcv_and_missing_quote_volume() 
     assert MODULE._validate_row(row, 300) is None
 
 
-def test_aggregate_15m_requires_three_contiguous_real_5m_bars() -> None:
+def test_aggregate_15m_uses_available_real_5m_bars_without_fabricating_empty_bars() -> None:
     rows = [
         {"timestamp": 1800000000, "open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0, "volume": 1.0, "quote_volume": None},
         {"timestamp": 1800000300, "open": 101.0, "high": 104.0, "low": 100.0, "close": 103.0, "volume": 2.0, "quote_volume": None},
@@ -162,7 +162,7 @@ def test_aggregate_15m_requires_three_contiguous_real_5m_bars() -> None:
         {"timestamp": 1800001500, "open": 105.0, "high": 107.0, "low": 104.0, "close": 106.0, "volume": 5.0, "quote_volume": None},
     ]
     aggregated = MODULE.aggregate_5m_to_15m(rows)
-    assert len(aggregated) == 1
+    assert len(aggregated) == 2
     assert aggregated[0] == {
         "timestamp": 1800000000,
         "open": 100.0,
@@ -172,7 +172,25 @@ def test_aggregate_15m_requires_three_contiguous_real_5m_bars() -> None:
         "volume": 6.0,
         "quote_volume": None,
     }
+    assert aggregated[1] == {
+        "timestamp": 1800000900,
+        "open": 104.0,
+        "high": 107.0,
+        "low": 103.0,
+        "close": 106.0,
+        "volume": 9.0,
+        "quote_volume": None,
+    }
 
+
+def test_aggregate_15m_rejects_duplicate_5m_timestamps() -> None:
+    row = {"timestamp": 1800000000, "open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0, "volume": 1.0, "quote_volume": None}
+    try:
+        MODULE.aggregate_5m_to_15m([row, dict(row)])
+    except MODULE.DataError as exc:
+        assert "Duplicate 5m candle timestamp" in str(exc)
+    else:
+        raise AssertionError("Duplicate source candles must not be silently aggregated")
 
 def test_archive_month_iteration_spans_year_boundary() -> None:
     start = MODULE.utc_timestamp("2024-12-31")
