@@ -35,7 +35,9 @@ def test_candle_row_validation() -> None:
         "high": 105.0,
         "low": 95.0,
         "close": 102.0,
-        "volume": 12.0,\n        "quote_volume": 12000.0,
+        "volume": 12.0,
+        "quote_volume": 12000.0,
+        "quote_volume": 12000.0,
     }
     # 1800000000 is divisible by 900 and 3600.
     assert MODULE._validate_row(valid, 900) is None
@@ -46,8 +48,8 @@ def test_candle_row_validation() -> None:
 
 def test_gap_audit_does_not_fill_missing_candles() -> None:
     rows = [
-        {"timestamp": 1800000000, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1.0},
-        {"timestamp": 1800001800, "open": 102.0, "high": 106.0, "low": 99.0, "close": 104.0, "volume": 2.0},
+        {"timestamp": 1800000000, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1.0, "quote_volume": 1000.0},
+        {"timestamp": 1800001800, "open": 102.0, "high": 106.0, "low": 99.0, "close": 104.0, "volume": 2.0, "quote_volume": 1000.0},
     ]
     audit = MODULE.audit_rows(rows, "15m")
     assert audit["bars"] == 2
@@ -65,8 +67,8 @@ def test_coverage_bounds_are_candle_aligned() -> None:
 def test_audit_detects_missing_range_edges() -> None:
     start = 1800000000
     rows = [
-        {"timestamp": start + 900, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1.0},
-        {"timestamp": start + 1800, "open": 102.0, "high": 106.0, "low": 99.0, "close": 104.0, "volume": 2.0},
+        {"timestamp": start + 900, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1.0, "quote_volume": 1000.0},
+        {"timestamp": start + 1800, "open": 102.0, "high": 106.0, "low": 99.0, "close": 104.0, "volume": 2.0, "quote_volume": 1000.0},
     ]
     audit = MODULE.audit_rows(rows, "15m", expected_start=start, expected_end=start + 2700)
     assert audit["expected_bars"] == 4
@@ -103,7 +105,7 @@ def test_fetch_candles_preserves_duplicate_timestamps(monkeypatch) -> None:
 
 
 def test_audit_detects_duplicate_timestamps_before_deduplication() -> None:
-    row = {"timestamp": 1800000000, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1.0}
+    row = {"timestamp": 1800000000, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1.0, "quote_volume": 1000.0}
     audit = MODULE.audit_rows([row, dict(row)], "15m", expected_start=1800000000, expected_end=1800000000)
     assert audit["bars"] == 2
     assert audit["unique_timestamps"] == 1
@@ -114,8 +116,8 @@ def test_audit_detects_duplicate_timestamps_before_deduplication() -> None:
 def test_audit_marks_exact_expected_coverage_complete() -> None:
     start = 1800000000
     rows = [
-        {"timestamp": start, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1.0},
-        {"timestamp": start + 900, "open": 102.0, "high": 106.0, "low": 99.0, "close": 104.0, "volume": 2.0},
+        {"timestamp": start, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1.0, "quote_volume": 1000.0},
+        {"timestamp": start + 900, "open": 102.0, "high": 106.0, "low": 99.0, "close": 104.0, "volume": 2.0, "quote_volume": 1000.0},
     ]
     audit = MODULE.audit_rows(rows, "15m", expected_start=start, expected_end=start + 900)
     assert audit["missing_expected_bars"] == 0
@@ -139,7 +141,11 @@ def test_candle_row_rejects_non_finite_values() -> None:
         "high": 105.0,
         "low": 95.0,
         "close": 102.0,
-        "volume": 12.0,\n        "quote_volume": 12000.0,
+        "volume": 12.0,
+        "quote_volume": 12000.0,
+        "quote_volume": 12000.0,
     }
     assert MODULE._validate_row({**valid, "close": float("nan")}, 900) == "non_finite_value"
     assert MODULE._validate_row({**valid, "volume": float("inf")}, 900) == "non_finite_value"
+    assert MODULE._validate_row({**valid, "quote_volume": float("inf")}, 900) == "non_finite_value"
+    assert MODULE._validate_row({**valid, "quote_volume": -1.0}, 900) == "negative_quote_volume"
