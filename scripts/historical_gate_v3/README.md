@@ -48,7 +48,7 @@ py -3.13 scripts/historical_gate_v3/download_gate_history.py --output "D:\QuantD
 ## Output
 
 - `<BASE>_USDT_15m.csv.gz` and `<BASE>_USDT_1h.csv.gz` per contract.
-- `manifest.json` records the requested range, source endpoint, locked strategy fingerprint,
+- `manifest.json` (schema version 2) records the requested range, source endpoint, locked strategy fingerprint,
   actual and expected first/last candle, expected/observed bar counts, coverage ratio, missing leading/trailing/internal bars, duplicate/invalid row counts, and file SHA-256.
 
 A non-zero exit code means collection was incomplete or data validation failed. Inspect the
