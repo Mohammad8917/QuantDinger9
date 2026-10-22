@@ -691,11 +691,10 @@ def fetch_missing_trade_archive_candles(
 
     recovered: list[dict[str, float | int | None]] = []
     verified_source_empty: set[int] = set()
-    interval = TIMEFRAMES[timeframe]
     for month, month_timestamps in sorted(missing_by_month.items()):
         wanted = set(month_timestamps)
         try:
-            month_rows, rows_scanned, first_trade_ts, last_trade_ts = _fetch_trade_archive_month_candles(
+            month_rows, _, _, _ = _fetch_trade_archive_month_candles(
                 session, contract, timeframe, month, wanted,
                 timeout_seconds=timeout_seconds,
             )
@@ -715,7 +714,6 @@ def fetch_missing_trade_archive_candles(
         # manifest/checksum is validated here. Keep all unreconstructed buckets
         # unresolved and fail closed in the final coverage audit.
         source_empty: set[int] = set()
-        verified_source_empty.update(source_empty)
         unresolved = len(wanted - recovered_opens)
         print(
             f"[trade-repair] {contract} {timeframe} {month}: "
