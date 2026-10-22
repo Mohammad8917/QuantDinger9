@@ -906,7 +906,61 @@ def main(argv: list[str] | None = None) -> int:
                             f"ALTERNATE_REST_PROBE_ERROR: contract={contract} source={source_tf} "
                             f"error={alt_error}", flush=True,
                         )
-            print("ARCHIVE_PROBE_COMPLETE: exact historical gaps checked against primary/alternate REST and native 15m archive paths; no dataset or orders were created.")
+            # Gate's official historical-data documentation also lists 10-second
+            # futures candles. Probe those source files for the exact missing 15m windows.
+            for contract, month, target_ts in (
+                ("BTC_USDT", "202504", 1745400600),
+                ("POL_USDT", "202605", 1779882300),
+            ):
+                ten_second_url = (
+                    f"{ARCHIVE_BASE_URL}/candlesticks_10s/{month}/"
+                    f"{contract}-{month}.csv.gz"
+                )
+                try:
+                    ten_second_response = session.get(
+                        ten_second_url, timeout=60,
+                        headers={"User-Agent": USER_AGENT},
+                    )
+                    if ten_second_response.status_code != 200:
+                        print(
+                            f"TEN_SECOND_ARCHIVE_PROBE: contract={contract} month={month} "
+                            f"http={ten_second_response.status_code} "
+                            f"bytes={len(ten_second_response.content)}",
+                            flush=True,
+                        )
+                    else:
+                        count = 0
+                        first_ts = None
+                        last_ts = None
+                        with gzip.GzipFile(
+                            fileobj=io.BytesIO(ten_second_response.content), mode="rb"
+                        ) as zipped:
+                            reader = csv.reader(
+                                io.TextIOWrapper(zipped, encoding="utf-8", newline="")
+                            )
+                            for values in reader:
+                                if not values:
+                                    continue
+                                try:
+                                    candle_ts = int(float(values[0]))
+                                except (ValueError, TypeError, OverflowError):
+                                    continue
+                                if target_ts <= candle_ts < target_ts + 900:
+                                    count += 1
+                                    first_ts = candle_ts if first_ts is None else first_ts
+                                    last_ts = candle_ts
+                        print(
+                            f"TEN_SECOND_ARCHIVE_PROBE: contract={contract} month={month} "
+                            f"http=200 bytes={len(ten_second_response.content)} "
+                            f"target_10s_candles={count} first={first_ts} last={last_ts}",
+                            flush=True,
+                        )
+                except Exception as ten_second_error:
+                    print(
+                        f"TEN_SECOND_ARCHIVE_PROBE_ERROR: contract={contract} month={month} "
+                        f"error={ten_second_error}", flush=True,
+                    )
+            print("ARCHIVE_PROBE_COMPLETE: exact historical gaps checked against primary/alternate REST, native 15m and 10s archives; no dataset or orders were created.")
             return 0
         except (DataError, ValueError, OSError, requests.RequestException) as exc:
             print(f"PROBE_FAILED: {exc}", file=sys.stderr)
