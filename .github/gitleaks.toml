@@ -79,3 +79,24 @@ condition = "AND"
 paths = ['''^README\.md$''']
 regexTarget = "line"
 regexes = ['''\| Monitoring \| API and workers -> .*metrics -> Prometheus.*\|''']
+
+[[allowlists]]
+description = "Public USDT BEP20 contract configuration field name, not a credential"
+condition = "AND"
+paths = ['''^backend_api_python/app/routes/settings\.py$''']
+regexTarget = "line"
+regexes = ['''\x27key\x27:\s*\x27USDT_BEP20_CONTRACT\x27''']
+
+[[allowlists]]
+description = "Public USDT ERC20 contract configuration field name, not a credential"
+condition = "AND"
+paths = ['''^backend_api_python/app/routes/settings\.py$''']
+regexTarget = "line"
+regexes = ['''\x27key\x27:\s*\x27USDT_ERC20_CONTRACT\x27''']
+
+[[allowlists]]
+description = "Public USDC ERC20 contract configuration field name, not a credential"
+condition = "AND"
+paths = ['''^backend_api_python/app/routes/settings\.py$''']
+regexTarget = "line"
+regexes = ['''\x27key\x27:\s*\x27USDC_ERC20_CONTRACT\x27''']
