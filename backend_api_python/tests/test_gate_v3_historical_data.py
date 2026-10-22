@@ -259,9 +259,9 @@ def test_public_rest_fetch_supports_native_15m_candles() -> None:
     }]
 
 
-def test_public_rest_pagination_stays_within_1000_candles() -> None:
+def test_public_rest_pagination_stays_within_900_candles() -> None:
     start = 1800000000
-    end = start + 1000 * 900
+    end = start + 900 * 900
 
     class FakeResponse:
         status_code = 200
@@ -288,9 +288,41 @@ def test_public_rest_pagination_stays_within_1000_candles() -> None:
     )
     assert len(session.calls) == 2
     assert session.calls[0]["from"] == start
-    assert session.calls[0]["to"] == start + 999 * 900
-    assert session.calls[1]["from"] == start + 1000 * 900
+    assert session.calls[0]["to"] == start + 899 * 900
+    assert session.calls[1]["from"] == start + 900 * 900
     assert session.calls[1]["to"] == end
+
+
+def test_archive_fetch_supports_native_15m_files() -> None:
+    import gzip
+
+    timestamp = 1735689600
+    archive_bytes = gzip.compress(b"1735689600,12.5,102,105,95,100\n")
+
+    class FakeResponse:
+        status_code = 200
+        content = archive_bytes
+        text = ""
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.urls: list[str] = []
+
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            self.urls.append(url)
+            return FakeResponse()
+
+    session = FakeSession()
+    rows = MODULE.fetch_archive_candles(
+        session, "BTC_USDT", "15m", timestamp, timestamp, sleep_seconds=0,
+    )
+    assert rows == [{
+        "timestamp": timestamp, "volume": 12.5, "close": 102.0,
+        "high": 105.0, "low": 95.0, "open": 100.0, "quote_volume": None,
+    }]
+    assert session.urls == [
+        f"{MODULE.ARCHIVE_BASE_URL}/candlesticks_15m/202501/BTC_USDT-202501.csv.gz"
+    ]
 
 
 def test_current_month_archive_404_uses_public_rest_fallback() -> None:
