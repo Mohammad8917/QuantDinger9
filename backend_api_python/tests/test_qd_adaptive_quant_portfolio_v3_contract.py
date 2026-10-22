@@ -68,7 +68,7 @@ def strategy_ast(strategy_source: str) -> ast.Module:
 
 
 def _git_blob_sha(content: bytes) -> str:
-    header = f"blob {len(content)}\\0".encode("ascii")
+    header = f"blob {len(content)}\0".encode("ascii")
     return hashlib.sha1(header + content).hexdigest()
 
 
