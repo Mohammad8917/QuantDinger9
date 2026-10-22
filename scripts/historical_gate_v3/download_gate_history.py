@@ -748,6 +748,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                             f"1m archive repair unavailable: {repair_error}",
                             flush=True,
                         )
+                archive_repaired_count = len(repaired_rows)
                 already_observed = {
                     int(row["timestamp"]) for row in rows + repaired_rows
                 }
@@ -765,10 +766,10 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
 
                 if repaired_rows:
                     rows = sorted(rows + repaired_rows, key=lambda row: int(row["timestamp"]))
-                    if repaired_rows and not any(
-                        "Gate 1m archive recovery" in part for part in source_parts
-                    ) and not any("Gate native public REST recovery" in part for part in source_parts):
-                        source_parts.append("Gate 1m archive recovery for missing intervals with observed trades")
+                    if archive_repaired_count:
+                        source_parts.append(
+                            "Gate 1m archive recovery for missing intervals with observed trades"
+                        )
                 source_label = " + ".join(source_parts) or "no source rows"
                 audit = audit_rows(
                     rows, timeframe, expected_start=requested_first, expected_end=requested_last,
