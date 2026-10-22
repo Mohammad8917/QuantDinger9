@@ -277,10 +277,9 @@ def fetch_recent_rest_candles(
         cursor = page_end + interval_seconds
         if sleep_seconds > 0 and cursor <= end_ts:
             time.sleep(sleep_seconds)
-    deduplicated: dict[int, dict[str, float | int | None]] = {}
-    for row in rows:
-        deduplicated[int(row["timestamp"])] = row
-    return [deduplicated[ts] for ts in sorted(deduplicated)]
+    # Preserve duplicate rows so the downstream audit can detect them; never silently repair source data.
+    rows.sort(key=lambda row: int(row["timestamp"]))
+    return rows
 
 
 def fetch_archive_candles(
@@ -415,8 +414,12 @@ def aggregate_5m_to_15m(
     aggregated: list[dict[str, float | int | None]] = []
     for bucket, group in sorted(groups.items()):
         group.sort(key=lambda row: int(row["timestamp"]))
-        expected = [bucket, bucket + 300, bucket + 600]
-        if [int(row["timestamp"]) for row in group] != expected:
+        timestamps = [int(row["timestamp"]) for row in group]
+        if len(set(timestamps)) != len(timestamps):
+            raise DataError(f"Duplicate 5m candle timestamp in 15m bucket {bucket}")
+        # Gate's archive omits some no-trade 5m intervals. Aggregate the real
+        # sub-candles that exist within a 15m bucket; do not fabricate empty bars.
+        if not group:
             continue
         aggregated.append({
             "timestamp": bucket,
