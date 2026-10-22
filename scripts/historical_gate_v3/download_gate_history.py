@@ -390,7 +390,7 @@ def fetch_archive_candles(
                     ) from exc
                 time.sleep(min(2 ** attempt, 12))
         if response is None:
-            # Current-month REST fallback already appended the requested recent rows.
+            # Current-month fallback was either completed above or is unsupported.
             continue
         if response.status_code >= 400:
             raise DataError(f"Gate archive request failed for {contract} {timeframe} {month}")
