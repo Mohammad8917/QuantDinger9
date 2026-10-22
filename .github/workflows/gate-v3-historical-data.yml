@@ -1,11 +1,6 @@
 name: Gate V3 Historical Dataset
 
 on:
-  push:
-    branches: [work/gate-v3-historical-data]
-    paths:
-      - 'scripts/historical_gate_v3/download_gate_history.py'
-      - 'backend_api_python/tests/test_gate_v3_historical_data.py'
   workflow_dispatch:
     inputs:
       start:
@@ -21,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: gate-v3-historical-dataset-${{ github.sha }}
+  group: gate-v3-historical-dataset
   cancel-in-progress: false
 
 jobs:
