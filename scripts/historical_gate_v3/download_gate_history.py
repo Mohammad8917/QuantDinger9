@@ -317,7 +317,7 @@ def fetch_archive_candles(
     timeout_seconds: float = 30.0,
 ) -> list[dict[str, float | int | None]]:
     """Download and parse Gate's official monthly futures candle archive files."""
-    interval_seconds = {"1m": 60, "5m": 300, "1h": 3600}.get(timeframe)
+    interval_seconds = {"10s": 10, "1m": 60, "5m": 300, "1h": 3600}.get(timeframe)
     if interval_seconds is None:
         raise ValueError(f"Unsupported Gate archive timeframe: {timeframe}")
     if end_ts < start_ts:
@@ -695,6 +695,88 @@ def fetch_missing_trade_archive_candles(
     return sorted(recovered, key=lambda row: int(row["timestamp"]))
 
 
+def aggregate_10s_to_timeframe(
+    rows: list[dict[str, float | int | None]], timeframe: str,
+) -> list[dict[str, float | int | None]]:
+    """Aggregate observed official 10s candles into 15m/1h buckets without filling gaps."""
+    interval = TIMEFRAMES.get(timeframe)
+    if interval not in (900, 3600):
+        raise ValueError(f"Unsupported 10s aggregation target: {timeframe}")
+    groups: dict[int, list[dict[str, float | int | None]]] = {}
+    for row in rows:
+        timestamp = int(row["timestamp"])
+        if timestamp % 10:
+            raise DataError(f"Cannot aggregate unaligned 10s candle timestamp: {timestamp}")
+        bucket = (timestamp // interval) * interval
+        groups.setdefault(bucket, []).append(row)
+
+    aggregated: list[dict[str, float | int | None]] = []
+    for bucket, group in sorted(groups.items()):
+        group.sort(key=lambda row: int(row["timestamp"]))
+        timestamps = [int(row["timestamp"]) for row in group]
+        if len(set(timestamps)) != len(timestamps):
+            raise DataError(f"Duplicate 10s candle timestamp in {timeframe} bucket {bucket}")
+        aggregated.append({
+            "timestamp": bucket,
+            "open": float(group[0]["open"]),
+            "high": max(float(row["high"]) for row in group),
+            "low": min(float(row["low"]) for row in group),
+            "close": float(group[-1]["close"]),
+            "volume": sum(float(row["volume"]) for row in group),
+            "quote_volume": None,
+        })
+    return aggregated
+
+
+def fetch_missing_10s_archive_candles(
+    session: requests.Session,
+    contract: str,
+    timeframe: str,
+    missing_timestamps: list[int],
+    *,
+    sleep_seconds: float = 0.05,
+) -> list[dict[str, float | int | None]]:
+    """Recover historical gaps from Gate's official 10s candle archive, without synthesis."""
+    if timeframe not in TIMEFRAMES:
+        raise ValueError(f"Unsupported 10s archive repair timeframe: {timeframe}")
+    if not missing_timestamps:
+        return []
+
+    interval = TIMEFRAMES[timeframe]
+    missing_by_month: dict[str, list[int]] = {}
+    for timestamp in sorted(set(missing_timestamps)):
+        month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
+        missing_by_month.setdefault(month, []).append(timestamp)
+
+    recovered: list[dict[str, float | int | None]] = []
+    for month, month_timestamps in sorted(missing_by_month.items()):
+        wanted = set(month_timestamps)
+        repair_start = month_timestamps[0]
+        repair_end = month_timestamps[-1] + interval - 10
+        try:
+            source_rows = fetch_archive_candles(
+                session, contract, "10s", repair_start, repair_end,
+                sleep_seconds=sleep_seconds,
+            )
+            candidates = aggregate_10s_to_timeframe(source_rows, timeframe)
+            accepted = [row for row in candidates if int(row["timestamp"]) in wanted]
+        except Exception as repair_error:
+            print(
+                f"[10s-repair-warning] {contract} {timeframe} {month}: "
+                f"10s archive recovery unavailable: {repair_error}",
+                flush=True,
+            )
+            continue
+        recovered.extend(accepted)
+        print(
+            f"[10s-repair] {contract} {timeframe} {month}: "
+            f"{len(accepted)}/{len(wanted)} missing bars recovered "
+            "from observed official 10s candles",
+            flush=True,
+        )
+    return sorted(recovered, key=lambda row: int(row["timestamp"]))
+
+
 def missing_expected_timestamps(
     rows: list[dict[str, float | int | None]],
     timeframe: str,
@@ -866,9 +948,9 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
     session = requests.Session()
     manifest: dict[str, Any] = {
         "schema_version": 3,
-        "data_source": "Gate official monthly futures candle and trades archives, public REST for the recent 10,000-point tail/gap repair, and public contracts REST API for create_time",
+        "data_source": "Gate official monthly futures 10s/1m/5m/1h candle and trades archives, public REST only inside the recent 10,000-point window, and public contracts REST API for create_time",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
-        "archive_intervals_downloaded": ["1m", "5m", "1h", "trades"],
+        "archive_intervals_downloaded": ["10s", "1m", "5m", "1h", "trades"],
         "recent_rest_policy": "The primary recent tail uses public REST inside the configured recent window; gap recovery may query historical missing ranges after archive recovery, using from/to only and pages of at most 900 points.",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected.",
         "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for the bounded recent tail",
@@ -880,8 +962,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
-        "fifteen_minute_policy": "Historical 15m candles are aggregated from observed real 5m archive candles; missing 15m/1h intervals are recovered from observed real 1m candles, then historical real futures trades or recent native REST within its allowed window. Empty intervals remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
-        "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m archive candles, then reconstruct historical missing buckets only from actual trades in Gate monthly trade archives; use public REST only within its latest 10,000-point window with at most 900 points per request. Empty intervals are not synthesized; any remaining expected gaps make the collection fail.",
+        "fifteen_minute_policy": "Historical 15m candles are aggregated from observed real 5m archive candles; missing 15m/1h intervals are recovered from observed real 1m candles, then official 10s candles, historical real futures trades, or recent native REST within its allowed window. Empty intervals remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
+        "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m archive candles, then official 10s candle archives, then actual trades in Gate monthly trade archives; use public REST only within its latest 10,000-point window with at most 900 points per request. Empty intervals are not synthesized; any remaining expected gaps make the collection fail.",
         "symbols": {},
     }
     failures: list[str] = []
@@ -999,20 +1081,32 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     if not rest_start <= timestamp <= rest_end
                 ]
                 if historical_missing:
-                    try:
-                        trade_rows = fetch_missing_trade_archive_candles(
-                            session, contract, timeframe, historical_missing,
-                        )
-                        if trade_rows:
-                            repaired_rows.extend(trade_rows)
-                            source_parts.append(
-                                "Gate official futures trades archive reconstruction"
-                            )
-                    except Exception as trade_error:
-                        print(
-                            f"[trade-repair-warning] {contract} {timeframe}: "
-                            f"historical trade archive recovery unavailable: {trade_error}",
-                            flush=True,
+                    ten_second_rows = fetch_missing_10s_archive_candles(
+                        session, contract, timeframe, historical_missing,
+                    )
+                    if ten_second_rows:
+                        repaired_rows.extend(ten_second_rows)
+                        source_parts.append("Gate official 10s candle archive recovery")
+
+                already_observed = {
+                    int(row["timestamp"]) for row in rows + repaired_rows
+                }
+                remaining_missing = [
+                    timestamp for timestamp in missing_before_repair
+                    if timestamp not in already_observed
+                ]
+                historical_missing = [
+                    timestamp for timestamp in remaining_missing
+                    if not rest_start <= timestamp <= rest_end
+                ]
+                if historical_missing:
+                    trade_rows = fetch_missing_trade_archive_candles(
+                        session, contract, timeframe, historical_missing,
+                    )
+                    if trade_rows:
+                        repaired_rows.extend(trade_rows)
+                        source_parts.append(
+                            "Gate official futures trades archive reconstruction"
                         )
 
                 already_observed = {
@@ -1054,7 +1148,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 manifest["symbols"][contract][timeframe] = {
                     **audit, "file": filename, "sha256": sha256, "interval_seconds": interval,
                     "contract_create_time": create_time, "quote_volume_available": False,
-                    "volume_source": "Gate contract-size volume (archive size / REST v)",
+                    "volume_source": "Gate contract-size volume (archive size / REST v / sum of absolute signed trade sizes for trade-derived candles)",
                     "source": source_label,
                     "coverage_status": "complete" if audit["complete_contiguous_history"] else "partial",
                 }

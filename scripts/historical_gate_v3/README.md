@@ -8,9 +8,9 @@ perpetual futures, for 15-minute and 1-hour timeframes.
 
 - Data acquisition only. It does **not** import or execute the strategy.
 - It does **not** simulate fills, calculate PnL, or send orders.
-- Uses Gate's official monthly candle and futures-trade archives for older history, plus public futures candlestick REST only inside its recent 10,000-point window; no API key is required.
+- Uses Gate's official monthly 10s/1m/5m/1h candle and futures-trade archives for older history, plus public futures candlestick REST only inside its recent 10,000-point window; no API key is required.
 - Gate's REST API enforces a recent-history boundary (the endpoint returns `Candlestick too long ago. Maximum 10000 points recently are allowed` for older candles) and a per-query point limit. Requests use `from` and `to` only, with at most 900 points per page, and are sent only inside that recent window. Older gaps must be recovered from official monthly archives, including real futures trades; invalid old REST requests are not used as a repair mechanism.
-- Historical 15m candles are aggregated from observed real 5m archive candles. Older 1h candles come from the 1h archive. Missing buckets are first repaired from observed real 1m candles; older unresolved buckets are reconstructed only from actual futures trades in Gate monthly trade archives, while recent gaps may use REST only inside its allowed window. Empty intervals are not synthesized. The recent 15m/1h tails come directly from REST; the downloader never retries a multi-year range against REST.
+- Historical 15m candles are aggregated from observed real 5m archive candles. Older 1h candles come from the 1h archive. Missing buckets are first repaired from observed real 1m candles, then official 10s candle archives, then actual futures trades in Gate monthly trade archives; recent gaps may use REST only inside its allowed window. Empty intervals are not synthesized. The recent 15m/1h tails come directly from REST; the downloader never retries a multi-year range against REST.
 - Gap repair first uses observed 1m OHLCV. Historical gaps not recovered from 1m candles are reconstructed from actual rows in Gate's monthly futures `trades` archive (timestamp, deal ID, price, signed size); open/close follow chronological trade order and volume sums absolute contract sizes. A bucket with no actual trades remains missing. The recent REST endpoint is used only within its documented/observed recent-history boundary. No interpolation or fabricated empty candles are permitted; remaining gaps fail the final audit.
 - It verifies the locked strategy's Git blob SHA-1 before collecting data. If the strategy
   changes, collection stops rather than silently testing a different version.
@@ -51,7 +51,7 @@ py -3.13 scripts/historical_gate_v3/download_gate_history.py --output "D:\QuantD
 
 ## Output
 
-- `<BASE>_USDT_15m.csv.gz` (observed 5m archive aggregation plus native recent REST tail, with missing buckets recovered only from observed 1m candles) and `<BASE>_USDT_1h.csv.gz` (older 1h archive plus native recent REST tail, with missing buckets recovered only from observed 1m candles) per contract. The `quote_volume` column is blank because the public sources do not provide it and the downloader keeps the schema consistent.
+- `<BASE>_USDT_15m.csv.gz` (observed 5m archive aggregation plus native recent REST tail, with missing buckets recovered from observed 1m/10s archives or actual futures trades) and `<BASE>_USDT_1h.csv.gz` (older 1h archive plus native recent REST tail, with missing buckets recovered from observed 1m/10s archives or actual futures trades) per contract. The `quote_volume` column is blank because the public sources do not provide it and the downloader keeps the schema consistent.
 - `manifest.json` (schema version 3) records the requested range, source endpoint, locked strategy fingerprint,
   actual and expected first/last candle, expected/observed bar counts, coverage ratio, missing leading/trailing/internal bars, duplicate/invalid row counts, and file SHA-256.
 

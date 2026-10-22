@@ -182,6 +182,52 @@ def test_aggregate_15m_rejects_duplicate_5m_timestamps() -> None:
     else:
         raise AssertionError("Duplicate source candles must not be silently aggregated")
 
+def test_aggregate_10s_to_15m_uses_observed_official_candles_without_synthesis() -> None:
+    start = 1735689600
+    rows = [
+        {"timestamp": start, "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.5, "volume": 0.0, "quote_volume": None},
+        {"timestamp": start + 10, "open": 100.5, "high": 102.0, "low": 100.0, "close": 101.5, "volume": 2.0, "quote_volume": None},
+        {"timestamp": start + 20, "open": 101.5, "high": 103.0, "low": 101.0, "close": 102.5, "volume": 3.0, "quote_volume": None},
+    ]
+    aggregated = MODULE.aggregate_10s_to_timeframe(rows, "15m")
+    assert aggregated == [{
+        "timestamp": start, "open": 100.0, "high": 103.0, "low": 99.0,
+        "close": 102.5, "volume": 5.0, "quote_volume": None,
+    }]
+
+
+def test_archive_fetch_supports_official_10s_files() -> None:
+    import gzip
+
+    timestamp = 1735689600
+    archive_bytes = gzip.compress(
+        f"{timestamp},0,100,101,99,100\n".encode("utf-8")
+    )
+
+    class FakeResponse:
+        status_code = 200
+        content = archive_bytes
+        text = ""
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.urls: list[str] = []
+
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            self.urls.append(url)
+            return FakeResponse()
+
+    session = FakeSession()
+    rows = MODULE.fetch_archive_candles(
+        session, "BTC_USDT", "10s", timestamp, timestamp, sleep_seconds=0,
+    )
+    assert rows[0]["timestamp"] == timestamp
+    assert rows[0]["volume"] == 0.0
+    assert session.urls == [
+        f"{MODULE.ARCHIVE_BASE_URL}/candlesticks_10s/202501/BTC_USDT-202501.csv.gz"
+    ]
+
+
 def test_aggregate_1m_to_15m_uses_observed_real_minutes_without_filling_gaps() -> None:
     start = 1800000000
     rows = [
