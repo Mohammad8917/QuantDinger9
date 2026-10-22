@@ -670,12 +670,14 @@ def fetch_missing_trade_archive_candles(
     sleep_seconds: float = 0.05,
     timeout_seconds: float = 60.0,
 ) -> tuple[list[dict[str, float | int | None]], set[int]]:
-    """Rebuild real candles and verify source-empty buckets conservatively.
+    """Rebuild candles only from observed trades; never infer an empty bucket.
 
-    A missing bucket is source-accounted only when its official monthly trade file
-    parses successfully, has valid rows before the bucket and at least one full
-    interval after it, and contains no trades in that bucket. This records absence
-    in the official source; it does not fabricate a candle or claim continuous bars.
+    A successfully parsed trade archive proves that its observed rows can be read,
+    but the public archive has no independently checked per-file completeness
+    manifest here. Therefore absence of a row inside a bucket is not sufficient
+    evidence that no trades occurred. Reconstruct only buckets with observed
+    trades; leave all other missing buckets unresolved rather than synthesizing
+    candles or claiming source coverage.
     """
     if timeframe not in TIMEFRAMES:
         raise ValueError(f"Unsupported trade archive timeframe: {timeframe}")
@@ -707,37 +709,14 @@ def fetch_missing_trade_archive_candles(
 
         recovered.extend(month_rows)
         recovered_opens = {int(row["timestamp"]) for row in month_rows}
-        month_start_dt = datetime.strptime(month, "%Y%m").replace(tzinfo=timezone.utc)
-        if month_start_dt.month == 12:
-            next_month_dt = month_start_dt.replace(
-                year=month_start_dt.year + 1, month=1
-            )
-        else:
-            next_month_dt = month_start_dt.replace(month=month_start_dt.month + 1)
-        month_end_ts = int(next_month_dt.timestamp())
-        source_empty = {
-            timestamp for timestamp in wanted - recovered_opens
-            if rows_scanned > 0
-            and (
-                (
-                    first_trade_ts is not None
-                    and last_trade_ts is not None
-                    and first_trade_ts <= timestamp
-                    and last_trade_ts >= timestamp + interval
-                )
-                # A fully parsed official monthly archive can legitimately end
-                # before the final bucket if no trade occurred in that bucket.
-                # Only apply this exception to the month's final complete bucket;
-                # never create a candle or infer emptiness for an interior gap.
-                or (
-                    last_trade_ts is not None
-                    and last_trade_ts < timestamp
-                    and timestamp + interval == month_end_ts
-                )
-            )
-        }
+        # Do not infer source-empty intervals from the absence of rows in this
+        # archive. A valid gzip/CSV parse and trades on either side do not prove
+        # that the monthly archive is complete; no independent completeness
+        # manifest/checksum is validated here. Keep all unreconstructed buckets
+        # unresolved and fail closed in the final coverage audit.
+        source_empty: set[int] = set()
         verified_source_empty.update(source_empty)
-        unresolved = len(wanted - recovered_opens - source_empty)
+        unresolved = len(wanted - recovered_opens)
         print(
             f"[trade-repair] {contract} {timeframe} {month}: "
             f"reconstructed={len(month_rows)}/{len(wanted)}, "
@@ -1051,7 +1030,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
         "archive_intervals_downloaded": ["10s", "1m", "5m", "1h", "trades"],
         "recent_rest_policy": "The primary recent tail uses public REST inside the configured recent window; gap recovery may query historical missing ranges after archive recovery, using from/to only and pages of at most 900 points.",
-        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. A missing bucket is source-accounted only when the official monthly trade archive parses successfully and valid trade timestamps span the full bucket while no trade falls inside it; no candle is synthesized.",
+        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing buckets are resolved only from observed real source data. Absence from a trade archive is not proof of zero trades because archive completeness is not independently verified; no candle is synthesized.",
         "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for the bounded recent tail",
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
@@ -1062,7 +1041,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
         "fifteen_minute_policy": "Historical 15m candles are aggregated from observed real 5m archive candles; missing 15m/1h intervals are recovered from observed real 1m candles, then official 10s candles, historical real futures trades, or recent native REST within its allowed window. Empty intervals remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
-        "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m archive candles, then official 10s candle archives, then actual trades in Gate monthly trade archives; use public REST only within its latest 10,000-point window with at most 900 points per request. Empty intervals are never synthesized. The source audit passes only when every absent bucket is either reconstructed from real source data or verified empty by a successfully parsed official trade archive spanning the entire bucket; complete_contiguous_history remains false for sparse data.",
+        "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m archive candles, then official 10s candle archives, then actual trades in Gate monthly trade archives; use public REST only within its latest 10,000-point window with at most 900 points per request. No missing interval is classified as source-empty solely because the trade archive has no row for it. Any gap not reconstructed from observed real source data remains unresolved and fails closed; complete_contiguous_history remains false for sparse data.",
         "symbols": {},
     }
     failures: list[str] = []
