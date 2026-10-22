@@ -827,7 +827,86 @@ def main(argv: list[str] | None = None) -> int:
                             f"timestamp={target_ts} source={source_tf} error={probe_error}",
                             flush=True,
                         )
-            print("ARCHIVE_PROBE_COMPLETE: archive samples and two exact historical REST gap windows checked; no dataset or orders were created.")
+            # Test whether Gate exposes a native historical 15m archive and whether
+            # its documented alternative futures API host can serve the same old gaps.
+            for contract, month, target_ts in (
+                ("BTC_USDT", "202504", 1745400600),
+                ("POL_USDT", "202605", 1779882300),
+            ):
+                archive_url = (
+                    f"{ARCHIVE_BASE_URL}/candlesticks_15m/{month}/"
+                    f"{contract}-{month}.csv.gz"
+                )
+                try:
+                    archive_response = session.get(
+                        archive_url, timeout=30, headers={"User-Agent": USER_AGENT}
+                    )
+                    if archive_response.status_code != 200:
+                        print(
+                            f"NATIVE_15M_ARCHIVE_PROBE: contract={contract} month={month} "
+                            f"http={archive_response.status_code} bytes={len(archive_response.content)}",
+                            flush=True,
+                        )
+                    else:
+                        with gzip.GzipFile(
+                            fileobj=io.BytesIO(archive_response.content), mode="rb"
+                        ) as zipped:
+                            archive_rows = list(csv.reader(
+                                io.TextIOWrapper(zipped, encoding="utf-8", newline="")
+                            ))
+                        found = [
+                            row[0] for row in archive_rows
+                            if row and row[0].isdigit() and int(row[0]) == target_ts
+                        ]
+                        print(
+                            f"NATIVE_15M_ARCHIVE_PROBE: contract={contract} month={month} "
+                            f"http=200 rows={len(archive_rows)} target_present={bool(found)}",
+                            flush=True,
+                        )
+                except Exception as archive_error:
+                    print(
+                        f"NATIVE_15M_ARCHIVE_PROBE_ERROR: contract={contract} month={month} "
+                        f"error={archive_error}", flush=True,
+                    )
+                for source_tf, source_start, source_end in (
+                    ("15m", target_ts, target_ts),
+                    ("1m", target_ts, target_ts + 840),
+                ):
+                    try:
+                        alt = session.get(
+                            "https://fx-api.gateio.ws/api/v4/futures/usdt/candlesticks",
+                            params={
+                                "contract": contract, "interval": source_tf,
+                                "from": source_start, "to": source_end,
+                            },
+                            timeout=20,
+                            headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+                        )
+                        try:
+                            body = alt.text[:300]
+                        except Exception:
+                            body = "<body unavailable>"
+                        try:
+                            payload = alt.json() if alt.status_code == 200 else None
+                        except (ValueError, TypeError):
+                            payload = None
+                        timestamps = [
+                            int(item["t"]) for item in payload
+                            if isinstance(payload, list) and isinstance(item, dict)
+                            and str(item.get("t", "")).isdigit()
+                        ] if isinstance(payload, list) else []
+                        print(
+                            f"ALTERNATE_REST_PROBE: contract={contract} source={source_tf} "
+                            f"range={source_start}..{source_end} http={alt.status_code} "
+                            f"timestamps={timestamps} body={body!r}",
+                            flush=True,
+                        )
+                    except Exception as alt_error:
+                        print(
+                            f"ALTERNATE_REST_PROBE_ERROR: contract={contract} source={source_tf} "
+                            f"error={alt_error}", flush=True,
+                        )
+            print("ARCHIVE_PROBE_COMPLETE: exact historical gaps checked against primary/alternate REST and native 15m archive paths; no dataset or orders were created.")
             return 0
         except (DataError, ValueError, OSError, requests.RequestException) as exc:
             print(f"PROBE_FAILED: {exc}", file=sys.stderr)
