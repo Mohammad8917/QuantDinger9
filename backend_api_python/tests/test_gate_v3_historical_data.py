@@ -506,7 +506,7 @@ def test_archive_fetch_supports_1m_files_for_gap_repair() -> None:
     ]
 
 
-def test_current_month_archive_404_uses_public_rest_fallback() -> None:
+def test_current_month_archive_404_rest_fallback_stays_inside_recent_window(monkeypatch: Any) -> None:
     from datetime import datetime, timezone
 
     class FakeResponse:
@@ -536,26 +536,36 @@ def test_current_month_archive_404_uses_public_rest_fallback() -> None:
             return FakeResponse(200, payload=[self.candle])
 
     now_ts = int(MODULE.time.time())
+    monkeypatch.setattr(MODULE.time, "time", lambda: now_ts)
     month_start = int(datetime.fromtimestamp(now_ts, timezone.utc).replace(
         day=1, hour=0, minute=0, second=0, microsecond=0
     ).timestamp())
-    last_closed = MODULE.last_closed_candle_start(now_ts, 3600, now_ts=now_ts)
+    expected_rest_start = MODULE.recent_rest_window_start(60, now_ts=now_ts)
+    last_closed = MODULE.last_closed_candle_start(now_ts, 60, now_ts=now_ts)
     candle = {
         "t": last_closed, "o": "100", "h": "105", "l": "95",
         "c": "102", "v": 12.5,
     }
     session = FakeSession(candle)
     rows = MODULE.fetch_archive_candles(
-        session, "BTC_USDT", "1h", month_start, last_closed, sleep_seconds=0,
+        session, "BTC_USDT", "1m", month_start, last_closed, sleep_seconds=0,
     )
     assert rows == [{
         "timestamp": last_closed, "open": 100.0, "high": 105.0,
         "low": 95.0, "close": 102.0, "volume": 12.5, "quote_volume": None,
     }]
-    assert len(session.calls) == 2
     assert session.calls[0][0].startswith(MODULE.ARCHIVE_BASE_URL)
-    assert session.calls[1][0] == "https://api.gateio.ws/api/v4/futures/usdt/candlesticks"
-
+    rest_calls = [call for call in session.calls if call[0] == "https://api.gateio.ws/api/v4/futures/usdt/candlesticks"]
+    assert rest_calls
+    assert rest_calls[0][1] == {
+        "contract": "BTC_USDT", "interval": "1m",
+        "from": expected_rest_start, "to": min(last_closed, expected_rest_start + 899 * 60),
+    }
+    assert all(
+        (int(params["to"]) - int(params["from"])) // 60 + 1 <= 900
+        for _, params in rest_calls if params is not None
+    )
+    assert all(int(params["from"]) >= expected_rest_start for _, params in rest_calls if params is not None)
 
 
 def test_missing_native_rest_repair_skips_timestamps_outside_recent_window() -> None:
