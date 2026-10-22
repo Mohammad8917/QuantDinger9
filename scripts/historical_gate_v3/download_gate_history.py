@@ -581,6 +581,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 archive_last = min(requested_last, recent_first - interval)
                 archive_rows: list[dict[str, float | int | None]] = []
                 recent_rows: list[dict[str, float | int | None]] = []
+                archive_source_label = ""
                 if requested_first <= archive_last:
                     if timeframe == "15m":
                         try:
@@ -597,6 +598,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                     f"({native_audit['missing_expected_bars']} bars missing)"
                                 )
                             archive_rows = native_rows
+                            archive_source_label = "Gate official monthly 15m archive"
                         except DataError as native_error:
                             print(
                                 f"[fallback] {contract} native 15m archive unavailable/incomplete; "
@@ -607,10 +609,12 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                 session, contract, "5m", requested_first, archive_last + 600,
                             )
                             archive_rows = aggregate_5m_to_15m(source_rows)
+                            archive_source_label = "Gate 5m archive aggregated to 15m"
                     else:
                         archive_rows = fetch_archive_candles(
                             session, contract, "1h", requested_first, archive_last,
                         )
+                        archive_source_label = "Gate official monthly 1h archive"
                 if recent_first <= requested_last:
                     recent_rows = fetch_recent_rest_candles(
                         session, contract, timeframe, recent_first, requested_last,
@@ -621,10 +625,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 )
                 source_parts: list[str] = []
                 if archive_rows:
-                    source_parts.append(
-                        "Gate 5m archive aggregated to 15m"
-                        if timeframe == "15m" else "Gate official monthly 1h archive"
-                    )
+                    source_parts.append(archive_source_label)
                 if recent_rows:
                     source_parts.append("Gate public futures REST recent tail")
                 source_label = " + ".join(source_parts) or "no source rows";
