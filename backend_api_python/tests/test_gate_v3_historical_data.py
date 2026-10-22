@@ -496,7 +496,8 @@ def test_public_rest_pagination_stays_within_900_candles() -> None:
     assert len(session.calls) == 2
     assert session.calls[0]["from"] == start
     assert session.calls[0]["to"] == start + 899 * 900
-    assert session.calls[1]["from"] == start + 900 * 900    assert session.calls[1]["to"] == end
+    assert session.calls[1]["from"] == start + 900 * 900
+    assert session.calls[1]["to"] == end
     assert all(
         (int(call["to"]) - int(call["from"])) // 900 + 1 <= 900
         for call in session.calls
