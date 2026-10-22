@@ -9,8 +9,8 @@ perpetual futures, for 15-minute and 1-hour timeframes.
 - Data acquisition only. It does **not** import or execute the strategy.
 - It does **not** simulate fills, calculate PnL, or send orders.
 - Uses Gate's official monthly historical archives for older candles and the public futures candlestick REST endpoint only for the recent tail; no API key is required.
-- Gate's public REST endpoint rejects history older than its recent 10,000-point window. The downloader uses the archive for older history and native REST candles only inside that recent window, fetching at most 1,000 points per request (below the documented 2,000-point maximum).
-- Older 15m candles are aggregated from real 5m archive candles; the recent 15m tail comes directly from REST. Older 1h candles come from the 1h archive; the recent 1h tail comes from REST. The downloader never retries a multi-year range against the REST endpoint.
+- Gate's public REST endpoint rejects older historical ranges outside its recent 10,000-point window. The downloader uses monthly archives for older history and native REST candles only inside that recent window, fetching at most 900 points per request to stay below the observed request limit.
+- For older 15m history, the downloader first tries native 15m monthly archive files and accepts them only when coverage is complete; if unavailable or incomplete, it falls back to aggregating three contiguous real 5m archive candles. The recent 15m tail comes directly from REST. Older 1h candles come from the 1h archive; the recent 1h tail comes from REST. The downloader never retries a multi-year range against the REST endpoint.
 - Sparse archive intervals are not filled with fabricated candles. The audit reports any remaining gaps and the run fails closed when coverage is incomplete.
 - It verifies the locked strategy's Git blob SHA-1 before collecting data. If the strategy
   changes, collection stops rather than silently testing a different version.
@@ -51,7 +51,7 @@ py -3.13 scripts/historical_gate_v3/download_gate_history.py --output "D:\QuantD
 
 ## Output
 
-- `<BASE>_USDT_15m.csv.gz` (older archive aggregation plus native recent REST tail) and `<BASE>_USDT_1h.csv.gz` (older archive plus recent REST tail) per contract. The `quote_volume` column is blank because the archive does not provide it and the downloader keeps the schema consistent.
+- `<BASE>_USDT_15m.csv.gz` (native 15m archive when complete, otherwise older 5m archive aggregation, plus native recent REST tail) and `<BASE>_USDT_1h.csv.gz` (older archive plus recent REST tail) per contract. The `quote_volume` column is blank because the public sources do not provide it and the downloader keeps the schema consistent.
 - `manifest.json` (schema version 3) records the requested range, source endpoint, locked strategy fingerprint,
   actual and expected first/last candle, expected/observed bar counts, coverage ratio, missing leading/trailing/internal bars, duplicate/invalid row counts, and file SHA-256.
 
