@@ -248,6 +248,79 @@ def test_archive_fetch_supports_official_10s_files() -> None:
     ]
 
 
+def test_native_15m_archive_is_preferred_when_available() -> None:
+    import gzip
+
+    timestamp = 1800000000
+    archive_bytes = gzip.compress(
+        f"{timestamp},12.5,102,105,95,100\\n".encode("utf-8")
+    )
+
+    class FakeResponse:
+        status_code = 200
+        content = archive_bytes
+        text = ""
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.urls: list[str] = []
+
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            self.urls.append(url)
+            return FakeResponse()
+
+    session = FakeSession()
+    rows, source = MODULE.fetch_15m_archive_candles(
+        session, "BTC_USDT", timestamp, timestamp, sleep_seconds=0,
+    )
+    assert source == "Gate official native 15m candle archive"
+    assert [row["timestamp"] for row in rows] == [timestamp]
+    assert session.urls == [
+        f"{MODULE.ARCHIVE_BASE_URL}/candlesticks_15m/202701/BTC_USDT-202701.csv.gz"
+    ]
+
+
+def test_native_15m_archive_404_falls_back_to_complete_real_5m_group() -> None:
+    import gzip
+
+    timestamp = 1800000000
+    five_minute_rows = "".join(
+        f"{timestamp + index * 300},{index + 1},{101 + index},{102 + index},"
+        f"{99 + index},{100 + index}\\n"
+        for index in range(3)
+    )
+    archive_bytes = gzip.compress(five_minute_rows.encode("utf-8"))
+
+    class FakeResponse:
+        def __init__(self, status_code: int, content: bytes = b"") -> None:
+            self.status_code = status_code
+            self.content = content
+            self.text = "not found" if status_code == 404 else ""
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.urls: list[str] = []
+
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            self.urls.append(url)
+            if "candlesticks_15m" in url:
+                return FakeResponse(404)
+            return FakeResponse(200, archive_bytes)
+
+    session = FakeSession()
+    rows, source = MODULE.fetch_15m_archive_candles(
+        session, "BTC_USDT", timestamp, timestamp, sleep_seconds=0,
+    )
+    assert source == "Gate 5m archive aggregated from observed real candles"
+    assert rows == [{
+        "timestamp": timestamp, "open": 100.0, "high": 104.0, "low": 99.0,
+        "close": 103.0, "volume": 6.0, "quote_volume": None,
+    }]
+    assert len(session.urls) == 2
+    assert "candlesticks_15m" in session.urls[0]
+    assert "candlesticks_5m" in session.urls[1]
+
+
 def test_aggregate_1m_to_15m_omits_incomplete_source_buckets() -> None:
     start = 1800000000
     rows = [
