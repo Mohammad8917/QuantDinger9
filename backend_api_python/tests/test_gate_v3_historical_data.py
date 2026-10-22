@@ -164,3 +164,29 @@ def test_candle_row_rejects_non_finite_values() -> None:
     assert MODULE._validate_row({**valid, "volume": float("inf")}, 900) == "non_finite_value"
     assert MODULE._validate_row({**valid, "quote_volume": float("inf")}, 900) == "non_finite_value"
     assert MODULE._validate_row({**valid, "quote_volume": -1.0}, 900) == "negative_quote_volume"
+
+def test_fetch_candles_reports_gate_http_error_body(monkeypatch) -> None:
+    start = 1800000000
+    end = start + 900
+    monkeypatch.setattr(MODULE, "time", type("FakeTime", (), {"time": staticmethod(lambda: end), "sleep": staticmethod(lambda _: None)})())
+
+    class FakeResponse:
+        status_code = 400
+        text = '{"label":"INVALID_PARAM_VALUE","message":"invalid test parameters"}'
+
+        def raise_for_status(self) -> None:
+            raise AssertionError("Non-retryable 400 must be reported without generic raise_for_status")
+
+    class FakeSession:
+        def get(self, *args, **kwargs):
+            return FakeResponse()
+
+    try:
+        MODULE.fetch_candles(FakeSession(), "BTC_USDT", "15m", start, end, sleep_seconds=0)
+    except MODULE.DataError as exc:
+        assert "HTTP 400" in str(exc)
+        assert "INVALID_PARAM_VALUE" in str(exc)
+        assert "invalid test parameters" in str(exc)
+    else:
+        raise AssertionError("HTTP 400 should fail with the response body exposed")
+
