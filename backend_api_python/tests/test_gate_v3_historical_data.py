@@ -51,6 +51,49 @@ def test_gap_audit_does_not_fill_missing_candles() -> None:
     assert len(rows) == 2
 
 
+def test_coverage_bounds_are_candle_aligned() -> None:
+    assert MODULE.ceil_to_interval(1800000001, 900) == 1800000900
+    assert MODULE.ceil_to_interval(1800000000, 900) == 1800000000
+    assert MODULE.last_closed_candle_start(1800003600, 900, now_ts=1800003600) == 1800002700
+
+
+def test_audit_detects_missing_range_edges() -> None:
+    start = 1800000000
+    rows = [
+        {"timestamp": start + 900, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1.0},
+        {"timestamp": start + 1800, "open": 102.0, "high": 106.0, "low": 99.0, "close": 104.0, "volume": 2.0},
+    ]
+    audit = MODULE.audit_rows(rows, "15m", expected_start=start, expected_end=start + 2700)
+    assert audit["expected_bars"] == 4
+    assert audit["observed_expected_bars"] == 2
+    assert audit["missing_expected_bars"] == 2
+    assert audit["leading_missing_bars"] == 1
+    assert audit["trailing_missing_bars"] == 1
+    assert audit["coverage_ratio"] == 0.5
+    assert audit["complete_contiguous_history"] is False
+
+
+def test_audit_detects_duplicate_timestamps_before_deduplication() -> None:
+    row = {"timestamp": 1800000000, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1.0}
+    audit = MODULE.audit_rows([row, dict(row)], "15m", expected_start=1800000000, expected_end=1800000000)
+    assert audit["bars"] == 2
+    assert audit["unique_timestamps"] == 1
+    assert audit["invalid_rows"]["duplicate_timestamp"] == 1
+    assert audit["complete_contiguous_history"] is False
+
+
+def test_audit_marks_exact_expected_coverage_complete() -> None:
+    start = 1800000000
+    rows = [
+        {"timestamp": start, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1.0},
+        {"timestamp": start + 900, "open": 102.0, "high": 106.0, "low": 99.0, "close": 104.0, "volume": 2.0},
+    ]
+    audit = MODULE.audit_rows(rows, "15m", expected_start=start, expected_end=start + 900)
+    assert audit["missing_expected_bars"] == 0
+    assert audit["gap_count"] == 0
+    assert audit["complete_contiguous_history"] is True
+
+
 def test_locked_strategy_fingerprint_is_checked(tmp_path: Path) -> None:
     # An empty checkout must fail closed instead of downloading under an unknown strategy.
     try:
