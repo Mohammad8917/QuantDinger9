@@ -424,19 +424,32 @@ def main(argv: list[str] | None = None) -> int:
     if args.probe_only:
         try:
             verify_locked_strategy(args.repo_root.resolve())
+            import io
+
             session = requests.Session()
-            create_time = fetch_contract_create_time(session, "BTC_USDT")
-            probe_start = ceil_to_interval(max(start_ts, create_time), TIMEFRAMES["15m"])
-            rows = fetch_candles(
-                session, "BTC_USDT", "15m", probe_start, end_ts,
-                sleep_seconds=0, max_pages=1,
-            )
-            print(
-                f"PROBE_OK: Gate returned {len(rows)} real BTC_USDT 15m candles "
-                f"from the first historical page; no files or orders were created."
-            )
+            month = datetime.fromtimestamp(start_ts, timezone.utc).strftime("%Y%m")
+            for timeframe in ("5m", "1h"):
+                url = (
+                    "https://download.gatedata.org/futures_usdt/"
+                    f"candlesticks_{timeframe}/{month}/BTC_USDT-{month}.csv.gz"
+                )
+                response = session.get(url, timeout=30, headers={"User-Agent": USER_AGENT})
+                if response.status_code != 200:
+                    body = str(getattr(response, "text", ""))[:1000]
+                    raise DataError(
+                        f"Gate historical archive probe failed for {timeframe}: "
+                        f"HTTP {response.status_code}; response body: {body or '<empty>'}"
+                    )
+                with gzip.GzipFile(fileobj=io.BytesIO(response.content), mode="rb") as zipped:
+                    sample = zipped.readline().decode("utf-8", errors="replace").strip()
+                print(
+                    f"ARCHIVE_PROBE_OK: {timeframe} month={month} "
+                    f"compressed_bytes={len(response.content)} first_row={sample}",
+                    flush=True,
+                )
+            print("ARCHIVE_PROBE_COMPLETE: only two public archive samples were checked; no dataset or orders were created.")
             return 0
-        except (DataError, ValueError, OSError) as exc:
+        except (DataError, ValueError, OSError, requests.RequestException) as exc:
             print(f"PROBE_FAILED: {exc}", file=sys.stderr)
             return 1
     try:
