@@ -258,8 +258,13 @@ def audit_rows(
         expected_bars = leading_missing = trailing_missing = observed_expected = missing_expected = 0
         coverage_ratio = None
 
+    out_of_range_timestamps = (
+        sum(1 for ts in ordered if not expected_start <= ts <= expected_end)
+        if has_range else 0
+    )
     complete = bool(
         has_range and expected_bars > 0 and observed_expected == expected_bars
+        and out_of_range_timestamps == 0
         and gap_count == 0 and not invalid and leading_missing == 0 and trailing_missing == 0
     )
     return {
@@ -271,6 +276,7 @@ def audit_rows(
         "expected_bars": expected_bars, "observed_expected_bars": observed_expected,
         "missing_expected_bars": missing_expected, "leading_missing_bars": leading_missing,
         "trailing_missing_bars": trailing_missing, "coverage_ratio": coverage_ratio,
+        "out_of_range_timestamps": out_of_range_timestamps,
         "invalid_rows": invalid, "gap_count": gap_count,
         "internal_missing_bars": internal_missing_bars,
         "complete_contiguous_history": complete,
