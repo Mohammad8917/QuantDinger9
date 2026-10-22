@@ -250,6 +250,40 @@ def test_public_rest_fetch_supports_native_15m_candles() -> None:
     }]
 
 
+def test_public_rest_pagination_stays_within_1000_candles() -> None:
+    start = 1800000000
+    end = start + 1000 * 900
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> object:
+            return []
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            params = kwargs.get("params")
+            assert isinstance(params, dict)
+            self.calls.append(params)
+            return FakeResponse()
+
+    session = FakeSession()
+    MODULE.fetch_recent_rest_candles(
+        session, "BTC_USDT", "15m", start, end, sleep_seconds=0,
+    )
+    assert len(session.calls) == 2
+    assert session.calls[0]["from"] == start
+    assert session.calls[0]["to"] == start + 999 * 900
+    assert session.calls[1]["from"] == start + 1000 * 900
+    assert session.calls[1]["to"] == end
+
+
 def test_current_month_archive_404_uses_public_rest_fallback() -> None:
     from datetime import datetime, timezone
 
