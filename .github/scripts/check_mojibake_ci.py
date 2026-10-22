@@ -17,6 +17,7 @@ import check_mojibake as checker  # noqa: E402
 
 checker.SKIP_PATHS = checker.SKIP_PATHS | {
     # These files deliberately contain corruption markers to test detectors.
+    ".github/scripts/check_mojibake_ci.py",
     "QuantDinger-Vue/scripts/encoding-audit.mjs",
     "QuantDinger-Vue/tests/unit/i18nExperience.test.mjs",
     "QuantDinger-Vue/tests/unit/indicatorIdeInteractionRegressions.test.mjs",
