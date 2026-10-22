@@ -35,13 +35,13 @@ def test_candle_row_validation() -> None:
         "high": 105.0,
         "low": 95.0,
         "close": 102.0,
-        "volume": 12.0,
+        "volume": 12.0,\n        "quote_volume": 12000.0,
     }
     # 1800000000 is divisible by 900 and 3600.
     assert MODULE._validate_row(valid, 900) is None
     assert MODULE._validate_row({**valid, "high": 90.0}, 900) == "invalid_high"
     assert MODULE._validate_row({**valid, "close": 0.0}, 900) == "non_positive_price"
-    assert MODULE._validate_row({**valid, "volume": -1.0}, 900) == "negative_volume"
+    assert MODULE._validate_row({**valid, "volume": -1.0, "quote_volume": 12000.0}, 900) == "negative_volume"
 
 
 def test_gap_audit_does_not_fill_missing_candles() -> None:
@@ -82,7 +82,7 @@ def test_fetch_candles_preserves_duplicate_timestamps(monkeypatch) -> None:
     start = 1800000000
     end = start + 1800
     monkeypatch.setattr(MODULE, "time", type("FakeTime", (), {"time": staticmethod(lambda: end), "sleep": staticmethod(lambda _: None)})())
-    item = {"t": start, "o": "100", "h": "105", "l": "95", "c": "102", "v": "1"}
+    item = {"t": start, "o": "100", "h": "105", "l": "95", "c": "102", "v": "1", "sum": "1000"}
 
     class FakeResponse:
         status_code = 200
@@ -139,7 +139,7 @@ def test_candle_row_rejects_non_finite_values() -> None:
         "high": 105.0,
         "low": 95.0,
         "close": 102.0,
-        "volume": 12.0,
+        "volume": 12.0,\n        "quote_volume": 12000.0,
     }
     assert MODULE._validate_row({**valid, "close": float("nan")}, 900) == "non_finite_value"
     assert MODULE._validate_row({**valid, "volume": float("inf")}, 900) == "non_finite_value"
