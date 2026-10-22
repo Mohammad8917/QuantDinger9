@@ -349,17 +349,25 @@ def fetch_archive_candles(
                     time.sleep(min(2 ** attempt, 12))
                     continue
                 if response.status_code == 404 and month == datetime.now(timezone.utc).strftime("%Y%m"):
-                    # Gate publishes monthly archive files after the month closes. For the
-                    # still-open current month only, use the public REST endpoint in bounded
-                    # pages; historical months must exist in the archive or fail closed.
+                    # Monthly archives are not published until the month closes.
+                    # REST fallback is allowed only for intervals supported by the
+                    # public endpoint and only inside its latest 10,000-point window.
+                    if timeframe not in {"1m", "5m", "1h"}:
+                        response = None
+                        break
                     month_start_ts = int(month_dt.timestamp())
-                    fallback_start = max(start_ts, month_start_ts)
                     now_ts = int(time.time())
+                    fallback_start = max(
+                        start_ts,
+                        month_start_ts,
+                        recent_rest_window_start(interval_seconds, now_ts=now_ts),
+                    )
                     fallback_end = min(
                         end_ts,
                         last_closed_candle_start(now_ts, interval_seconds, now_ts=now_ts),
                     )
                     if fallback_start > fallback_end:
+                        response = None
                         break
                     recent_rows = fetch_recent_rest_candles(
                         session, contract, timeframe, fallback_start, fallback_end,
@@ -553,7 +561,12 @@ def fetch_missing_10s_archive_candles(
         missing_by_month.setdefault(month, []).append(timestamp)
 
     recovered: list[dict[str, float | int | None]] = []
+    current_month = datetime.now(timezone.utc).strftime("%Y%m")
     for month, month_timestamps in sorted(missing_by_month.items()):
+        # Gate does not publish a complete 10s archive for the still-open month,
+        # and its public REST candlestick endpoint has no 10s interval.
+        if month == current_month:
+            continue
         wanted = set(month_timestamps)
         repair_start = month_timestamps[0]
         repair_end = month_timestamps[-1] + interval - 10
