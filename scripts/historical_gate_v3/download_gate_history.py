@@ -660,7 +660,7 @@ def fetch_missing_native_rest_candles(
     sleep_seconds: float = 0.05,
     now_ts: int | None = None,
 ) -> list[dict[str, float | int | None]]:
-    """Recover missing candle opens from public REST, including historical gaps outside the recent tail."""
+    """Recover missing candle opens only inside the latest 10,000-point REST window."""
     if not missing_timestamps:
         return []
     if timeframe not in TIMEFRAMES:
@@ -669,9 +669,10 @@ def fetch_missing_native_rest_candles(
     interval = TIMEFRAMES[timeframe]
     effective_now = int(time.time()) if now_ts is None else now_ts
     last_closed = last_closed_candle_start(effective_now, interval, now_ts=effective_now)
+    recent_first = recent_rest_window_start(interval, now_ts=effective_now)
     eligible_timestamps = sorted({
         timestamp for timestamp in missing_timestamps
-        if timestamp <= last_closed and timestamp % interval == 0
+        if recent_first <= timestamp <= last_closed and timestamp % interval == 0
     })
     skipped_count = len(set(missing_timestamps)) - len(eligible_timestamps)
     if skipped_count:
@@ -1011,9 +1012,9 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "data_source": "Gate official monthly futures candle and trade archives, plus public REST candles only inside the recent 10,000-point window and public contracts metadata",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
         "archive_intervals_downloaded": ["15m", "10s", "1m", "5m", "1h", "trades (only months with unresolved 15m gaps)"],
-        "recent_rest_policy": "The recent tail uses public REST; unresolved historical gaps are also checked against public REST using from/to ranges, pages of at most 900 points, and only closed aligned candles.",
+        "recent_rest_policy": "Public REST is used only inside the latest 10,000-point window, paged at no more than 900 points per request; older unresolved 15m gaps use official monthly trades after overlap validation.",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing 15m buckets may be reconstructed from official monthly futures trades only after at least 20 overlapping OHLCV bars match the official candle source. A successfully downloaded and validated trade archive may certify a missing bucket as zero-trade, but no candle is synthesized for it. Other unresolved gaps remain failures.",
-        "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for recent candles and historical gap recovery",
+        "endpoint": "Gate official monthly futures candle/trade archives plus the public futures candlestick REST endpoint limited to its latest 10,000 points",
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
         "start_timestamp_requested": start_ts,
