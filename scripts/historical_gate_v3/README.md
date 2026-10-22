@@ -8,7 +8,9 @@ perpetual futures, for 15-minute and 1-hour timeframes.
 
 - Data acquisition only. It does **not** import or execute the strategy.
 - It does **not** simulate fills, calculate PnL, or send orders.
-- Uses only Gate's public futures candlestick REST endpoint; no API key is required.
+- Uses Gate's official public monthly historical archive for candles and the public contracts REST endpoint for contract creation times; no API key is required.
+- The live candlestick REST endpoint refuses older history beyond its recent 10,000-point window, so it is not used for the two-year dataset.
+- Gate's documented futures archive provides 5m and 1h candles (among other intervals), not 15m. Each 15m candle is aggregated from exactly three contiguous real 5m candles; incomplete groups are omitted and coverage validation catches gaps.
 - It verifies the locked strategy's Git blob SHA-1 before collecting data. If the strategy
   changes, collection stops rather than silently testing a different version.
 - Missing historical candles are not synthesized. Internal gaps, duplicate timestamps, invalid OHLCV, and missing leading/trailing bars are audited.
@@ -16,8 +18,7 @@ perpetual futures, for 15-minute and 1-hour timeframes.
 - The manifest records expected vs observed bar counts, coverage ratio, leading/trailing missing bars, internal gap spans, and duplicate/invalid row counts. Any incomplete coverage makes the collection exit non-zero.
 - Files are gzip-compressed CSVs plus a manifest with time coverage, bar counts, gap counts,
   and SHA-256 checksums.
-- `volume` preserves Gate's contract-size volume (`v`); `quote_volume` preserves quote-currency
-  turnover (`sum`). Do not treat contract count as USDT turnover.
+- `volume` preserves Gate archive contract-size volume (`size`). The archive does not include quote-currency turnover, so `quote_volume` is blank and explicitly marked unavailable. The downloader never estimates it or presents it as exact.
 - Output defaults outside the checkout: Windows `%LOCALAPPDATA%\QuantDinger9\historical\gate_v3`
   or `~/.cache/QuantDinger9/historical/gate_v3` on Unix-like systems. Large datasets are
   not committed to Git.
@@ -49,8 +50,8 @@ py -3.13 scripts/historical_gate_v3/download_gate_history.py --output "D:\QuantD
 
 ## Output
 
-- `<BASE>_USDT_15m.csv.gz` and `<BASE>_USDT_1h.csv.gz` per contract.
-- `manifest.json` (schema version 2) records the requested range, source endpoint, locked strategy fingerprint,
+- `<BASE>_USDT_15m.csv.gz` (aggregated from 5m archive candles) and `<BASE>_USDT_1h.csv.gz` per contract. The `quote_volume` column is blank because Gate's public archive does not provide it.
+- `manifest.json` (schema version 3) records the requested range, source endpoint, locked strategy fingerprint,
   actual and expected first/last candle, expected/observed bar counts, coverage ratio, missing leading/trailing/internal bars, duplicate/invalid row counts, and file SHA-256.
 
 A non-zero exit code means collection was incomplete or data validation failed. Inspect the
