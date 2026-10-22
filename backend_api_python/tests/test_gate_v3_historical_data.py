@@ -59,3 +59,15 @@ def test_locked_strategy_fingerprint_is_checked(tmp_path: Path) -> None:
         assert "not found" in str(exc)
     else:
         raise AssertionError("Missing strategy file should have stopped data collection")
+
+def test_candle_row_rejects_non_finite_values() -> None:
+    valid = {
+        "timestamp": 1800000000,
+        "open": 100.0,
+        "high": 105.0,
+        "low": 95.0,
+        "close": 102.0,
+        "volume": 12.0,
+    }
+    assert MODULE._validate_row({**valid, "close": float("nan")}, 900) == "non_finite_value"
+    assert MODULE._validate_row({**valid, "volume": float("inf")}, 900) == "non_finite_value"
