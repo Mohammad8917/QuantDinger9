@@ -291,6 +291,10 @@ def test_public_rest_pagination_stays_within_900_candles() -> None:
     assert session.calls[0]["to"] == start + 899 * 900
     assert session.calls[1]["from"] == start + 900 * 900
     assert session.calls[1]["to"] == end
+    assert all(
+        (int(call["to"]) - int(call["from"])) // 900 + 1 <= 900
+        for call in session.calls
+    )
 
 
 def test_archive_fetch_supports_native_15m_files() -> None:
