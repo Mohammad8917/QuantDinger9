@@ -12,6 +12,7 @@ import csv
 import gzip
 import hashlib
 import json
+import math
 import os
 import sys
 import time
@@ -96,6 +97,8 @@ def _validate_row(row: dict[str, float | int], interval: int) -> str | None:
     )
     if ts % interval:
         return "timestamp_not_aligned"
+    if not all(math.isfinite(value) for value in (o, h, low, close, volume)):
+        return "non_finite_value"
     if min(o, h, low, close) <= 0:
         return "non_positive_price"
     if h < max(o, low, close):
@@ -130,7 +133,7 @@ def fetch_candles(
     result: dict[int, dict[str, float | int]] = {}
     consecutive_empty = 0
     while cursor <= last_closed_start:
-        window_end = min(cursor + interval * 999, last_closed_start + interval - 1)
+        window_end = min(cursor + interval * 999, last_closed_start)
         # Gate's API accepts either a limit-only query or a from/to range;
         # follow the repository's existing native client and omit limit for ranges.
         params = {
@@ -171,15 +174,16 @@ def fetch_candles(
             if row is None:
                 continue
             ts = int(row["timestamp"])
-            if max(cursor, start_ts) <= ts <= last_closed_start and ts % interval == 0:
+            if max(cursor, start_ts) <= ts <= window_end and ts % interval == 0:
                 result[ts] = row
                 valid_in_window += 1
         if valid_in_window == 0:
             consecutive_empty += 1
         else:
             consecutive_empty = 0
-        # Advance by requested time window, not response order, to avoid stuck loops.
-        cursor = window_end + 1
+        # Advance to the next candle boundary. Adding one second would drift
+        # subsequent windows off the timeframe grid and weaken range filtering.
+        cursor = window_end + interval
         if sleep_seconds > 0:
             time.sleep(sleep_seconds)
         if consecutive_empty >= 3:
