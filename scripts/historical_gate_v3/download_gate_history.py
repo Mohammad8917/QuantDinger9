@@ -215,7 +215,7 @@ def fetch_recent_rest_candles(
     timeout_seconds: float = 30.0,
 ) -> list[dict[str, float | int | None]]:
     """Fetch a bounded recent range from Gate REST in sub-2000-candle pages."""
-    interval_seconds = {"5m": 300, "1h": 3600}.get(timeframe)
+    interval_seconds = {"5m": 300, "15m": 900, "1h": 3600}.get(timeframe)
     if interval_seconds is None:
         raise ValueError(f"Unsupported Gate REST timeframe: {timeframe}")
     if end_ts < start_ts:
@@ -521,7 +521,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "schema_version": 3,
         "data_source": "Gate official public historical USDT-perpetual candle archives; public contracts REST API for create_time",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
-        "archive_intervals_downloaded": ["5m", "1h"],
+        "archive_intervals_downloaded": ["1h"],
         "current_month_policy": "If the current-month archive is not yet published, fetch only that month from public REST in pages of at most 1000 candles; older missing archive months fail closed.",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected.",
         "endpoint": "Gate public monthly archive; current-month fallback https://api.gateio.ws/api/v4/futures/usdt/candlesticks",
@@ -533,7 +533,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
-        "fifteen_minute_policy": "15m candles are aggregated from three contiguous official 5m archive candles; incomplete groups are omitted and then detected by coverage audit.",
+        "fifteen_minute_policy": "15m candles are fetched directly from Gate public futures REST in bounded pages; no synthetic candles are created.",
         "symbols": {},
     }
     failures: list[str] = []
@@ -568,14 +568,30 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 continue
             try:
                 if timeframe == "15m":
-                    source_rows = fetch_archive_candles(
-                        session, contract, "5m", requested_first, requested_last + 600,
+                    # Gate's public REST endpoint supports native 15m candles. The
+                    # monthly 5m archive has substantial historical omissions for
+                    # some contracts, so aggregating it falsely makes valid history
+                    # appear incomplete. Fetch native 15m bars directly instead.
+                    rows = fetch_recent_rest_candles(
+                        session, contract, "15m", requested_first, requested_last,
                     )
-                    rows = aggregate_5m_to_15m(source_rows)
                 else:
                     rows = fetch_archive_candles(
                         session, contract, "1h", requested_first, requested_last,
                     )
+                    archive_audit = audit_rows(
+                        rows, timeframe, expected_start=requested_first, expected_end=requested_last,
+                    )
+                    if not archive_audit["complete_contiguous_history"]:
+                        # Prefer complete official REST history over a partial archive;
+                        # the final audit below still fails closed if REST also has gaps.
+                        print(
+                            f"[fallback] {contract} 1h archive incomplete; retrying full range via public REST",
+                            flush=True,
+                        )
+                        rows = fetch_recent_rest_candles(
+                            session, contract, "1h", requested_first, requested_last,
+                        )
                 audit = audit_rows(
                     rows, timeframe, expected_start=requested_first, expected_end=requested_last,
                 )
@@ -592,7 +608,20 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 manifest["symbols"][contract][timeframe] = {
                     **audit, "file": filename, "sha256": sha256, "interval_seconds": interval,
                     "contract_create_time": create_time, "quote_volume_available": False,
-                    "volume_source": "Gate archive contract-size volume (size)",
+                    "volume_source": (
+                        "Gate public REST contract-size volume (v)"
+                        if timeframe == "15m" or (
+                            timeframe == "1h" and not archive_audit["complete_contiguous_history"]
+                        )
+                        else "Gate archive contract-size volume (size)"
+                    ),
+                    "source": (
+                        "Gate public futures REST candlesticks"
+                        if timeframe == "15m" or (
+                            timeframe == "1h" and not archive_audit["complete_contiguous_history"]
+                        )
+                        else "Gate official monthly futures archive"
+                    ),
                     "coverage_status": "complete" if audit["complete_contiguous_history"] else "partial",
                 }
                 print(
