@@ -264,6 +264,22 @@ def test_aggregate_1m_to_15m_omits_incomplete_source_buckets() -> None:
         if index != 7
     ]
     assert MODULE.aggregate_1m_to_timeframe(rows, "15m") == []
+    complete_rows = [
+        {
+            "timestamp": start + index * 60,
+            "open": 100.0 + index,
+            "high": 101.0 + index,
+            "low": 99.0 + index,
+            "close": 100.5 + index,
+            "volume": 1.0,
+            "quote_volume": None,
+        }
+        for index in range(15)
+    ]
+    assert MODULE.aggregate_1m_to_timeframe(complete_rows, "15m") == [{
+        "timestamp": start, "open": 100.0, "high": 115.0, "low": 99.0,
+        "close": 114.5, "volume": 15.0, "quote_volume": None,
+    }]
 
 
 
@@ -283,6 +299,22 @@ def test_aggregate_1m_to_1h_omits_incomplete_source_buckets() -> None:
         if index != 30
     ]
     assert MODULE.aggregate_1m_to_timeframe(rows, "1h") == []
+    complete_rows = [
+        {
+            "timestamp": start + index * 60,
+            "open": 100.0 + index,
+            "high": 101.0 + index,
+            "low": 99.0 + index,
+            "close": 100.5 + index,
+            "volume": 1.0,
+            "quote_volume": None,
+        }
+        for index in range(60)
+    ]
+    assert MODULE.aggregate_1m_to_timeframe(complete_rows, "1h") == [{
+        "timestamp": start, "open": 100.0, "high": 160.0, "low": 99.0,
+        "close": 159.5, "volume": 60.0, "quote_volume": None,
+    }]
 
 
 
