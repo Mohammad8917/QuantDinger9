@@ -126,6 +126,20 @@ def test_audit_marks_exact_expected_coverage_complete() -> None:
     assert audit["complete_contiguous_history"] is True
 
 
+def test_audit_rejects_rows_outside_expected_coverage() -> None:
+    start = 1800000000
+    rows = [
+        {"timestamp": start - 900, "open": 99.0, "high": 101.0, "low": 98.0, "close": 100.0, "volume": 1.0, "quote_volume": 1000.0},
+        {"timestamp": start, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1.0, "quote_volume": 1000.0},
+        {"timestamp": start + 900, "open": 102.0, "high": 106.0, "low": 99.0, "close": 104.0, "volume": 2.0, "quote_volume": 1000.0},
+        {"timestamp": start + 1800, "open": 104.0, "high": 107.0, "low": 101.0, "close": 105.0, "volume": 2.0, "quote_volume": 1000.0},
+    ]
+    audit = MODULE.audit_rows(rows, "15m", expected_start=start, expected_end=start + 900)
+    assert audit["out_of_range_timestamps"] == 2
+    assert audit["observed_expected_bars"] == 2
+    assert audit["complete_contiguous_history"] is False
+
+
 def test_locked_strategy_fingerprint_is_checked(tmp_path: Path) -> None:
     # An empty checkout must fail closed instead of downloading under an unknown strategy.
     try:
