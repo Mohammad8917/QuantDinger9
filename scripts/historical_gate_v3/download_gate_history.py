@@ -425,9 +425,9 @@ def aggregate_5m_to_15m(
         timestamps = [int(row["timestamp"]) for row in group]
         if len(set(timestamps)) != len(timestamps):
             raise DataError(f"Duplicate 5m candle timestamp in 15m bucket {bucket}")
-        # Gate's archive can omit no-trade 5m intervals. Use only the real
-        # sub-candles present in this 15m bucket; never fabricate missing bars.
-        if not group:
+        expected = [bucket, bucket + 300, bucket + 600]
+        if timestamps != expected:
+            # A 15m OHLC candle is valid only when all three 5m source candles exist.
             continue
         aggregated.append({
             "timestamp": bucket,
@@ -464,9 +464,9 @@ def aggregate_1m_to_timeframe(
         timestamps = [int(row["timestamp"]) for row in group]
         if len(set(timestamps)) != len(timestamps):
             raise DataError(f"Duplicate 1m candle timestamp in {timeframe} bucket {bucket}")
-        # Empty minutes are not synthesized. If at least one real 1m candle
-        # exists in the target interval, its observed candles determine exact OHLCV.
-        if not group:
+        expected = [bucket + index * 60 for index in range(interval // 60)]
+        if timestamps != expected:
+            # Never create a partial 15m/1h OHLC candle from sparse minute data.
             continue
         aggregated.append({
             "timestamp": bucket,
@@ -598,8 +598,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
-        "fifteen_minute_policy": "Historical 15m candles are aggregated from observed real 5m archive candles; the recent tail uses native REST candles. Missing 15m/1h intervals are repaired only when real 1m archive candles exist in that interval. No synthetic candles are created; unresolved gaps fail closed.",
-        "gap_repair_policy": "Repair missing 15m/1h opens only from observed real 1m candles in that interval. Empty intervals are not synthesized; any remaining expected gaps make the collection fail.",
+        "fifteen_minute_policy": "Historical 15m candles require exactly three contiguous real 5m archive candles. Missing 15m/1h intervals are repaired only from exactly 15/60 contiguous real 1m candles; recent tails use native REST. Partial groups are omitted and unresolved gaps fail closed.",
+        "gap_repair_policy": "Repair missing 15m/1h opens only from complete contiguous groups of exactly 15/60 real 1m candles. Partial minute groups are omitted; any remaining expected gaps make the collection fail.",
         "symbols": {},
     }
     failures: list[str] = []
