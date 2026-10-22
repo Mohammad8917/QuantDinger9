@@ -628,7 +628,7 @@ def test_trade_archive_confirms_final_month_bucket_empty_without_synthesizing_ca
     final_bucket = month_end - 900
     trade_timestamp = final_bucket - 30
     archive_bytes = gzip.compress(
-        f"{trade_timestamp},1,100,1\\n".encode("utf-8")
+        f"{trade_timestamp},1,100,1\n".encode("utf-8")
     )
 
     class FakeResponse:
