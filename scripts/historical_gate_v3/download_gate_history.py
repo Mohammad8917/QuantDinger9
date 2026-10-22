@@ -450,7 +450,6 @@ def aggregate_1m_to_timeframe(
     interval = TIMEFRAMES.get(timeframe)
     if interval not in (900, 3600):
         raise ValueError(f"Unsupported 1m aggregation target: {timeframe}")
-    group_size = interval // 60
     groups: dict[int, list[dict[str, float | int | None]]] = {}
     for row in rows:
         timestamp = int(row["timestamp"])
