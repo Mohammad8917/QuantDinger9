@@ -297,8 +297,7 @@ def fetch_recent_rest_candles(
                     f"Unaligned Gate REST candle for {contract} {timeframe}: {timestamp}"
                 )
             if cursor <= timestamp <= page_end and start_ts <= timestamp <= end_ts:
-                rows.append(row)
-        cursor = page_end + interval_seconds
+                rows.append(row)        cursor = page_end + interval_seconds
         if sleep_seconds > 0 and cursor <= end_ts:
             time.sleep(sleep_seconds)
     # Preserve duplicate rows so the downstream audit can detect them; never silently repair source data.
@@ -597,7 +596,6 @@ def fetch_missing_10s_archive_candles(
     for timestamp in sorted(set(missing_timestamps)):
         month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
         missing_by_month.setdefault(month, []).append(timestamp)
-
     recovered: list[dict[str, float | int | None]] = []
     current_month = datetime.now(timezone.utc).strftime("%Y%m")
     for month, month_timestamps in sorted(missing_by_month.items()):
@@ -715,6 +713,170 @@ def fetch_missing_native_rest_candles(
                 flush=True,
             )
     return recovered
+
+
+
+MIN_TRADE_VALIDATION_OVERLAP = 20
+
+
+def parse_futures_trade_row(values: list[str]) -> tuple[float, int, float, float]:
+    """Parse Gate futures trades CSV: timestamp, dealid, price, signed size."""
+    if len(values) != 4:
+        raise DataError(f"Malformed Gate futures trade row: expected 4 fields, got {len(values)}")
+    try:
+        timestamp, deal_id, price, size = float(values[0]), int(values[1]), float(values[2]), float(values[3])
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise DataError(f"Malformed Gate futures trade row: {values!r}") from exc
+    if not all(math.isfinite(value) for value in (timestamp, price, size)):
+        raise DataError(f"Non-finite value in Gate futures trade row: {values!r}")
+    if timestamp < 0 or price <= 0 or size == 0:
+        raise DataError(f"Out-of-range value in Gate futures trade row: {values!r}")
+    return timestamp, deal_id, price, size
+
+
+def fetch_monthly_futures_trades(
+    session: requests.Session,
+    contract: str,
+    month: str,
+    *,
+    timeout_seconds: float = 90.0,
+) -> list[tuple[float, int, float, float]] | None:
+    """Fetch one official Gate futures monthly trade archive; None means archive unavailable."""
+    if len(month) != 6 or not month.isdigit():
+        raise ValueError(f"Invalid UTC month: {month!r}")
+    url = f"{ARCHIVE_BASE_URL}/trades/{month}/{contract}-{month}.csv.gz"
+    response = None
+    for attempt in range(5):
+        try:
+            response = session.get(
+                url, timeout=timeout_seconds, headers={"User-Agent": USER_AGENT}
+            )
+            if response.status_code == 404:
+                return None
+            if response.status_code in (429, 500, 502, 503, 504):
+                if attempt == 4:
+                    raise DataError(
+                        f"Gate trade archive HTTP {response.status_code} for {contract} {month}"
+                    )
+                time.sleep(min(2 ** attempt, 12))
+                continue
+            if response.status_code >= 400:
+                body = str(getattr(response, "text", "") or "")[:500]
+                raise DataError(
+                    f"Gate trade archive HTTP {response.status_code} for {contract} {month}: "
+                    f"{body or '<empty>'}"
+                )
+            break
+        except requests.RequestException as exc:
+            if attempt == 4:
+                raise DataError(
+                    f"Gate trade archive request failed for {contract} {month}: {exc}"
+                ) from exc
+            time.sleep(min(2 ** attempt, 12))
+    if response is None or response.status_code != 200:
+        raise DataError(f"Gate trade archive returned no usable response for {contract} {month}")
+
+    trades: list[tuple[float, int, float, float]] = []
+    try:
+        with gzip.GzipFile(fileobj=io.BytesIO(response.content), mode="rb") as zipped:
+            text_stream = io.TextIOWrapper(zipped, encoding="utf-8", newline="")
+            for line_number, values in enumerate(csv.reader(text_stream), start=1):
+                if not values:
+                    continue
+                try:
+                    trades.append(parse_futures_trade_row(values))
+                except DataError as exc:
+                    raise DataError(
+                        f"Invalid Gate futures trade row {line_number} for {contract} {month}: {exc}"
+                    ) from exc
+    except (OSError, EOFError, gzip.BadGzipFile, UnicodeError, csv.Error) as exc:
+        raise DataError(
+            f"Could not decode Gate futures trades archive for {contract} {month}: {exc}"
+        ) from exc
+    trades.sort(key=lambda item: (item[0], item[1]))
+    return trades
+
+
+def aggregate_futures_trades_to_15m(
+    trades: list[tuple[float, int, float, float]],
+) -> list[dict[str, float | int | None]]:
+    """Build 15m OHLCV from observed trades only; signed contract size becomes absolute volume."""
+    groups: dict[int, list[tuple[float, int, float, float]]] = {}
+    for trade in trades:
+        timestamp, _deal_id, price, size = trade
+        if not all(math.isfinite(value) for value in (timestamp, price, size)):
+            raise DataError("Non-finite trade cannot be aggregated")
+        if timestamp < 0 or price <= 0 or size == 0:
+            raise DataError("Invalid trade cannot be aggregated")
+        bucket = math.floor(timestamp / 900) * 900
+        groups.setdefault(bucket, []).append(trade)
+
+    candles: list[dict[str, float | int | None]] = []
+    for bucket, group in sorted(groups.items()):
+        group.sort(key=lambda item: (item[0], item[1]))
+        prices = [item[2] for item in group]
+        candles.append({
+            "timestamp": bucket,
+            "open": prices[0],
+            "high": max(prices),
+            "low": min(prices),
+            "close": prices[-1],
+            # Gate's trade size is signed (long/short); volume is traded size, not net direction.
+            "volume": sum(abs(item[3]) for item in group),
+            "quote_volume": None,
+        })
+    return candles
+
+
+def validate_trade_reconstruction(
+    reconstructed: list[dict[str, float | int | None]],
+    official_rows: list[dict[str, float | int | None]],
+    *,
+    minimum_overlap: int = MIN_TRADE_VALIDATION_OVERLAP,
+) -> dict[str, Any]:
+    """Require adequate overlap and matching OHLCV before accepting a month's trade reconstruction."""
+    official_by_ts: dict[int, dict[str, float | int | None]] = {}
+    duplicate_official_timestamps = 0
+    for row in official_rows:
+        timestamp = int(row["timestamp"])
+        if timestamp in official_by_ts:
+            duplicate_official_timestamps += 1
+        official_by_ts[timestamp] = row
+    if duplicate_official_timestamps:
+        return {
+            "valid": False, "overlap_bars": 0,
+            "reason": f"duplicate official timestamps: {duplicate_official_timestamps}",
+            "mismatches": [],
+        }
+
+    mismatches: list[dict[str, Any]] = []
+    overlap = 0
+    fields = ("open", "high", "low", "close", "volume")
+    for candidate in reconstructed:
+        timestamp = int(candidate["timestamp"])
+        official = official_by_ts.get(timestamp)
+        if official is None:
+            continue
+        overlap += 1
+        different = {}
+        for field in fields:
+            left, right = float(candidate[field]), float(official[field])
+            if not math.isclose(left, right, rel_tol=1e-6, abs_tol=1e-6):
+                different[field] = {"trades": left, "official": right}
+        if different and len(mismatches) < 5:
+            mismatches.append({"timestamp": timestamp, "fields": different})
+
+    if overlap < minimum_overlap:
+        return {
+            "valid": False, "overlap_bars": overlap,
+            "reason": f"insufficient overlap (need {minimum_overlap})",
+            "mismatches": mismatches,
+        }
+    return {
+        "valid": not mismatches, "overlap_bars": overlap,
+        "reason": "OHLCV matches" if not mismatches else "OHLCV mismatch",
+        "mismatches": mismatches,
+    }
 
 
 def audit_rows(
@@ -845,11 +1007,11 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
     session = requests.Session()
     manifest: dict[str, Any] = {
         "schema_version": 4,
-        "data_source": "Gate official monthly futures 15m/10s/1m/5m/1h candle archives, public REST only inside the recent 10,000-point window, and public contracts REST API for create_time",
+        "data_source": "Gate official monthly futures candle and trade archives, plus public REST candles only inside the recent 10,000-point window and public contracts metadata",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
-        "archive_intervals_downloaded": ["15m", "10s", "1m", "5m", "1h"],
+        "archive_intervals_downloaded": ["15m", "10s", "1m", "5m", "1h", "trades (only months with unresolved 15m gaps)"],
         "recent_rest_policy": "The recent tail uses public REST; unresolved historical gaps are also checked against public REST using from/to ranges, pages of at most 900 points, and only closed aligned candles.",
-        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing buckets are resolved only from native observed candles or complete aggregates of observed lower-timeframe candles. Partial source groups and absent intervals are not treated as zero-trade candles; no candle is synthesized.",
+        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing 15m buckets may be reconstructed from official monthly futures trades only after at least 20 overlapping OHLCV bars match the official candle source. A successfully downloaded and validated trade archive may certify a missing bucket as zero-trade, but no candle is synthesized for it. Other unresolved gaps remain failures.",
         "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for recent candles and historical gap recovery",
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
@@ -897,8 +1059,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 recent_first = max(
                     requested_first, recent_rest_window_start(interval, now_ts=int(time.time()))
                 )
-                archive_last = min(requested_last, recent_first - interval)
-                archive_rows: list[dict[str, float | int | None]] = []
+                archive_last = min(requested_last, recent_first - interval)                archive_rows: list[dict[str, float | int | None]] = []
                 recent_rows: list[dict[str, float | int | None]] = []
                 archive_source_label = ""
                 if requested_first <= archive_last:
@@ -998,6 +1159,64 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                         repaired_rows.extend(native_rest_rows)
                         source_parts.append("Gate native public REST recovery for recent missing intervals")
 
+                verified_trade_empty_timestamps: set[int] = set()
+                if timeframe == "15m" and remaining_missing:
+                    missing_trade_months: dict[str, list[int]] = {}
+                    for timestamp in remaining_missing:
+                        month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
+                        missing_trade_months.setdefault(month, []).append(timestamp)
+                    for month, missing_in_month in sorted(missing_trade_months.items()):
+                        try:
+                            monthly_trades = fetch_monthly_futures_trades(session, contract, month)
+                            if monthly_trades is None:
+                                print(
+                                    f"[trade-repair-skip] {contract} {month}: official trade archive unavailable (HTTP 404)",
+                                    flush=True,
+                                )
+                                continue
+                            trade_candles = aggregate_futures_trades_to_15m(monthly_trades)
+                            month_start = int(datetime.strptime(month, "%Y%m").replace(tzinfo=timezone.utc).timestamp())
+                            next_month_dt = (datetime.fromtimestamp(month_start, timezone.utc).replace(day=28) + timedelta(days=4)).replace(day=1)
+                            next_month = int(next_month_dt.timestamp())
+                            month_official_rows = [
+                                row for row in rows
+                                if month_start <= int(row["timestamp"]) < next_month
+                            ]
+                            validation = validate_trade_reconstruction(trade_candles, month_official_rows)
+                            if not validation["valid"]:
+                                print(
+                                    f"[trade-repair-reject] {contract} {month}: "
+                                    f"overlap={validation['overlap_bars']} reason={validation['reason']} "
+                                    f"details={validation['mismatches']}",
+                                    flush=True,
+                                )
+                                continue
+                            wanted = set(missing_in_month)
+                            trade_timestamps = {int(row["timestamp"]) for row in trade_candles}
+                            accepted = [
+                                row for row in trade_candles
+                                if int(row["timestamp"]) in wanted
+                            ]
+                            repaired_rows.extend(accepted)
+                            verified_empty = wanted - trade_timestamps
+                            verified_trade_empty_timestamps.update(verified_empty)
+                            print(
+                                f"[trade-repair-ok] {contract} {month}: "
+                                f"{len(accepted)}/{len(wanted)} missing candles reconstructed; "
+                                f"{len(verified_empty)} verified zero-trade buckets; "
+                                f"validated_overlap={validation['overlap_bars']}",
+                                flush=True,
+                            )
+                            source_parts.append(
+                                "Gate official monthly futures trades (15m OHLCV overlap-validated)"
+                            )
+                        except Exception as trade_error:
+                            print(
+                                f"[trade-repair-warning] {contract} {month}: "
+                                f"monthly trades recovery unavailable: {trade_error}",
+                                flush=True,
+                            )
+
                 if repaired_rows:
                     rows = sorted(rows + repaired_rows, key=lambda row: int(row["timestamp"]))
                     if archive_repaired_count:
@@ -1007,6 +1226,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 source_label = " + ".join(source_parts) or "no source rows"
                 audit = audit_rows(
                     rows, timeframe, expected_start=requested_first, expected_end=requested_last,
+                    verified_source_empty_timestamps=verified_trade_empty_timestamps,
                 )
                 if audit["invalid_rows"]:
                     raise DataError(f"Invalid candle rows: {audit['invalid_rows']}")
