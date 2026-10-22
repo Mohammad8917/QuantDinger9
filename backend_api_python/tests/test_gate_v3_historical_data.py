@@ -345,6 +345,7 @@ def test_public_rest_pagination_stays_within_900_candles() -> None:
         (int(call["to"]) - int(call["from"])) // 900 + 1 <= 900
         for call in session.calls
     )
+    assert all("limit" not in call for call in session.calls)
 
 
 def test_missing_native_rest_repair_accepts_only_requested_gap_opens() -> None:
@@ -377,7 +378,7 @@ def test_missing_native_rest_repair_accepts_only_requested_gap_opens() -> None:
     session = FakeSession()
     rows = MODULE.fetch_missing_native_rest_candles(
         session, "BTC_USDT", "15m", [start, start + 1800],
-        sleep_seconds=0, now_ts=start + 3600,
+        sleep_seconds=0,
     )
     assert [row["timestamp"] for row in rows] == [start, start + 1800]
     assert all(row["quote_volume"] is None for row in rows)
@@ -472,24 +473,48 @@ def test_current_month_archive_404_uses_public_rest_fallback() -> None:
 
 
 
-def test_missing_native_rest_repair_skips_timestamps_outside_recent_window() -> None:
-    start = 1735689600
+def test_missing_native_rest_repair_uses_valid_bounded_requests_for_old_gaps() -> None:
+    start = 1735689600  # Historical timestamp; intentionally outside the recent tail.
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> object:
+            return [{
+                "t": start, "o": "100", "h": "102", "l": "99",
+                "c": "101", "v": 1,
+            }]
 
     class FakeSession:
         def __init__(self) -> None:
-            self.calls = 0
+            self.calls: list[dict[str, object]] = []
 
-        def get(self, url: str, **kwargs: object) -> object:
-            self.calls += 1
-            raise AssertionError("Old historical gaps must not be sent to recent REST")
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            assert url == "https://api.gateio.ws/api/v4/futures/usdt/candlesticks"
+            params = kwargs.get("params")
+            assert isinstance(params, dict)
+            self.calls.append(params)
+            return FakeResponse()
 
     session = FakeSession()
     rows = MODULE.fetch_missing_native_rest_candles(
         session, "BTC_USDT", "15m", [start],
-        sleep_seconds=0, now_ts=start + 20000 * 900,
+        sleep_seconds=0,
     )
-    assert rows == []
-    assert session.calls == 0
+
+    assert [row["timestamp"] for row in rows] == [start]
+    assert len(session.calls) == 1
+    params = session.calls[0]
+    assert params == {
+        "contract": "BTC_USDT", "interval": "15m",
+        "from": start, "to": start,
+    }
+    assert "limit" not in params
+    assert (int(params["to"]) - int(params["from"])) // 900 + 1 <= 900
 
 
 def test_public_rest_http_400_is_not_retried_and_body_is_reported() -> None:

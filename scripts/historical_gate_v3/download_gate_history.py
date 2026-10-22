@@ -222,7 +222,7 @@ def fetch_recent_rest_candles(
     sleep_seconds: float = 0.05,
     timeout_seconds: float = 30.0,
 ) -> list[dict[str, float | int | None]]:
-    """Fetch a bounded recent range from Gate REST in sub-2000-candle pages."""
+    """Fetch a bounded time range from Gate REST in pages of at most 900 candles."""
     interval_seconds = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600}.get(timeframe)
     if interval_seconds is None:
         raise ValueError(f"Unsupported Gate REST timeframe: {timeframe}")
@@ -523,30 +523,18 @@ def fetch_missing_native_rest_candles(
     missing_timestamps: list[int],
     *,
     sleep_seconds: float = 0.05,
-    now_ts: int | None = None,
 ) -> list[dict[str, float | int | None]]:
-    """Recover missing opens only inside Gate REST's configured recent-data window."""
+    """Recover missing candle opens through paginated public REST, regardless of age."""
     if not missing_timestamps:
         return []
     if timeframe not in TIMEFRAMES:
         raise ValueError(f"Unsupported native REST repair timeframe: {timeframe}")
 
-    interval = TIMEFRAMES[timeframe]
-    effective_now = int(time.time()) if now_ts is None else now_ts
-    rest_start = recent_rest_window_start(interval, now_ts=effective_now)
-    rest_end = last_closed_candle_start(effective_now, interval, now_ts=effective_now)
-    eligible_timestamps = sorted({
-        timestamp for timestamp in missing_timestamps
-        if rest_start <= timestamp <= rest_end
-    })
-    skipped_count = len(set(missing_timestamps)) - len(eligible_timestamps)
-    if skipped_count:
-        print(
-            f"[rest-repair-skip] {contract} {timeframe}: skipped {skipped_count} "
-            f"missing timestamps outside the bounded recent REST window "
-            f"({rest_start}..{rest_end}); older gaps require archive-backed evidence",
-            flush=True,
-        )
+    # Gate's documented constraint is per-request point count, not a documented
+    # recent-only history window. The REST helper uses from/to without limit and
+    # pages each range into at most 900 points. Do not silently skip old gaps
+    # based on an assumed 10,000-point total-history restriction.
+    eligible_timestamps = sorted(set(missing_timestamps))
     if not eligible_timestamps:
         return []
 
@@ -670,7 +658,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "data_source": "Gate official monthly futures candle archives plus public REST for the recent 10,000-point tail; public contracts REST API for create_time",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
         "archive_intervals_downloaded": ["1m", "5m", "1h"],
-        "recent_rest_policy": "Public REST is used only for the latest aligned window of at most 10,000 points per timeframe; older history comes from official monthly archives.",
+        "recent_rest_policy": "The primary recent tail uses public REST inside the configured recent window; gap recovery may query historical missing ranges after archive recovery, using from/to only and pages of at most 900 points.",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected.",
         "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for the bounded recent tail",
         "strategy_path": STRATEGY_PATH,
@@ -682,7 +670,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
         "fifteen_minute_policy": "Historical 15m candles are aggregated from observed real 5m archive candles; missing 15m/1h intervals are recovered from observed real 1m candles within that interval. Empty intervals remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
-        "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m archive candles, then native public REST candles. Empty intervals are not synthesized; any remaining expected gaps make the collection fail.",
+        "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m archive candles, then public REST using valid from/to ranges paginated to at most 900 points per request. Empty intervals are not synthesized; any remaining expected gaps make the collection fail.",
         "symbols": {},
     }
     failures: list[str] = []
