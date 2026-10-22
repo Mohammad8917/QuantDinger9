@@ -496,6 +496,149 @@ def aggregate_1m_to_timeframe(
     return aggregated
 
 
+def _fetch_trade_archive_month_candles(
+    session: requests.Session,
+    contract: str,
+    timeframe: str,
+    month: str,
+    wanted: set[int],
+    *,
+    sleep_seconds: float,
+    timeout_seconds: float,
+) -> list[dict[str, float | int | None]]:
+    """Read one Gate monthly futures-trade archive and aggregate wanted buckets."""
+    interval = TIMEFRAMES[timeframe]
+    url = f"{ARCHIVE_BASE_URL}/trades/{month}/{contract}-{month}.csv.gz"
+    response = None
+    for attempt in range(5):
+        try:
+            response = session.get(
+                url, timeout=timeout_seconds, stream=True,
+                headers={"User-Agent": USER_AGENT},
+            )
+            status = int(response.status_code)
+            if status in (429, 500, 502, 503, 504):
+                close = getattr(response, "close", None)
+                if callable(close):
+                    close()
+                if attempt == 4:
+                    raise DataError(
+                        f"Gate trade archive HTTP {status} for {contract} {month}"
+                    )
+                time.sleep(min(2 ** attempt, 12))
+                continue
+            if status >= 400:
+                body = str(getattr(response, "text", "") or "").strip()[:500]
+                raise DataError(
+                    f"Gate trade archive HTTP {status} for {contract} {month}: "
+                    f"{body or '<empty>'}"
+                )
+            break
+        except requests.RequestException as exc:
+            if attempt == 4:
+                raise DataError(
+                    f"Gate trade archive request failed for {contract} {month}: {exc}"
+                ) from exc
+            time.sleep(min(2 ** attempt, 12))
+
+    if response is None:
+        raise DataError(f"Gate trade archive returned no response for {contract} {month}")
+
+    states: dict[int, dict[str, Any]] = {}
+    try:
+        raw = getattr(response, "raw", None)
+        if raw is not None:
+            if hasattr(raw, "decode_content"):
+                raw.decode_content = False
+            compressed_stream = raw
+        else:
+            compressed_stream = io.BytesIO(response.content)
+
+        with gzip.GzipFile(fileobj=compressed_stream, mode="rb") as zipped:
+            text_stream = io.TextIOWrapper(zipped, encoding="utf-8", newline="")
+            reader = csv.reader(text_stream)
+            for line_number, values in enumerate(reader, start=1):
+                if not values:
+                    continue
+                if len(values) != 4:
+                    raise DataError(
+                        f"Malformed Gate trade row {line_number} for {contract} {month}: "
+                        "expected timestamp,dealid,price,size"
+                    )
+                try:
+                    timestamp_value = float(values[0])
+                    deal_id_value = float(values[1])
+                    price = float(values[2])
+                    signed_size = float(values[3])
+                except (TypeError, ValueError, OverflowError) as exc:
+                    raise DataError(
+                        f"Malformed Gate trade row {line_number} for {contract} {month}"
+                    ) from exc
+                if not all(math.isfinite(value) for value in (
+                    timestamp_value, deal_id_value, price, signed_size
+                )):
+                    raise DataError(
+                        f"Non-finite Gate trade row {line_number} for {contract} {month}"
+                    )
+                if (
+                    price <= 0 or signed_size == 0 or deal_id_value < 0
+                    or not deal_id_value.is_integer()
+                ):
+                    raise DataError(
+                        f"Invalid Gate trade row {line_number} for {contract} {month}"
+                    )
+
+                bucket = (int(timestamp_value) // interval) * interval
+                if bucket not in wanted:
+                    continue
+                key = (timestamp_value, deal_id_value)
+                state = states.get(bucket)
+                if state is None:
+                    states[bucket] = {
+                        "timestamp": bucket,
+                        "first_key": key,
+                        "last_key": key,
+                        "open": price,
+                        "high": price,
+                        "low": price,
+                        "close": price,
+                        "volume": abs(signed_size),
+                    }
+                    continue
+                state["high"] = max(float(state["high"]), price)
+                state["low"] = min(float(state["low"]), price)
+                state["volume"] = float(state["volume"]) + abs(signed_size)
+                if key < state["first_key"]:
+                    state["first_key"] = key
+                    state["open"] = price
+                if key > state["last_key"]:
+                    state["last_key"] = key
+                    state["close"] = price
+    except DataError:
+        raise
+    except (OSError, EOFError, gzip.BadGzipFile, UnicodeError, csv.Error) as exc:
+        raise DataError(
+            f"Could not decode Gate trade archive for {contract} {month}: {exc}"
+        ) from exc
+    finally:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
+
+    return [
+        {
+            "timestamp": bucket,
+            "open": float(state["open"]),
+            "high": float(state["high"]),
+            "low": float(state["low"]),
+            "close": float(state["close"]),
+            "volume": float(state["volume"]),
+            "quote_volume": None,
+        }
+        for bucket, state in sorted(states.items())
+    ]
+
+
 def fetch_missing_trade_archive_candles(
     session: requests.Session,
     contract: str,
@@ -505,18 +648,17 @@ def fetch_missing_trade_archive_candles(
     sleep_seconds: float = 0.05,
     timeout_seconds: float = 60.0,
 ) -> list[dict[str, float | int | None]]:
-    """Rebuild missing candles from actual Gate futures trades in monthly archives.
+    """Rebuild missing candles from real trades, keeping only requested buckets.
 
-    Only requested missing buckets are retained. Trades are read in streaming mode
-    where available so a large monthly file does not need to be decompressed into
-    memory. A bucket with no actual trades produces no candle.
+    Monthly files are streamed and processed independently. A missing/unavailable
+    month is logged and does not prevent later months from being checked. A bucket
+    with no actual trades produces no candle.
     """
     if timeframe not in TIMEFRAMES:
         raise ValueError(f"Unsupported trade archive timeframe: {timeframe}")
     if not missing_timestamps:
         return []
 
-    interval = TIMEFRAMES[timeframe]
     missing_by_month: dict[str, list[int]] = {}
     for timestamp in sorted(set(missing_timestamps)):
         month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
@@ -525,136 +667,23 @@ def fetch_missing_trade_archive_candles(
     recovered: list[dict[str, float | int | None]] = []
     for month, month_timestamps in sorted(missing_by_month.items()):
         wanted = set(month_timestamps)
-        url = f"{ARCHIVE_BASE_URL}/trades/{month}/{contract}-{month}.csv.gz"
-        response = None
-        for attempt in range(5):
-            try:
-                response = session.get(
-                    url, timeout=timeout_seconds, stream=True,
-                    headers={"User-Agent": USER_AGENT},
-                )
-                status = int(response.status_code)
-                if status in (429, 500, 502, 503, 504):
-                    if attempt == 4:
-                        body = str(getattr(response, "text", "") or "").strip()[:500]
-                        raise DataError(
-                            f"Gate trade archive HTTP {status} for {contract} {month}: "
-                            f"{body or '<empty>'}"
-                        )
-                    time.sleep(min(2 ** attempt, 12))
-                    continue
-                if status >= 400:
-                    body = str(getattr(response, "text", "") or "").strip()[:500]
-                    raise DataError(
-                        f"Gate trade archive HTTP {status} for {contract} {month}: "
-                        f"{body or '<empty>'}"
-                    )
-                break
-            except requests.RequestException as exc:
-                if attempt == 4:
-                    raise DataError(
-                        f"Gate trade archive request failed for {contract} {month}: {exc}"
-                    ) from exc
-                time.sleep(min(2 ** attempt, 12))
-
-        if response is None:
-            raise DataError(f"Gate trade archive returned no response for {contract} {month}")
-
-        states: dict[int, dict[str, Any]] = {}
         try:
-            raw = getattr(response, "raw", None)
-            if raw is not None:
-                # Requests' streamed raw body is the compressed archive bytes.
-                if hasattr(raw, "decode_content"):
-                    raw.decode_content = False
-                compressed_stream = raw
-            else:
-                compressed_stream = io.BytesIO(response.content)
+            month_rows = _fetch_trade_archive_month_candles(
+                session, contract, timeframe, month, wanted,
+                sleep_seconds=sleep_seconds, timeout_seconds=timeout_seconds,
+            )
+        except Exception as repair_error:
+            print(
+                f"[trade-repair-warning] {contract} {timeframe} {month}: "
+                f"trade archive recovery unavailable: {repair_error}",
+                flush=True,
+            )
+            continue
 
-            with gzip.GzipFile(fileobj=compressed_stream, mode="rb") as zipped:
-                text_stream = io.TextIOWrapper(zipped, encoding="utf-8", newline="")
-                reader = csv.reader(text_stream)
-                for line_number, values in enumerate(reader, start=1):
-                    if not values:
-                        continue
-                    if len(values) != 4:
-                        raise DataError(
-                            f"Malformed Gate trade row {line_number} for {contract} {month}: "
-                            "expected timestamp,dealid,price,size"
-                        )
-                    try:
-                        timestamp_value = float(values[0])
-                        deal_id_value = float(values[1])
-                        price = float(values[2])
-                        signed_size = float(values[3])
-                    except (TypeError, ValueError, OverflowError) as exc:
-                        raise DataError(
-                            f"Malformed Gate trade row {line_number} for {contract} {month}"
-                        ) from exc
-                    if not all(math.isfinite(value) for value in (
-                        timestamp_value, deal_id_value, price, signed_size
-                    )):
-                        raise DataError(
-                            f"Non-finite Gate trade row {line_number} for {contract} {month}"
-                        )
-                    if price <= 0 or signed_size == 0 or deal_id_value < 0:
-                        raise DataError(
-                            f"Invalid Gate trade row {line_number} for {contract} {month}"
-                        )
-
-                    bucket = (int(timestamp_value) // interval) * interval
-                    if bucket not in wanted:
-                        continue
-                    key = (timestamp_value, deal_id_value)
-                    state = states.get(bucket)
-                    if state is None:
-                        states[bucket] = {
-                            "timestamp": bucket,
-                            "first_key": key,
-                            "last_key": key,
-                            "open": price,
-                            "high": price,
-                            "low": price,
-                            "close": price,
-                            "volume": abs(signed_size),
-                        }
-                        continue
-                    state["high"] = max(float(state["high"]), price)
-                    state["low"] = min(float(state["low"]), price)
-                    state["volume"] = float(state["volume"]) + abs(signed_size)
-                    if key < state["first_key"]:
-                        state["first_key"] = key
-                        state["open"] = price
-                    if key > state["last_key"]:
-                        state["last_key"] = key
-                        state["close"] = price
-        except DataError:
-            raise
-        except (OSError, EOFError, gzip.BadGzipFile, UnicodeError, csv.Error) as exc:
-            raise DataError(
-                f"Could not decode Gate trade archive for {contract} {month}: {exc}"
-            ) from exc
-        finally:
-            close = getattr(response, "close", None)
-            if callable(close):
-                close()
-
-        month_recovered = [
-            {
-                "timestamp": bucket,
-                "open": float(state["open"]),
-                "high": float(state["high"]),
-                "low": float(state["low"]),
-                "close": float(state["close"]),
-                "volume": float(state["volume"]),
-                "quote_volume": None,
-            }
-            for bucket, state in sorted(states.items())
-        ]
-        recovered.extend(month_recovered)
+        recovered.extend(month_rows)
         print(
             f"[trade-repair] {contract} {timeframe} {month}: "
-            f"{len(month_recovered)}/{len(wanted)} missing bars reconstructed "
+            f"{len(month_rows)}/{len(wanted)} missing bars reconstructed "
             "from observed real trades",
             flush=True,
         )
