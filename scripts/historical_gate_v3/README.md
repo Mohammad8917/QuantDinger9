@@ -8,9 +8,10 @@ perpetual futures, for 15-minute and 1-hour timeframes.
 
 - Data acquisition only. It does **not** import or execute the strategy.
 - It does **not** simulate fills, calculate PnL, or send orders.
-- Uses Gate's official public monthly historical archive for candles and the public contracts REST endpoint for contract creation times; no API key is required.
-- The live candlestick REST endpoint is not used for the historical bulk range. If the current month's archive has not yet been published, only that month falls back to the public REST endpoint in bounded pages of at most 1,000 candles; missing older monthly archives fail closed.
-- Gate's documented futures archive provides 5m and 1h candles (among other intervals), not 15m. Each 15m candle is aggregated from exactly three contiguous real 5m candles; incomplete groups are omitted and coverage validation catches gaps.
+- Uses Gate's official public monthly historical archive for 1h candles and the public futures candlestick REST endpoint for native 15m candles; no API key is required.
+- Native 15m REST candles are fetched in bounded pages of at most 1,000 points (below Gate's documented 2,000-point maximum). This avoids the substantial historical omissions observed when deriving 15m bars from the monthly 5m archives.
+- The 1h archive is audited before acceptance. If it has any missing or discontinuous expected candles, the downloader retries that contract's full 1h range through the public REST endpoint; the final audit still fails closed if REST history is incomplete.
+- If the current month's archive has not yet been published, the current month falls back to public REST in bounded pages; missing older archive months fail closed unless the full 1h range is successfully recovered from REST.
 - It verifies the locked strategy's Git blob SHA-1 before collecting data. If the strategy
   changes, collection stops rather than silently testing a different version.
 - Missing historical candles are not synthesized. Internal gaps, duplicate timestamps, invalid OHLCV, and missing leading/trailing bars are audited.
@@ -18,7 +19,7 @@ perpetual futures, for 15-minute and 1-hour timeframes.
 - The manifest records expected vs observed bar counts, coverage ratio, leading/trailing missing bars, internal gap spans, and duplicate/invalid row counts. Any incomplete coverage makes the collection exit non-zero.
 - Files are gzip-compressed CSVs plus a manifest with time coverage, bar counts, gap counts,
   and SHA-256 checksums.
-- `volume` preserves Gate archive contract-size volume (`size`) or the same public REST contract-size volume (`v`) for the current-month fallback. Neither source used here provides quote-currency turnover, so `quote_volume` is blank and explicitly marked unavailable. The downloader never estimates it or presents it as exact.
+- `volume` preserves Gate contract-size volume from the selected source: archive `size` or public REST `v`. Neither source used here provides quote-currency turnover, so `quote_volume` is blank and explicitly marked unavailable. The downloader never estimates it or presents it as exact.
 - Output defaults outside the checkout: Windows `%LOCALAPPDATA%\QuantDinger9\historical\gate_v3`
   or `~/.cache/QuantDinger9/historical/gate_v3` on Unix-like systems. Large datasets are
   not committed to Git.
@@ -50,7 +51,7 @@ py -3.13 scripts/historical_gate_v3/download_gate_history.py --output "D:\QuantD
 
 ## Output
 
-- `<BASE>_USDT_15m.csv.gz` (aggregated from 5m archive candles) and `<BASE>_USDT_1h.csv.gz` per contract. The `quote_volume` column is blank because Gate's public archive does not provide it.
+- `<BASE>_USDT_15m.csv.gz` (native public REST 15m candles) and `<BASE>_USDT_1h.csv.gz` per contract. The `quote_volume` column is blank because the public sources used here do not provide it.
 - `manifest.json` (schema version 3) records the requested range, source endpoint, locked strategy fingerprint,
   actual and expected first/last candle, expected/observed bar counts, coverage ratio, missing leading/trailing/internal bars, duplicate/invalid row counts, and file SHA-256.
 
