@@ -425,9 +425,9 @@ def aggregate_5m_to_15m(
         timestamps = [int(row["timestamp"]) for row in group]
         if len(set(timestamps)) != len(timestamps):
             raise DataError(f"Duplicate 5m candle timestamp in 15m bucket {bucket}")
-        expected = [bucket, bucket + 300, bucket + 600]
-        if timestamps != expected:
-            # A 15m OHLC candle is valid only when all three 5m source candles exist.
+        # Official Gate archives omit some no-trade sub-intervals. Aggregate
+        # only observed real source candles; an entirely empty bucket stays missing.
+        if not group:
             continue
         aggregated.append({
             "timestamp": bucket,
@@ -464,9 +464,9 @@ def aggregate_1m_to_timeframe(
         timestamps = [int(row["timestamp"]) for row in group]
         if len(set(timestamps)) != len(timestamps):
             raise DataError(f"Duplicate 1m candle timestamp in {timeframe} bucket {bucket}")
-        expected = [bucket + index * 60 for index in range(interval // 60)]
-        if timestamps != expected:
-            # Never create a partial 15m/1h OHLC candle from sparse minute data.
+        # Missing minutes are not filled. Real minute candles that do exist
+        # determine target OHLCV; a bucket with no rows stays missing.
+        if not group:
             continue
         aggregated.append({
             "timestamp": bucket,
@@ -646,7 +646,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                             session, contract, "5m", requested_first, archive_last + 600,
                         )
                         archive_rows = aggregate_5m_to_15m(source_rows)
-                        archive_source_label = "Gate 5m archive aggregated from three contiguous candles"
+                        archive_source_label = "Gate 5m archive aggregated from observed real candles"
                     else:
                         archive_rows = fetch_archive_candles(
                             session, contract, "1h", requested_first, archive_last,
