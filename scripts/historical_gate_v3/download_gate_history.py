@@ -183,6 +183,106 @@ def _month_starts(start_ts: int, end_ts: int) -> list[datetime]:
     return months
 
 
+def _parse_rest_row(item: Any) -> dict[str, float | int | None] | None:
+    """Parse one public Gate futures REST candle without inventing quote turnover."""
+    if not isinstance(item, dict):
+        return None
+    try:
+        timestamp_value = float(item["t"])
+        if not math.isfinite(timestamp_value) or not timestamp_value.is_integer():
+            return None
+        return {
+            "timestamp": int(timestamp_value),
+            "open": float(item["o"]),
+            "high": float(item["h"]),
+            "low": float(item["l"]),
+            "close": float(item["c"]),
+            "volume": float(item["v"]),
+            "quote_volume": None,
+        }
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+
+
+def fetch_recent_rest_candles(
+    session: requests.Session,
+    contract: str,
+    timeframe: str,
+    start_ts: int,
+    end_ts: int,
+    *,
+    sleep_seconds: float = 0.05,
+    timeout_seconds: float = 30.0,
+) -> list[dict[str, float | int | None]]:
+    """Fetch a bounded recent range from Gate REST in sub-2000-candle pages."""
+    interval_seconds = {"5m": 300, "1h": 3600}.get(timeframe)
+    if interval_seconds is None:
+        raise ValueError(f"Unsupported Gate REST timeframe: {timeframe}")
+    if end_ts < start_ts:
+        raise DataError(f"Invalid REST range for {contract} {timeframe}")
+    url = "https://api.gateio.ws/api/v4/futures/usdt/candlesticks"
+    rows: list[dict[str, float | int | None]] = []
+    cursor = start_ts
+    while cursor <= end_ts:
+        page_end = min(end_ts, cursor + interval_seconds * 999)
+        response = None
+        for attempt in range(5):
+            try:
+                response = session.get(
+                    url,
+                    params={
+                        "contract": contract,
+                        "interval": timeframe,
+                        "from": cursor,
+                        "to": page_end,
+                    },
+                    timeout=timeout_seconds,
+                    headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+                )
+                if response.status_code in (429, 500, 502, 503, 504):
+                    if attempt == 4:
+                        response.raise_for_status()
+                    time.sleep(min(2 ** attempt, 12))
+                    continue
+                response.raise_for_status()
+                break
+            except requests.RequestException as exc:
+                if attempt == 4:
+                    raise DataError(
+                        f"Gate REST request failed for {contract} {timeframe} "
+                        f"{cursor}..{page_end}: {exc}"
+                    ) from exc
+                time.sleep(min(2 ** attempt, 12))
+        if response is None:
+            raise DataError(f"Gate REST returned no response for {contract} {timeframe}")
+        try:
+            payload = response.json()
+        except (ValueError, TypeError) as exc:
+            raise DataError(
+                f"Invalid Gate REST JSON for {contract} {timeframe}: {exc}"
+            ) from exc
+        if not isinstance(payload, list):
+            raise DataError(f"Unexpected Gate REST response for {contract} {timeframe}: expected list")
+        for item in payload:
+            row = _parse_rest_row(item)
+            if row is None:
+                raise DataError(f"Malformed Gate REST candle for {contract} {timeframe}: {item!r}")
+            timestamp = int(row["timestamp"])
+            if timestamp % interval_seconds:
+                raise DataError(
+                    f"Unaligned Gate REST candle for {contract} {timeframe}: {timestamp}"
+                )
+            if cursor <= timestamp <= page_end and start_ts <= timestamp <= end_ts:
+                rows.append(row)
+        cursor = page_end + interval_seconds
+        if sleep_seconds > 0 and cursor <= end_ts:
+            time.sleep(sleep_seconds)
+    deduplicated: dict[int, dict[str, float | int | None]] = {}
+    for row in rows:
+        deduplicated[int(row["timestamp"])] = row
+    return [deduplicated[ts] for ts in sorted(deduplicated)]
+
+
 def fetch_archive_candles(
     session: requests.Session,
     contract: str,
@@ -225,6 +325,26 @@ def fetch_archive_candles(
                         )
                     time.sleep(min(2 ** attempt, 12))
                     continue
+                if response.status_code == 404 and month == datetime.now(timezone.utc).strftime("%Y%m"):
+                    # Gate publishes monthly archive files after the month closes. For the
+                    # still-open current month only, use the public REST endpoint in bounded
+                    # pages; historical months must exist in the archive or fail closed.
+                    month_start_ts = int(month_dt.timestamp())
+                    fallback_start = max(start_ts, month_start_ts)
+                    now_ts = int(time.time())
+                    fallback_end = min(
+                        end_ts,
+                        last_closed_candle_start(now_ts, interval_seconds, now_ts=now_ts),
+                    )
+                    if fallback_start > fallback_end:
+                        break
+                    recent_rows = fetch_recent_rest_candles(
+                        session, contract, timeframe, fallback_start, fallback_end,
+                        sleep_seconds=sleep_seconds, timeout_seconds=timeout_seconds,
+                    )
+                    rows.extend(recent_rows)
+                    response = None
+                    break
                 if response.status_code >= 400:
                     body = str(getattr(response, "text", ""))[:500]
                     raise DataError(
@@ -238,7 +358,10 @@ def fetch_archive_candles(
                         f"Gate archive request failed for {contract} {timeframe} {month}: {exc}"
                     ) from exc
                 time.sleep(min(2 ** attempt, 12))
-        if response is None or response.status_code >= 400:
+        if response is None:
+            # Current-month REST fallback already appended the requested recent rows.
+            continue
+        if response.status_code >= 400:
             raise DataError(f"Gate archive request failed for {contract} {timeframe} {month}")
         try:
             with gzip.GzipFile(fileobj=io.BytesIO(response.content), mode="rb") as zipped:
@@ -396,8 +519,9 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "data_source": "Gate official public historical USDT-perpetual candle archives; public contracts REST API for create_time",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
         "archive_intervals_downloaded": ["5m", "1h"],
+        "current_month_policy": "If the current-month archive is not yet published, fetch only that month from public REST in pages of at most 1000 candles; older missing archive months fail closed.",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected.",
-        "endpoint": "https://download.gatedata.org/futures_usdt/candlesticks_{5m,1h}/{YYYYMM}/{CONTRACT}-{YYYYMM}.csv.gz",
+        "endpoint": "Gate public monthly archive; current-month fallback https://api.gateio.ws/api/v4/futures/usdt/candlesticks",
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
         "start_timestamp_requested": start_ts,
