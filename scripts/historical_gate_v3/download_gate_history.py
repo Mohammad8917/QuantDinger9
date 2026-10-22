@@ -794,7 +794,30 @@ def main(argv: list[str] | None = None) -> int:
                     f"compressed_bytes={len(response.content)} first_row={sample}",
                     flush=True,
                 )
-            print("ARCHIVE_PROBE_COMPLETE: only two public archive samples were checked; no dataset or orders were created.")
+            # HEAD-only size probe for Gate's official raw futures trade archives.
+            # This does not download the large trade files or change the candle dataset.
+            for contract, month in (("BTC_USDT", "202504"), ("POL_USDT", "202605")):
+                trade_url = (
+                    f"{ARCHIVE_BASE_URL}/trades/{month}/"
+                    f"{contract}-{month}.csv.gz"
+                )
+                try:
+                    trade_head = session.head(
+                        trade_url, timeout=20, headers={"User-Agent": USER_AGENT}
+                    )
+                    print(
+                        f"TRADE_ARCHIVE_HEAD_PROBE: contract={contract} month={month} "
+                        f"http={trade_head.status_code} "
+                        f"content_length={trade_head.headers.get('Content-Length')} "
+                        f"content_type={trade_head.headers.get('Content-Type')}",
+                        flush=True,
+                    )
+                except Exception as trade_probe_error:
+                    print(
+                        f"TRADE_ARCHIVE_HEAD_PROBE_ERROR: contract={contract} month={month} "
+                        f"error={trade_probe_error}", flush=True,
+                    )
+            print("ARCHIVE_PROBE_COMPLETE: candle archives, REST limits and raw-trade archive metadata checked; no dataset or orders were created.")
             return 0
         except (DataError, ValueError, OSError, requests.RequestException) as exc:
             print(f"PROBE_FAILED: {exc}", file=sys.stderr)
