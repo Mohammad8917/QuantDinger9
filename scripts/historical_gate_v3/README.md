@@ -16,6 +16,8 @@ perpetual futures, for 15-minute and 1-hour timeframes.
 - The manifest records expected vs observed bar counts, coverage ratio, leading/trailing missing bars, internal gap spans, and duplicate/invalid row counts. Any incomplete coverage makes the collection exit non-zero.
 - Files are gzip-compressed CSVs plus a manifest with time coverage, bar counts, gap counts,
   and SHA-256 checksums.
+- `volume` preserves Gate's contract-size volume (`v`); `quote_volume` preserves quote-currency
+  turnover (`sum`). Do not treat contract count as USDT turnover.
 - Output defaults outside the checkout: Windows `%LOCALAPPDATA%\QuantDinger9\historical\gate_v3`
   or `~/.cache/QuantDinger9/historical/gate_v3` on Unix-like systems. Large datasets are
   not committed to Git.
