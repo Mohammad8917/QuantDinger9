@@ -1,6 +1,10 @@
 name: Gate V3 Historical Dataset
 
 on:
+  push:
+    branches: [work/gate-v3-historical-data]
+    paths:
+      - '.github/workflows/gate-v3-historical-data.yml'
   workflow_dispatch:
     inputs:
       start:
@@ -16,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: gate-v3-historical-dataset
+  group: gate-v3-historical-dataset-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -41,6 +45,7 @@ jobs:
           args=(--repo-root . --output "$RUNNER_TEMP/gate-v3-history")
           if [[ -n "$START_DATE" ]]; then args+=(--start "$START_DATE"); fi
           if [[ -n "$END_DATE" ]]; then args+=(--end "$END_DATE"); fi
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then args+=(--probe-only); fi
           python scripts/historical_gate_v3/download_gate_history.py "${args[@]}"
       - name: Upload dataset and manifest
         if: always()
