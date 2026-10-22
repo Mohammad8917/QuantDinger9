@@ -198,6 +198,15 @@ def test_archive_month_iteration_spans_year_boundary() -> None:
     assert [d.strftime("%Y%m") for d in MODULE._month_starts(start, end)] == ["202412", "202501", "202502"]
 
 
+def test_recent_rest_window_is_aligned_and_at_most_10000_points() -> None:
+    now_ts = 1800000000
+    for interval in (900, 3600):
+        start = MODULE.recent_rest_window_start(interval, now_ts=now_ts)
+        last_closed = MODULE.last_closed_candle_start(now_ts, interval, now_ts=now_ts)
+        assert start % interval == 0
+        assert (last_closed - start) // interval + 1 <= 10000
+
+
 def test_parse_public_rest_candle_keeps_quote_volume_unknown() -> None:
     row = MODULE._parse_rest_row({
         "t": 1800000000, "o": "100", "h": "105", "l": "95",
