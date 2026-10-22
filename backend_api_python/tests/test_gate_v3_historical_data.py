@@ -542,7 +542,7 @@ def test_missing_native_rest_repair_skips_timestamps_outside_recent_window() -> 
     assert session.calls == 0
 
 
-def test_trade_archive_reconstructs_only_buckets_with_real_trades() -> None:
+def test_trade_archive_reconstructs_only_buckets_with_real_trades(capsys: object) -> None:
     import gzip
 
     start = 1735689600
@@ -589,6 +589,13 @@ def test_trade_archive_reconstructs_only_buckets_with_real_trades() -> None:
         f"{MODULE.ARCHIVE_BASE_URL}/trades/202501/BTC_USDT-202501.csv.gz"
     )
     assert session.calls[0][1]["stream"] is True
+    output = capsys.readouterr().out
+    assert "rows_scanned=4" in output
+    assert "matched_trade_rows=3" in output
+    assert "wanted_buckets=2" in output
+    assert "recovered_buckets=1" in output
+    assert f"trade_timestamp_min={start + 2.1}" in output
+    assert f"trade_timestamp_max={start + 901.1}" in output
 
 
 def test_public_rest_http_400_is_not_retried_and_body_is_reported() -> None:
