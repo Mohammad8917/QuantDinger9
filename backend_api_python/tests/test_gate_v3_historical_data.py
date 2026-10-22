@@ -143,7 +143,6 @@ def test_candle_row_rejects_non_finite_values() -> None:
         "close": 102.0,
         "volume": 12.0,
         "quote_volume": 12000.0,
-        "quote_volume": 12000.0,
     }
     assert MODULE._validate_row({**valid, "close": float("nan")}, 900) == "non_finite_value"
     assert MODULE._validate_row({**valid, "volume": float("inf")}, 900) == "non_finite_value"
