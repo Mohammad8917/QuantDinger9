@@ -253,7 +253,7 @@ def test_native_15m_archive_is_preferred_when_available() -> None:
 
     timestamp = 1800000000
     archive_bytes = gzip.compress(
-        f"{timestamp},12.5,102,105,95,100\\n".encode("utf-8")
+        f"{timestamp},12.5,102,105,95,100\n".encode("utf-8")
     )
 
     class FakeResponse:
@@ -286,7 +286,7 @@ def test_native_15m_archive_404_falls_back_to_complete_real_5m_group() -> None:
     timestamp = 1800000000
     five_minute_rows = "".join(
         f"{timestamp + index * 300},{index + 1},{101 + index},{102 + index},"
-        f"{99 + index},{100 + index}\\n"
+        f"{99 + index},{100 + index}\n"
         for index in range(3)
     )
     archive_bytes = gzip.compress(five_minute_rows.encode("utf-8"))
