@@ -254,6 +254,22 @@ def fetch_recent_rest_candles(
                     continue
                 response.raise_for_status()
                 break
+            except requests.HTTPError as exc:
+                # HTTP 4xx parameter/range errors are deterministic; do not retry them.
+                status = response.status_code if response is not None else None
+                body = str(getattr(response, "text", "") or "").strip()[:500]
+                if status not in (429, 500, 502, 503, 504):
+                    detail = body or str(exc)
+                    raise DataError(
+                        f"Gate REST HTTP {status} for {contract} {timeframe} "
+                        f"{cursor}..{page_end}: {detail}"
+                    ) from exc
+                if attempt == 4:
+                    raise DataError(
+                        f"Gate REST request failed for {contract} {timeframe} "
+                        f"{cursor}..{page_end}: HTTP {status}: {body or exc}"
+                    ) from exc
+                time.sleep(min(2 ** attempt, 12))
             except requests.RequestException as exc:
                 if attempt == 4:
                     raise DataError(
@@ -507,15 +523,35 @@ def fetch_missing_native_rest_candles(
     missing_timestamps: list[int],
     *,
     sleep_seconds: float = 0.05,
+    now_ts: int | None = None,
 ) -> list[dict[str, float | int | None]]:
-    """Recover only specifically missing candle opens from Gate's native public REST feed."""
+    """Recover missing opens only inside Gate REST's configured recent-data window."""
     if not missing_timestamps:
         return []
     if timeframe not in TIMEFRAMES:
         raise ValueError(f"Unsupported native REST repair timeframe: {timeframe}")
 
+    interval = TIMEFRAMES[timeframe]
+    effective_now = int(time.time()) if now_ts is None else now_ts
+    rest_start = recent_rest_window_start(interval, now_ts=effective_now)
+    rest_end = last_closed_candle_start(effective_now, interval, now_ts=effective_now)
+    eligible_timestamps = sorted({
+        timestamp for timestamp in missing_timestamps
+        if rest_start <= timestamp <= rest_end
+    })
+    skipped_count = len(set(missing_timestamps)) - len(eligible_timestamps)
+    if skipped_count:
+        print(
+            f"[rest-repair-skip] {contract} {timeframe}: skipped {skipped_count} "
+            f"missing timestamps outside the bounded recent REST window "
+            f"({rest_start}..{rest_end}); older gaps require archive-backed evidence",
+            flush=True,
+        )
+    if not eligible_timestamps:
+        return []
+
     missing_by_month: dict[str, list[int]] = {}
-    for timestamp in sorted(set(missing_timestamps)):
+    for timestamp in eligible_timestamps:
         month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
         missing_by_month.setdefault(month, []).append(timestamp)
 

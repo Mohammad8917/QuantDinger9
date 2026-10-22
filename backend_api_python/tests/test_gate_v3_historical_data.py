@@ -376,7 +376,8 @@ def test_missing_native_rest_repair_accepts_only_requested_gap_opens() -> None:
 
     session = FakeSession()
     rows = MODULE.fetch_missing_native_rest_candles(
-        session, "BTC_USDT", "15m", [start, start + 1800], sleep_seconds=0,
+        session, "BTC_USDT", "15m", [start, start + 1800],
+        sleep_seconds=0, now_ts=start + 3600,
     )
     assert [row["timestamp"] for row in rows] == [start, start + 1800]
     assert all(row["quote_volume"] is None for row in rows)
@@ -469,3 +470,53 @@ def test_current_month_archive_404_uses_public_rest_fallback() -> None:
     assert session.calls[0][0].startswith(MODULE.ARCHIVE_BASE_URL)
     assert session.calls[1][0] == "https://api.gateio.ws/api/v4/futures/usdt/candlesticks"
 
+
+
+def test_missing_native_rest_repair_skips_timestamps_outside_recent_window() -> None:
+    start = 1735689600
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def get(self, url: str, **kwargs: object) -> object:
+            self.calls += 1
+            raise AssertionError("Old historical gaps must not be sent to recent REST")
+
+    session = FakeSession()
+    rows = MODULE.fetch_missing_native_rest_candles(
+        session, "BTC_USDT", "15m", [start],
+        sleep_seconds=0, now_ts=start + 20000 * 900,
+    )
+    assert rows == []
+    assert session.calls == 0
+
+
+def test_public_rest_http_400_is_not_retried_and_body_is_reported() -> None:
+    import pytest
+
+    class FakeResponse:
+        status_code = 400
+        text = '{"label":"INVALID_PARAM_VALUE","message":"bad time range"}'
+
+        def raise_for_status(self) -> None:
+            raise MODULE.requests.HTTPError("400 Client Error")
+
+        def json(self) -> object:
+            raise AssertionError("An HTTP error must fail before JSON parsing")
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            self.calls += 1
+            return FakeResponse()
+
+    session = FakeSession()
+    with pytest.raises(MODULE.DataError, match="bad time range"):
+        MODULE.fetch_recent_rest_candles(
+            session, "BTC_USDT", "15m", 1800000000, 1800000000,
+            sleep_seconds=0,
+        )
+    assert session.calls == 1
