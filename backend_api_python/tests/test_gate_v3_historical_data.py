@@ -23,6 +23,11 @@ def test_utc_date_parsing() -> None:
     assert MODULE.utc_timestamp("2026-10-22T00:00:00Z") == 1792627200
 
 
+def test_date_only_end_includes_full_utc_day() -> None:
+    assert MODULE.utc_end_timestamp("2026-10-22") == MODULE.utc_timestamp("2026-10-23")
+    assert MODULE.utc_end_timestamp("2026-10-22T12:00:00Z") == MODULE.utc_timestamp("2026-10-22T12:00:00Z")
+
+
 def test_candle_row_validation() -> None:
     valid = {
         "timestamp": 1800000000,
@@ -71,6 +76,30 @@ def test_audit_detects_missing_range_edges() -> None:
     assert audit["trailing_missing_bars"] == 1
     assert audit["coverage_ratio"] == 0.5
     assert audit["complete_contiguous_history"] is False
+
+
+def test_fetch_candles_preserves_duplicate_timestamps(monkeypatch) -> None:
+    start = 1800000000
+    end = start + 1800
+    monkeypatch.setattr(MODULE, "time", type("FakeTime", (), {"time": staticmethod(lambda: end), "sleep": staticmethod(lambda _: None)})())
+    item = {"t": start, "o": "100", "h": "105", "l": "95", "c": "102", "v": "1"}
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return [dict(item), dict(item)]
+
+    class FakeSession:
+        def get(self, *args, **kwargs):
+            return FakeResponse()
+
+    rows = MODULE.fetch_candles(FakeSession(), "BTC_USDT", "15m", start, end, sleep_seconds=0)
+    assert len(rows) == 2
+    assert rows[0]["timestamp"] == rows[1]["timestamp"] == start
 
 
 def test_audit_detects_duplicate_timestamps_before_deduplication() -> None:
