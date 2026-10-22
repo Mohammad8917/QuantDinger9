@@ -52,6 +52,13 @@ def utc_timestamp(value: str) -> int:
     return int(parsed.timestamp())
 
 
+def utc_end_timestamp(value: str) -> int:
+    """Parse an inclusive UTC end date; date-only values include that whole day."""
+    raw = value.strip()
+    timestamp = utc_timestamp(raw)
+    return timestamp + 24 * 60 * 60 if len(raw) == 10 else timestamp
+
+
 def default_output_dir() -> Path:
     root = Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".cache")
     return root / "QuantDinger9" / "historical" / "gate_v3"
@@ -389,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[2],
                         help="QuantDinger9 repository root; used only to verify the locked strategy")
     args = parser.parse_args(argv)
-    end_ts = utc_timestamp(args.end) if args.end else int(time.time())
+    end_ts = utc_end_timestamp(args.end) if args.end else int(time.time())
     start_ts = utc_timestamp(args.start) if args.start else end_ts - 2 * 365 * 24 * 60 * 60
     try:
         manifest = run_download(args.repo_root.resolve(), args.output.expanduser().resolve(), start_ts, end_ts)
