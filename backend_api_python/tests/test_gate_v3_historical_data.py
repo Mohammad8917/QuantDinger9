@@ -378,7 +378,7 @@ def test_missing_native_rest_repair_accepts_only_requested_gap_opens() -> None:
     session = FakeSession()
     rows = MODULE.fetch_missing_native_rest_candles(
         session, "BTC_USDT", "15m", [start, start + 1800],
-        sleep_seconds=0,
+        sleep_seconds=0, now_ts=start + 3600,
     )
     assert [row["timestamp"] for row in rows] == [start, start + 1800]
     assert all(row["quote_volume"] is None for row in rows)
@@ -524,7 +524,7 @@ def test_trade_archive_reconstructs_only_buckets_with_real_trades() -> None:
 
     session = FakeSession()
     rows = MODULE.fetch_missing_trade_archive_candles(
-        session, "BTC_USDT", "15m", [start], sleep_seconds=0,
+        session, "BTC_USDT", "15m", [start, start + 1800], sleep_seconds=0,
     )
     assert rows == [{
         "timestamp": start,

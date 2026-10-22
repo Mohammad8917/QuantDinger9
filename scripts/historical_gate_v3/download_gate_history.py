@@ -503,7 +503,6 @@ def _fetch_trade_archive_month_candles(
     month: str,
     wanted: set[int],
     *,
-    sleep_seconds: float,
     timeout_seconds: float,
 ) -> list[dict[str, float | int | None]]:
     """Read one Gate monthly futures-trade archive and aggregate wanted buckets."""
@@ -529,6 +528,9 @@ def _fetch_trade_archive_month_candles(
                 continue
             if status >= 400:
                 body = str(getattr(response, "text", "") or "").strip()[:500]
+                close = getattr(response, "close", None)
+                if callable(close):
+                    close()
                 raise DataError(
                     f"Gate trade archive HTTP {status} for {contract} {month}: "
                     f"{body or '<empty>'}"
@@ -670,7 +672,7 @@ def fetch_missing_trade_archive_candles(
         try:
             month_rows = _fetch_trade_archive_month_candles(
                 session, contract, timeframe, month, wanted,
-                sleep_seconds=sleep_seconds, timeout_seconds=timeout_seconds,
+                timeout_seconds=timeout_seconds,
             )
         except Exception as repair_error:
             print(
@@ -878,7 +880,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
-        "fifteen_minute_policy": "Historical 15m candles are aggregated from observed real 5m archive candles; missing 15m/1h intervals are recovered from observed real 1m candles within that interval. Empty intervals remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
+        "fifteen_minute_policy": "Historical 15m candles are aggregated from observed real 5m archive candles; missing 15m/1h intervals are recovered from observed real 1m candles, then historical real futures trades or recent native REST within its allowed window. Empty intervals remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
         "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m archive candles, then reconstruct historical missing buckets only from actual trades in Gate monthly trade archives; use public REST only within its latest 10,000-point window with at most 900 points per request. Empty intervals are not synthesized; any remaining expected gaps make the collection fail.",
         "symbols": {},
     }
