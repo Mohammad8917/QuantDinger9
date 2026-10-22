@@ -226,6 +226,8 @@ def test_aggregate_1m_to_1h_requires_all_sixty_minutes() -> None:
     assert len(aggregated) == 1
     assert aggregated[0]["timestamp"] == start
     assert aggregated[0]["volume"] == 60.0
+    assert aggregated[0]["high"] == 160.0
+    assert aggregated[0]["low"] == 99.0
     assert aggregated[0]["close"] == 159.5
     assert MODULE.aggregate_1m_to_timeframe(rows[:-1], "1h") == []
 
