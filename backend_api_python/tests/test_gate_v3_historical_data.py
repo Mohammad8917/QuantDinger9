@@ -815,9 +815,10 @@ def test_monthly_trade_archive_rejects_duplicate_deal_ids() -> None:
         ).encode("utf-8")
     )
 
+    payload = content
     class FakeResponse:
         status_code = 200
-        content = content
+        content = payload
         text = ""
 
     class FakeSession:
@@ -840,9 +841,10 @@ def test_monthly_trade_archive_rejects_rows_outside_requested_month() -> None:
         "1735689599,43,100.0,1\n".encode("utf-8")
     )
 
+    payload = content
     class FakeResponse:
         status_code = 200
-        content = content
+        content = payload
         text = ""
 
     class FakeSession:
