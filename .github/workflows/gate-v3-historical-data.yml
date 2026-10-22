@@ -45,7 +45,7 @@ jobs:
           args=(--repo-root . --output "$RUNNER_TEMP/gate-v3-history")
           if [[ -n "$START_DATE" ]]; then args+=(--start "$START_DATE"); fi
           if [[ -n "$END_DATE" ]]; then args+=(--end "$END_DATE"); fi
-          python scripts/historical_gate_v3/download_gate_history.py --probe-only "${args[@]}"
+          python scripts/historical_gate_v3/download_gate_history.py "${args[@]}"
       - name: Upload dataset and manifest
         if: always()
         uses: actions/upload-artifact@v4
