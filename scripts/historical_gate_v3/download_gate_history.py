@@ -794,7 +794,40 @@ def main(argv: list[str] | None = None) -> int:
                     f"compressed_bytes={len(response.content)} first_row={sample}",
                     flush=True,
                 )
-            print("ARCHIVE_PROBE_COMPLETE: only two public archive samples were checked; no dataset or orders were created.")
+            # Diagnose two exact historical gaps observed in the latest dataset artifact.
+            # This is a bounded source probe, not a dataset rerun or a candle fabrication.
+            gap_samples = (
+                ("BTC_USDT", "15m", 1745400600),
+                ("POL_USDT", "15m", 1779882300),
+            )
+            for contract, target_tf, target_ts in gap_samples:
+                target_interval = TIMEFRAMES[target_tf]
+                for source_tf, source_start, source_end in (
+                    (target_tf, target_ts, target_ts),
+                    ("1m", target_ts, target_ts + target_interval - 60),
+                ):
+                    try:
+                        probe_rows = fetch_recent_rest_candles(
+                            session, contract, source_tf, source_start, source_end,
+                            sleep_seconds=0,
+                        )
+                        exact = [
+                            int(row["timestamp"]) for row in probe_rows
+                            if source_start <= int(row["timestamp"]) <= source_end
+                        ]
+                        print(
+                            f"GAP_REST_PROBE: contract={contract} target={target_tf} "
+                            f"timestamp={target_ts} source={source_tf} "
+                            f"rows={len(probe_rows)} matching_timestamps={exact}",
+                            flush=True,
+                        )
+                    except Exception as probe_error:
+                        print(
+                            f"GAP_REST_PROBE_ERROR: contract={contract} target={target_tf} "
+                            f"timestamp={target_ts} source={source_tf} error={probe_error}",
+                            flush=True,
+                        )
+            print("ARCHIVE_PROBE_COMPLETE: archive samples and two exact historical REST gap windows checked; no dataset or orders were created.")
             return 0
         except (DataError, ValueError, OSError, requests.RequestException) as exc:
             print(f"PROBE_FAILED: {exc}", file=sys.stderr)
