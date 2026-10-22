@@ -847,9 +847,9 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
     session = requests.Session()
     manifest: dict[str, Any] = {
         "schema_version": 4,
-        "data_source": "Gate official monthly futures 10s/1m/5m/1h candle archives, public REST only inside the recent 10,000-point window, and public contracts REST API for create_time",
+        "data_source": "Gate official monthly futures 15m/10s/1m/5m/1h candle archives, public REST only inside the recent 10,000-point window, and public contracts REST API for create_time",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
-        "archive_intervals_downloaded": ["10s", "1m", "5m", "1h"],
+        "archive_intervals_downloaded": ["15m", "10s", "1m", "5m", "1h"],
         "recent_rest_policy": "The primary recent tail uses public REST inside the configured recent window; gap recovery may query historical missing ranges after archive recovery, using from/to only and pages of at most 900 points.",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing buckets are resolved only from native observed candles or complete aggregates of observed lower-timeframe candles. Partial source groups and absent intervals are not treated as zero-trade candles; no candle is synthesized.",
         "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for the bounded recent tail",
