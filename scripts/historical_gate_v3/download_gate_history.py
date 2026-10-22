@@ -496,6 +496,174 @@ def aggregate_1m_to_timeframe(
     return aggregated
 
 
+def fetch_missing_trade_archive_candles(
+    session: requests.Session,
+    contract: str,
+    timeframe: str,
+    missing_timestamps: list[int],
+    *,
+    sleep_seconds: float = 0.05,
+    timeout_seconds: float = 60.0,
+) -> list[dict[str, float | int | None]]:
+    """Rebuild missing candles from actual Gate futures trades in monthly archives.
+
+    Only requested missing buckets are retained. Trades are read in streaming mode
+    where available so a large monthly file does not need to be decompressed into
+    memory. A bucket with no actual trades produces no candle.
+    """
+    if timeframe not in TIMEFRAMES:
+        raise ValueError(f"Unsupported trade archive timeframe: {timeframe}")
+    if not missing_timestamps:
+        return []
+
+    interval = TIMEFRAMES[timeframe]
+    missing_by_month: dict[str, list[int]] = {}
+    for timestamp in sorted(set(missing_timestamps)):
+        month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
+        missing_by_month.setdefault(month, []).append(timestamp)
+
+    recovered: list[dict[str, float | int | None]] = []
+    for month, month_timestamps in sorted(missing_by_month.items()):
+        wanted = set(month_timestamps)
+        url = f"{ARCHIVE_BASE_URL}/trades/{month}/{contract}-{month}.csv.gz"
+        response = None
+        for attempt in range(5):
+            try:
+                response = session.get(
+                    url, timeout=timeout_seconds, stream=True,
+                    headers={"User-Agent": USER_AGENT},
+                )
+                status = int(response.status_code)
+                if status in (429, 500, 502, 503, 504):
+                    if attempt == 4:
+                        body = str(getattr(response, "text", "") or "").strip()[:500]
+                        raise DataError(
+                            f"Gate trade archive HTTP {status} for {contract} {month}: "
+                            f"{body or '<empty>'}"
+                        )
+                    time.sleep(min(2 ** attempt, 12))
+                    continue
+                if status >= 400:
+                    body = str(getattr(response, "text", "") or "").strip()[:500]
+                    raise DataError(
+                        f"Gate trade archive HTTP {status} for {contract} {month}: "
+                        f"{body or '<empty>'}"
+                    )
+                break
+            except requests.RequestException as exc:
+                if attempt == 4:
+                    raise DataError(
+                        f"Gate trade archive request failed for {contract} {month}: {exc}"
+                    ) from exc
+                time.sleep(min(2 ** attempt, 12))
+
+        if response is None:
+            raise DataError(f"Gate trade archive returned no response for {contract} {month}")
+
+        states: dict[int, dict[str, Any]] = {}
+        try:
+            raw = getattr(response, "raw", None)
+            if raw is not None:
+                # Requests' streamed raw body is the compressed archive bytes.
+                if hasattr(raw, "decode_content"):
+                    raw.decode_content = False
+                compressed_stream = raw
+            else:
+                compressed_stream = io.BytesIO(response.content)
+
+            with gzip.GzipFile(fileobj=compressed_stream, mode="rb") as zipped:
+                text_stream = io.TextIOWrapper(zipped, encoding="utf-8", newline="")
+                reader = csv.reader(text_stream)
+                for line_number, values in enumerate(reader, start=1):
+                    if not values:
+                        continue
+                    if len(values) != 4:
+                        raise DataError(
+                            f"Malformed Gate trade row {line_number} for {contract} {month}: "
+                            "expected timestamp,dealid,price,size"
+                        )
+                    try:
+                        timestamp_value = float(values[0])
+                        deal_id_value = float(values[1])
+                        price = float(values[2])
+                        signed_size = float(values[3])
+                    except (TypeError, ValueError, OverflowError) as exc:
+                        raise DataError(
+                            f"Malformed Gate trade row {line_number} for {contract} {month}"
+                        ) from exc
+                    if not all(math.isfinite(value) for value in (
+                        timestamp_value, deal_id_value, price, signed_size
+                    )):
+                        raise DataError(
+                            f"Non-finite Gate trade row {line_number} for {contract} {month}"
+                        )
+                    if price <= 0 or signed_size == 0 or deal_id_value < 0:
+                        raise DataError(
+                            f"Invalid Gate trade row {line_number} for {contract} {month}"
+                        )
+
+                    bucket = (int(timestamp_value) // interval) * interval
+                    if bucket not in wanted:
+                        continue
+                    key = (timestamp_value, deal_id_value)
+                    state = states.get(bucket)
+                    if state is None:
+                        states[bucket] = {
+                            "timestamp": bucket,
+                            "first_key": key,
+                            "last_key": key,
+                            "open": price,
+                            "high": price,
+                            "low": price,
+                            "close": price,
+                            "volume": abs(signed_size),
+                        }
+                        continue
+                    state["high"] = max(float(state["high"]), price)
+                    state["low"] = min(float(state["low"]), price)
+                    state["volume"] = float(state["volume"]) + abs(signed_size)
+                    if key < state["first_key"]:
+                        state["first_key"] = key
+                        state["open"] = price
+                    if key > state["last_key"]:
+                        state["last_key"] = key
+                        state["close"] = price
+        except DataError:
+            raise
+        except (OSError, EOFError, gzip.BadGzipFile, UnicodeError, csv.Error) as exc:
+            raise DataError(
+                f"Could not decode Gate trade archive for {contract} {month}: {exc}"
+            ) from exc
+        finally:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
+
+        month_recovered = [
+            {
+                "timestamp": bucket,
+                "open": float(state["open"]),
+                "high": float(state["high"]),
+                "low": float(state["low"]),
+                "close": float(state["close"]),
+                "volume": float(state["volume"]),
+                "quote_volume": None,
+            }
+            for bucket, state in sorted(states.items())
+        ]
+        recovered.extend(month_recovered)
+        print(
+            f"[trade-repair] {contract} {timeframe} {month}: "
+            f"{len(month_recovered)}/{len(wanted)} missing bars reconstructed "
+            "from observed real trades",
+            flush=True,
+        )
+        if sleep_seconds > 0:
+            time.sleep(sleep_seconds)
+
+    return sorted(recovered, key=lambda row: int(row["timestamp"]))
+
+
 def missing_expected_timestamps(
     rows: list[dict[str, float | int | None]],
     timeframe: str,
@@ -523,18 +691,30 @@ def fetch_missing_native_rest_candles(
     missing_timestamps: list[int],
     *,
     sleep_seconds: float = 0.05,
+    now_ts: int | None = None,
 ) -> list[dict[str, float | int | None]]:
-    """Recover missing candle opens through paginated public REST, regardless of age."""
+    """Recover missing opens only inside Gate REST's configured recent-data window."""
     if not missing_timestamps:
         return []
     if timeframe not in TIMEFRAMES:
         raise ValueError(f"Unsupported native REST repair timeframe: {timeframe}")
 
-    # Gate's documented constraint is per-request point count, not a documented
-    # recent-only history window. The REST helper uses from/to without limit and
-    # pages each range into at most 900 points. Do not silently skip old gaps
-    # based on an assumed 10,000-point total-history restriction.
-    eligible_timestamps = sorted(set(missing_timestamps))
+    interval = TIMEFRAMES[timeframe]
+    effective_now = int(time.time()) if now_ts is None else now_ts
+    rest_start = recent_rest_window_start(interval, now_ts=effective_now)
+    rest_end = last_closed_candle_start(effective_now, interval, now_ts=effective_now)
+    eligible_timestamps = sorted({
+        timestamp for timestamp in missing_timestamps
+        if rest_start <= timestamp <= rest_end
+    })
+    skipped_count = len(set(missing_timestamps)) - len(eligible_timestamps)
+    if skipped_count:
+        print(
+            f"[rest-repair-skip] {contract} {timeframe}: skipped {skipped_count} "
+            f"missing timestamps outside the bounded recent REST window "
+            f"({rest_start}..{rest_end}); historical gaps require archive-backed recovery",
+            flush=True,
+        )
     if not eligible_timestamps:
         return []
 
@@ -655,9 +835,9 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
     session = requests.Session()
     manifest: dict[str, Any] = {
         "schema_version": 3,
-        "data_source": "Gate official monthly futures candle archives plus public REST for the recent 10,000-point tail; public contracts REST API for create_time",
+        "data_source": "Gate official monthly futures candle and trades archives, public REST for the recent 10,000-point tail/gap repair, and public contracts REST API for create_time",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
-        "archive_intervals_downloaded": ["1m", "5m", "1h"],
+        "archive_intervals_downloaded": ["1m", "5m", "1h", "trades"],
         "recent_rest_policy": "The primary recent tail uses public REST inside the configured recent window; gap recovery may query historical missing ranges after archive recovery, using from/to only and pages of at most 900 points.",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected.",
         "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for the bounded recent tail",
@@ -670,7 +850,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
         "fifteen_minute_policy": "Historical 15m candles are aggregated from observed real 5m archive candles; missing 15m/1h intervals are recovered from observed real 1m candles within that interval. Empty intervals remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
-        "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m archive candles, then public REST using valid from/to ranges paginated to at most 900 points per request. Empty intervals are not synthesized; any remaining expected gaps make the collection fail.",
+        "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m archive candles, then reconstruct historical missing buckets only from actual trades in Gate monthly trade archives; use public REST only within its latest 10,000-point window with at most 900 points per request. Empty intervals are not synthesized; any remaining expected gaps make the collection fail.",
         "symbols": {},
     }
     failures: list[str] = []
@@ -780,13 +960,45 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     timestamp for timestamp in missing_before_repair
                     if timestamp not in already_observed
                 ]
+                repair_now = int(time.time())
+                rest_start = recent_rest_window_start(interval, now_ts=repair_now)
+                rest_end = last_closed_candle_start(repair_now, interval, now_ts=repair_now)
+                historical_missing = [
+                    timestamp for timestamp in remaining_missing
+                    if not rest_start <= timestamp <= rest_end
+                ]
+                if historical_missing:
+                    try:
+                        trade_rows = fetch_missing_trade_archive_candles(
+                            session, contract, timeframe, historical_missing,
+                        )
+                        if trade_rows:
+                            repaired_rows.extend(trade_rows)
+                            source_parts.append(
+                                "Gate official futures trades archive reconstruction"
+                            )
+                    except Exception as trade_error:
+                        print(
+                            f"[trade-repair-warning] {contract} {timeframe}: "
+                            f"historical trade archive recovery unavailable: {trade_error}",
+                            flush=True,
+                        )
+
+                already_observed = {
+                    int(row["timestamp"]) for row in rows + repaired_rows
+                }
+                remaining_missing = [
+                    timestamp for timestamp in missing_before_repair
+                    if timestamp not in already_observed
+                ]
                 if remaining_missing:
                     native_rest_rows = fetch_missing_native_rest_candles(
                         session, contract, timeframe, remaining_missing,
+                        now_ts=repair_now,
                     )
                     if native_rest_rows:
                         repaired_rows.extend(native_rest_rows)
-                        source_parts.append("Gate native public REST recovery for missing intervals")
+                        source_parts.append("Gate native public REST recovery for recent missing intervals")
 
                 if repaired_rows:
                     rows = sorted(rows + repaired_rows, key=lambda row: int(row["timestamp"]))

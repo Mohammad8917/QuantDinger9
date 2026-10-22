@@ -473,48 +473,73 @@ def test_current_month_archive_404_uses_public_rest_fallback() -> None:
 
 
 
-def test_missing_native_rest_repair_uses_valid_bounded_requests_for_old_gaps() -> None:
-    start = 1735689600  # Historical timestamp; intentionally outside the recent tail.
-
-    class FakeResponse:
-        status_code = 200
-        text = ""
-
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> object:
-            return [{
-                "t": start, "o": "100", "h": "102", "l": "99",
-                "c": "101", "v": 1,
-            }]
+def test_missing_native_rest_repair_skips_timestamps_outside_recent_window() -> None:
+    start = 1735689600
 
     class FakeSession:
         def __init__(self) -> None:
-            self.calls: list[dict[str, object]] = []
+            self.calls = 0
 
-        def get(self, url: str, **kwargs: object) -> FakeResponse:
-            assert url == "https://api.gateio.ws/api/v4/futures/usdt/candlesticks"
-            params = kwargs.get("params")
-            assert isinstance(params, dict)
-            self.calls.append(params)
-            return FakeResponse()
+        def get(self, url: str, **kwargs: object) -> object:
+            self.calls += 1
+            raise AssertionError("Old historical gaps must never be sent to recent REST")
 
     session = FakeSession()
     rows = MODULE.fetch_missing_native_rest_candles(
         session, "BTC_USDT", "15m", [start],
-        sleep_seconds=0,
+        sleep_seconds=0, now_ts=start + 20000 * 900,
     )
+    assert rows == []
+    assert session.calls == 0
 
-    assert [row["timestamp"] for row in rows] == [start]
+
+def test_trade_archive_reconstructs_only_buckets_with_real_trades() -> None:
+    import gzip
+
+    start = 1735689600
+    payload = (
+        f"{start + 2}.1,10,100,2\n"
+        f"{start + 100}.2,11,101,-3\n"
+        f"{start + 200}.3,12,98,1\n"
+        f"{start + 901}.1,13,200,5\n"
+    ).encode("utf-8")
+    archive_bytes = gzip.compress(payload)
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+        content = archive_bytes
+        raw = None
+
+        def close(self) -> None:
+            return None
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, dict[str, object]]] = []
+
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            self.calls.append((url, kwargs))
+            return FakeResponse()
+
+    session = FakeSession()
+    rows = MODULE.fetch_missing_trade_archive_candles(
+        session, "BTC_USDT", "15m", [start], sleep_seconds=0,
+    )
+    assert rows == [{
+        "timestamp": start,
+        "open": 100.0,
+        "high": 101.0,
+        "low": 98.0,
+        "close": 98.0,
+        "volume": 6.0,
+        "quote_volume": None,
+    }]
     assert len(session.calls) == 1
-    params = session.calls[0]
-    assert params == {
-        "contract": "BTC_USDT", "interval": "15m",
-        "from": start, "to": start,
-    }
-    assert "limit" not in params
-    assert (int(params["to"]) - int(params["from"])) // 900 + 1 <= 900
+    assert session.calls[0][0] == (
+        f"{MODULE.ARCHIVE_BASE_URL}/trades/202501/BTC_USDT-202501.csv.gz"
+    )
+    assert session.calls[0][1]["stream"] is True
 
 
 def test_public_rest_http_400_is_not_retried_and_body_is_reported() -> None:
