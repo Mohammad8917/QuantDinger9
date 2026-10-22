@@ -29,7 +29,7 @@ description = "Browser session-storage namespace, not a secret"
 condition = "AND"
 paths = ['''^QuantDinger-Vue/src/store/modules/policy\.js$''']
 regexTarget = "line"
-regexes = ['''const STORAGE_KEY = 'quantdinger\\.broker-market-policy\\.v1''']
+regexes = ['''const STORAGE_KEY = 'quantdinger\.broker-market-policy\.v1''']
 
 [[allowlists]]
 description = "Public configuration schema key name, not a credential"
