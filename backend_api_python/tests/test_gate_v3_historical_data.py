@@ -209,6 +209,9 @@ def test_archive_fetch_supports_official_10s_files() -> None:
         content = archive_bytes
         text = ""
 
+        def raise_for_status(self) -> None:
+            return None
+
     class FakeSession:
         def __init__(self) -> None:
             self.urls: list[str] = []
