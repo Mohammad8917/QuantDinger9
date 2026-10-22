@@ -718,7 +718,7 @@ def fetch_missing_native_rest_candles(
 
 
 
-MIN_TRADE_VALIDATION_OVERLAP = 20
+MIN_TRADE_VALIDATION_OVERLAP = 100
 
 
 def parse_futures_trade_row(values: list[str]) -> tuple[float, int, float, float]:
@@ -1013,7 +1013,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
         "archive_intervals_downloaded": ["15m", "10s", "1m", "5m", "1h", "trades (only months with unresolved 15m gaps)"],
         "recent_rest_policy": "Public REST is used only inside the latest 10,000-point window, paged at no more than 900 points per request; older unresolved 15m gaps use official monthly trades after overlap validation.",
-        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing 15m buckets may be reconstructed from official monthly futures trades only after at least 20 overlapping OHLCV bars match the official candle source. A successfully downloaded and validated trade archive may certify a missing bucket as zero-trade, but no candle is synthesized for it. Other unresolved gaps remain failures.",
+        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing 15m buckets may be reconstructed from official monthly futures trades only after at least 100 overlapping OHLCV bars match the official candle source. A successfully downloaded and validated trade archive may certify a missing bucket as zero-trade, but no candle is synthesized for it. Other unresolved gaps remain failures.",
         "endpoint": "Gate official monthly futures candle/trade archives plus the public futures candlestick REST endpoint limited to its latest 10,000 points",
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
@@ -1023,7 +1023,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
-        "fifteen_minute_policy": "Historical 15m candles prefer the native official archive and otherwise aggregate complete sets of observed real 5m archive candles. Remaining 15m gaps may use official monthly futures trades only after at least 20 overlapping OHLCV bars match the official candle source. Buckets with no trades remain absent; a validated complete monthly trades archive can certify such buckets as zero-trade intervals. No synthetic candles are created.",
+        "fifteen_minute_policy": "Historical 15m candles prefer the native official archive and otherwise aggregate complete sets of observed real 5m archive candles. Remaining 15m gaps may use official monthly futures trades only after at least 100 overlapping OHLCV bars match the official candle source. Buckets with no trades remain absent; a validated complete monthly trades archive can certify such buckets as zero-trade intervals. No synthetic candles are created.",
         "gap_repair_policy": "Repair missing candle opens from complete observed real 1m/10s candle archives and recent native public REST. For unresolved 15m gaps, download only the affected official monthly futures trade archives, aggregate trades by UTC 900-second bucket, validate OHLCV against at least 20 overlapping official candles, and accept only months that match. Gate trade size is signed by direction, so reconstructed total volume sums absolute sizes. Unavailable or mismatching archives do not repair gaps; unverified gaps fail closed.",
         "symbols": {},
     }
