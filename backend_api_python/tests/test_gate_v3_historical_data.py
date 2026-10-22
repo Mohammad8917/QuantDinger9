@@ -247,7 +247,6 @@ def test_archive_fetch_supports_official_10s_files() -> None:
         f"{MODULE.ARCHIVE_BASE_URL}/candlesticks_10s/202501/BTC_USDT-202501.csv.gz"
     ]
 
-
 def test_native_15m_archive_is_preferred_when_available() -> None:
     import gzip
 
@@ -497,8 +496,7 @@ def test_public_rest_pagination_stays_within_900_candles() -> None:
     assert len(session.calls) == 2
     assert session.calls[0]["from"] == start
     assert session.calls[0]["to"] == start + 899 * 900
-    assert session.calls[1]["from"] == start + 900 * 900
-    assert session.calls[1]["to"] == end
+    assert session.calls[1]["from"] == start + 900 * 900    assert session.calls[1]["to"] == end
     assert all(
         (int(call["to"]) - int(call["from"])) // 900 + 1 <= 900
         for call in session.calls
@@ -719,3 +717,85 @@ def test_public_rest_http_400_is_not_retried_and_body_is_reported() -> None:
             sleep_seconds=0,
         )
     assert session.calls == 1
+
+def test_parse_futures_trade_row_preserves_signed_size() -> None:
+    row = MODULE.parse_futures_trade_row(["1800000000.125", "42", "101.5", "-3"])
+    assert row == (1800000000.125, 42, 101.5, -3.0)
+
+
+def test_trade_aggregation_uses_real_trade_order_and_absolute_contract_volume() -> None:
+    start = 1800000000
+    trades = [
+        (start + 700.0, 3, 102.0, -2.0),
+        (start + 100.0, 1, 100.0, 3.0),
+        (start + 500.0, 2, 105.0, -4.0),
+        (start + 901.0, 4, 110.0, 1.0),
+    ]
+    candles = MODULE.aggregate_futures_trades_to_15m(trades)
+    assert candles == [
+        {
+            "timestamp": start, "open": 100.0, "high": 105.0, "low": 100.0,
+            "close": 102.0, "volume": 9.0, "quote_volume": None,
+        },
+        {
+            "timestamp": start + 900, "open": 110.0, "high": 110.0, "low": 110.0,
+            "close": 110.0, "volume": 1.0, "quote_volume": None,
+        },
+    ]
+
+
+def test_trade_reconstruction_requires_minimum_overlap_and_exact_ohlcv() -> None:
+    start = 1800000000
+    trades = [
+        (start + index * 900 + 1.0, index, 100.0 + index, 2.0)
+        for index in range(MODULE.MIN_TRADE_VALIDATION_OVERLAP)
+    ]
+    reconstructed = MODULE.aggregate_futures_trades_to_15m(trades)
+    official = [dict(row) for row in reconstructed]
+    validation = MODULE.validate_trade_reconstruction(reconstructed, official)
+    assert validation["valid"] is True
+    assert validation["overlap_bars"] == MODULE.MIN_TRADE_VALIDATION_OVERLAP
+    assert validation["reason"] == "OHLCV matches"
+
+    insufficient = MODULE.validate_trade_reconstruction(reconstructed[:3], official[:3])
+    assert insufficient["valid"] is False
+    assert insufficient["overlap_bars"] == 3
+    assert "insufficient overlap" in insufficient["reason"]
+
+
+def test_trade_reconstruction_rejects_any_ohlcv_mismatch() -> None:
+    start = 1800000000
+    trades = [
+        (start + index * 900 + 1.0, index, 100.0 + index, 2.0)
+        for index in range(MODULE.MIN_TRADE_VALIDATION_OVERLAP)
+    ]
+    reconstructed = MODULE.aggregate_futures_trades_to_15m(trades)
+    official = [dict(row) for row in reconstructed]
+    official[10]["volume"] = float(official[10]["volume"]) + 1.0
+    validation = MODULE.validate_trade_reconstruction(reconstructed, official)
+    assert validation["valid"] is False
+    assert validation["reason"] == "OHLCV mismatch"
+    assert validation["mismatches"]
+
+
+def test_monthly_trade_archive_404_is_unavailable_not_zero_trade() -> None:
+    class FakeResponse:
+        status_code = 404
+        text = "not found"
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.urls: list[str] = []
+
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            self.urls.append(url)
+            return FakeResponse()
+
+    session = FakeSession()
+    assert MODULE.fetch_monthly_futures_trades(
+        session, "BTC_USDT", "202501",
+    ) is None
+    assert session.urls == [
+        f"{MODULE.ARCHIVE_BASE_URL}/trades/202501/BTC_USDT-202501.csv.gz"
+    ]
+
