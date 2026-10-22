@@ -546,6 +546,14 @@ def _fetch_trade_archive_month_candles(
     if response is None:
         raise DataError(f"Gate trade archive returned no response for {contract} {month}")
 
+    month_start = datetime.strptime(month, "%Y%m").replace(tzinfo=timezone.utc)
+    if month_start.month == 12:
+        next_month = month_start.replace(year=month_start.year + 1, month=1)
+    else:
+        next_month = month_start.replace(month=month_start.month + 1)
+    month_start_ts = month_start.timestamp()
+    month_end_ts = next_month.timestamp()
+
     states: dict[int, dict[str, Any]] = {}
     rows_scanned = 0
     matched_trade_rows = 0
@@ -586,6 +594,11 @@ def _fetch_trade_archive_month_candles(
                 )):
                     raise DataError(
                         f"Non-finite Gate trade row {line_number} for {contract} {month}"
+                    )
+                if not month_start_ts <= timestamp_value < month_end_ts:
+                    raise DataError(
+                        f"Gate trade timestamp outside requested archive month at row "
+                        f"{line_number} for {contract} {month}: {timestamp_value}"
                     )
                 if (
                     price <= 0 or signed_size == 0 or deal_id_value < 0
