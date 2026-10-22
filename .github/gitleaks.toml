@@ -22,7 +22,7 @@ description = "Static token in frontend mock-auth fixture, not an application cr
 condition = "AND"
 paths = ['''^QuantDinger-Vue/src/mock/services/auth\.js$''']
 regexTarget = "line"
-regexes = ['''token:\s*'4291d7da9005377ec9aec4a71ea837f' ''']
+regexes = ['''token:\s*'4291d7da9005377ec9aec4a71ea837f''']
 
 [[allowlists]]
 description = "Browser session-storage namespace, not a secret"
