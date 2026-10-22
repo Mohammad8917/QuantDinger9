@@ -140,7 +140,7 @@ def test_locked_risk_parameters_remain_declared(
     setting: str,
     expected: str,
 ) -> None:
-    pattern = rf"^# @param {re.escape(setting)} \\w+ {re.escape(expected)}(?:\\s|$)"
+    pattern = rf"^# @param {re.escape(setting)} \w+ {re.escape(expected)}(?:\s|$)"
     assert re.search(pattern, strategy_source, flags=re.MULTILINE), (
         f"Locked strategy parameter changed or missing: {setting}={expected}"
     )
