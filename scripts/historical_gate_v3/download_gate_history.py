@@ -131,12 +131,13 @@ def fetch_candles(
     consecutive_empty = 0
     while cursor <= last_closed_start:
         window_end = min(cursor + interval * 999, last_closed_start + interval - 1)
+        # Gate's API accepts either a limit-only query or a from/to range;
+        # follow the repository's existing native client and omit limit for ranges.
         params = {
             "contract": contract,
             "interval": timeframe,
             "from": cursor,
             "to": window_end,
-            "limit": 1000,
         }
         response = None
         for attempt in range(5):
