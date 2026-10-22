@@ -170,7 +170,7 @@ def fetch_candles(
             if row is None:
                 continue
             ts = int(row["timestamp"])
-            if cursor <= ts <= last_closed_start and ts % interval == 0:
+            if max(cursor, start_ts) <= ts <= last_closed_start and ts % interval == 0:
                 result[ts] = row
                 valid_in_window += 1
         if valid_in_window == 0:
