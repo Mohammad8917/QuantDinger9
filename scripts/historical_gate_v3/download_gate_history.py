@@ -1060,7 +1060,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 recent_first = max(
                     requested_first, recent_rest_window_start(interval, now_ts=int(time.time()))
                 )
-                archive_last = min(requested_last, recent_first - interval)                archive_rows: list[dict[str, float | int | None]] = []
+                archive_last = min(requested_last, recent_first - interval)
+                archive_rows: list[dict[str, float | int | None]] = []
                 recent_rows: list[dict[str, float | int | None]] = []
                 archive_source_label = ""
                 if requested_first <= archive_last:
