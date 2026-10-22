@@ -562,7 +562,7 @@ def test_missing_native_rest_repair_skips_timestamps_outside_recent_window() -> 
     assert session.calls == 0
 
 
-def test_trade_archive_reconstructs_real_candles_and_confirms_spanned_empty_buckets(capsys: Any) -> None:
+def test_trade_archive_reconstructs_observed_candles_but_does_not_infer_empty_buckets(capsys: Any) -> None:
     import gzip
 
     start = 1735689600
@@ -605,7 +605,7 @@ def test_trade_archive_reconstructs_real_candles_and_confirms_spanned_empty_buck
         "volume": 6.0,
         "quote_volume": None,
     }]
-    assert source_empty == {start + 900, start + 1800}
+    assert source_empty == set()
     assert len(session.calls) == 1
     assert session.calls[0][0] == (
         f"{MODULE.ARCHIVE_BASE_URL}/trades/202501/BTC_USDT-202501.csv.gz"
@@ -621,7 +621,7 @@ def test_trade_archive_reconstructs_real_candles_and_confirms_spanned_empty_buck
 
 
 
-def test_trade_archive_confirms_final_month_bucket_empty_without_synthesizing_candle() -> None:
+def test_trade_archive_does_not_infer_final_month_bucket_empty_without_completeness_proof() -> None:
     import gzip
 
     month_end = MODULE.utc_timestamp("2025-02-01")
@@ -651,7 +651,7 @@ def test_trade_archive_confirms_final_month_bucket_empty_without_synthesizing_ca
         FakeSession(), "BTC_USDT", "15m", [final_bucket], sleep_seconds=0,
     )
     assert rows == []
-    assert source_empty == {final_bucket}
+    assert source_empty == set()
 
 
 def test_audit_reports_exact_unresolved_timestamps() -> None:
