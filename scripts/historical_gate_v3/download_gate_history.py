@@ -23,6 +23,7 @@ from typing import Any
 import requests
 
 API_URL = "https://api.gateio.ws/api/v4/futures/usdt/candlesticks"
+CONTRACT_API_URL = "https://api.gateio.ws/api/v4/futures/usdt/contracts"
 STRATEGY_PATH = "docs/strategies/QD_Adaptive_Quant_Portfolio_20_Risk_Controlled_V3.py"
 LOCKED_STRATEGY_BLOB_SHA = "3cd1fbbcf3e57ad5031791b944ce764aad6151b1"
 SYMBOLS = (
@@ -110,45 +111,69 @@ def _validate_row(row: dict[str, float | int], interval: int) -> str | None:
     return None
 
 
+def fetch_contract_create_time(
+    session: requests.Session, contract: str, *, timeout_seconds: float = 20.0
+) -> int:
+    """Read public contract creation time to qualify historical coverage."""
+    last_error: Exception | None = None
+    for attempt in range(5):
+        try:
+            response = session.get(
+                f"{CONTRACT_API_URL}/{contract}", timeout=timeout_seconds,
+                headers={"User-Agent": USER_AGENT},
+            )
+            if response.status_code in (429, 500, 502, 503, 504):
+                if attempt == 4:
+                    response.raise_for_status()
+                time.sleep(min(2 ** attempt, 12))
+                continue
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise DataError(f"Unexpected Gate contract metadata for {contract}: expected object")
+            created = int(float(payload["create_time"]))
+            if created <= 0:
+                raise DataError(f"Invalid Gate contract create_time for {contract}")
+            return created
+        except (requests.RequestException, ValueError, KeyError, TypeError, OverflowError) as exc:
+            last_error = exc
+            if attempt == 4:
+                break
+            time.sleep(min(2 ** attempt, 12))
+    raise DataError(f"Could not verify Gate contract creation time for {contract}: {last_error}")
+
+
+def ceil_to_interval(timestamp: int, interval: int) -> int:
+    """Return the first candle boundary at or after timestamp."""
+    return ((timestamp + interval - 1) // interval) * interval
+
+
+def last_closed_candle_start(end_ts: int, interval: int, now_ts: int | None = None) -> int:
+    """Return latest candle open timestamp whose full interval has closed."""
+    effective_end = min(end_ts, int(time.time()) if now_ts is None else now_ts)
+    return (effective_end // interval) * interval - interval
+
+
 def fetch_candles(
-    session: requests.Session,
-    contract: str,
-    timeframe: str,
-    start_ts: int,
-    end_ts: int,
-    *,
-    sleep_seconds: float = 0.12,
-    timeout_seconds: float = 20.0,
+    session: requests.Session, contract: str, timeframe: str, start_ts: int, end_ts: int,
+    *, sleep_seconds: float = 0.12, timeout_seconds: float = 20.0,
 ) -> list[dict[str, float | int]]:
-    """Fetch candles in bounded, non-overlapping time windows; never synthesize gaps."""
+    """Fetch candle rows without deduplicating; the audit must detect duplicates."""
     interval = TIMEFRAMES[timeframe]
-    now_ts = int(time.time())
-    effective_end = min(end_ts, now_ts)
-    # Only keep fully closed candles. A bar's close time is timestamp + interval.
-    last_closed_start = (effective_end // interval) * interval - interval
+    last_closed_start = last_closed_candle_start(end_ts, interval)
     if last_closed_start < start_ts:
         raise DataError(f"No fully closed candles available for {contract} {timeframe}")
 
-    cursor = (start_ts // interval) * interval
-    result: dict[int, dict[str, float | int]] = {}
-    consecutive_empty = 0
+    cursor = ceil_to_interval(start_ts, interval)
+    rows: list[dict[str, float | int]] = []
     while cursor <= last_closed_start:
         window_end = min(cursor + interval * 999, last_closed_start)
-        # Gate's API accepts either a limit-only query or a from/to range;
-        # follow the repository's existing native client and omit limit for ranges.
-        params = {
-            "contract": contract,
-            "interval": timeframe,
-            "from": cursor,
-            "to": window_end,
-        }
-        response = None
+        params = {"contract": contract, "interval": timeframe, "from": cursor, "to": window_end}
+        payload: Any = None
         for attempt in range(5):
             try:
                 response = session.get(
-                    API_URL,
-                    params=params,
-                    timeout=timeout_seconds,
+                    API_URL, params=params, timeout=timeout_seconds,
                     headers={"User-Agent": USER_AGENT},
                 )
                 if response.status_code in (429, 500, 502, 503, 504):
@@ -167,35 +192,32 @@ def fetch_candles(
                 time.sleep(min(2 ** attempt, 12))
         if not isinstance(payload, list):
             raise DataError(f"Unexpected Gate response for {contract} {timeframe}: expected list")
-
-        parsed = [_parse_row(item) for item in payload]
-        valid_in_window = 0
-        for row in parsed:
+        for item in payload:
+            row = _parse_row(item)
             if row is None:
-                continue
+                raise DataError(
+                    f"Malformed candle row for {contract} {timeframe} at request window {cursor}"
+                )
             ts = int(row["timestamp"])
-            if max(cursor, start_ts) <= ts <= window_end and ts % interval == 0:
-                result[ts] = row
-                valid_in_window += 1
-        if valid_in_window == 0:
-            consecutive_empty += 1
-        else:
-            consecutive_empty = 0
-        # Advance to the next candle boundary. Adding one second would drift
-        # subsequent windows off the timeframe grid and weaken range filtering.
+            if ts < cursor or ts > window_end:
+                continue
+            if ts % interval:
+                raise DataError(f"Unaligned candle timestamp for {contract} {timeframe}: {ts}")
+            rows.append(row)
         cursor = window_end + interval
         if sleep_seconds > 0:
             time.sleep(sleep_seconds)
-        if consecutive_empty >= 3:
-            # Keep checking later windows, but don't let a broken API loop indefinitely.
-            consecutive_empty = 0
-    rows = [result[key] for key in sorted(result)]
+    rows.sort(key=lambda row: int(row["timestamp"]))
     if not rows:
         raise DataError(f"Gate returned no valid candles for {contract} {timeframe}")
     return rows
 
 
-def audit_rows(rows: list[dict[str, float | int]], timeframe: str) -> dict[str, Any]:
+def audit_rows(
+    rows: list[dict[str, float | int]], timeframe: str, *,
+    expected_start: int | None = None, expected_end: int | None = None,
+) -> dict[str, Any]:
+    """Audit OHLCV validity, duplicate timestamps, internal gaps, and range-edge coverage."""
     interval = TIMEFRAMES[timeframe]
     invalid: dict[str, int] = {}
     seen: set[int] = set()
@@ -207,15 +229,41 @@ def audit_rows(rows: list[dict[str, float | int]], timeframe: str) -> dict[str, 
         if ts in seen:
             invalid["duplicate_timestamp"] = invalid.get("duplicate_timestamp", 0) + 1
         seen.add(ts)
+
     ordered = sorted(seen)
-    gaps = sum(1 for a, b in zip(ordered, ordered[1:]) if b - a > interval)
+    gap_count = sum(1 for a, b in zip(ordered, ordered[1:]) if b - a > interval)
+    internal_missing_bars = sum(
+        max(0, (b - a) // interval - 1) for a, b in zip(ordered, ordered[1:])
+    )
+    has_range = expected_start is not None and expected_end is not None and expected_start <= expected_end
+    if has_range:
+        expected_bars = ((expected_end - expected_start) // interval) + 1
+        in_range = [ts for ts in ordered if expected_start <= ts <= expected_end]
+        leading_missing = max(0, (in_range[0] - expected_start) // interval) if in_range else expected_bars
+        trailing_missing = max(0, (expected_end - in_range[-1]) // interval) if in_range else expected_bars
+        observed_expected = len(in_range)
+        missing_expected = max(0, expected_bars - observed_expected)
+        coverage_ratio = observed_expected / expected_bars
+    else:
+        expected_bars = leading_missing = trailing_missing = observed_expected = missing_expected = 0
+        coverage_ratio = None
+
+    complete = bool(
+        has_range and expected_bars > 0 and observed_expected == expected_bars
+        and gap_count == 0 and not invalid and leading_missing == 0 and trailing_missing == 0
+    )
     return {
-        "bars": len(rows),
+        "bars": len(rows), "unique_timestamps": len(ordered),
         "first_timestamp": ordered[0] if ordered else None,
         "last_timestamp": ordered[-1] if ordered else None,
-        "invalid_rows": invalid,
-        "gap_count": gaps,
-        "complete_contiguous_history": gaps == 0 and not invalid,
+        "expected_first_timestamp": expected_start if has_range else None,
+        "expected_last_timestamp": expected_end if has_range else None,
+        "expected_bars": expected_bars, "observed_expected_bars": observed_expected,
+        "missing_expected_bars": missing_expected, "leading_missing_bars": leading_missing,
+        "trailing_missing_bars": trailing_missing, "coverage_ratio": coverage_ratio,
+        "invalid_rows": invalid, "gap_count": gap_count,
+        "internal_missing_bars": internal_missing_bars,
+        "complete_contiguous_history": complete,
     }
 
 
@@ -244,6 +292,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
     manifest: dict[str, Any] = {
         "schema_version": 1,
         "data_source": "Gate.io public USDT perpetual futures REST API",
+        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected.",
         "endpoint": API_URL,
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
@@ -257,29 +306,66 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
     for base in SYMBOLS:
         contract = f"{base}_USDT"
         manifest["symbols"][contract] = {}
-        for timeframe in TIMEFRAMES:
+        try:
+            create_time = fetch_contract_create_time(session, contract)
+            manifest["symbols"][contract]["contract_metadata"] = {
+                "create_time": create_time, "source": f"{CONTRACT_API_URL}/{contract}",
+            }
+        except Exception as exc:
+            failures.append(f"{contract} contract metadata: {exc}")
+            manifest["symbols"][contract]["contract_metadata"] = {"error": str(exc)}
+            for timeframe in TIMEFRAMES:
+                manifest["symbols"][contract][timeframe] = {
+                    "error": "Skipped because contract history start could not be verified"
+                }
+                failures.append(f"{contract} {timeframe}: skipped; contract metadata unavailable")
+            continue
+
+        for timeframe, interval in TIMEFRAMES.items():
             print(f"[download] {contract} {timeframe}", flush=True)
+            requested_first = ceil_to_interval(max(start_ts, create_time), interval)
+            requested_last = last_closed_candle_start(end_ts, interval)
+            if requested_first > requested_last:
+                manifest["symbols"][contract][timeframe] = {
+                    "interval_seconds": interval, "contract_create_time": create_time,
+                    "expected_bars": 0, "coverage_status": "no_expected_bars_in_requested_range",
+                    "complete_contiguous_history": None,
+                }
+                continue
             try:
-                rows = fetch_candles(session, contract, timeframe, start_ts, end_ts)
-                audit = audit_rows(rows, timeframe)
+                rows = fetch_candles(session, contract, timeframe, requested_first, end_ts)
+                audit = audit_rows(
+                    rows, timeframe, expected_start=requested_first, expected_end=requested_last,
+                )
                 if audit["invalid_rows"]:
                     raise DataError(f"Invalid candle rows: {audit['invalid_rows']}")
+                if not audit["complete_contiguous_history"]:
+                    failures.append(
+                        f"{contract} {timeframe}: incomplete coverage "
+                        f"({audit['missing_expected_bars']} expected bars missing; "
+                        f"{audit['gap_count']} internal gap spans)"
+                    )
                 filename = f"{contract}_{timeframe}.csv.gz"
                 sha256 = write_gzip_csv(output_dir / filename, rows)
                 manifest["symbols"][contract][timeframe] = {
-                    **audit,
-                    "file": filename,
-                    "sha256": sha256,
-                    "interval_seconds": TIMEFRAMES[timeframe],
+                    **audit, "file": filename, "sha256": sha256, "interval_seconds": interval,
+                    "contract_create_time": create_time,
+                    "coverage_status": "complete" if audit["complete_contiguous_history"] else "partial",
                 }
                 print(
                     f"[ok] {contract} {timeframe}: {audit['bars']} bars; "
-                    f"{audit['gap_count']} gaps; sha256={sha256}",
-                    flush=True,
+                    f"expected={audit['expected_bars']}; missing={audit['missing_expected_bars']}; "
+                    f"gap_spans={audit['gap_count']}; sha256={sha256}", flush=True,
                 )
             except Exception as exc:
                 failures.append(f"{contract} {timeframe}: {exc}")
-                manifest["symbols"][contract][timeframe] = {"error": str(exc)}
+                manifest["symbols"][contract][timeframe] = {
+                    "error": str(exc), "expected_first_timestamp": requested_first,
+                    "expected_last_timestamp": requested_last,
+                    "expected_bars": ((requested_last - requested_first) // interval) + 1,
+                    "contract_create_time": create_time, "coverage_status": "failed",
+                    "complete_contiguous_history": False,
+                }
                 print(f"[error] {contract} {timeframe}: {exc}", file=sys.stderr, flush=True)
     manifest["failures"] = failures
     manifest_path = output_dir / "manifest.json"
