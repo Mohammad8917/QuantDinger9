@@ -851,6 +851,17 @@ def validate_trade_reconstruction(
             "mismatches": [],
         }
 
+    reconstructed_by_ts: dict[int, dict[str, float | int | None]] = {}
+    for row in reconstructed:
+        timestamp = int(row["timestamp"])
+        if timestamp in reconstructed_by_ts:
+            return {
+                "valid": False, "overlap_bars": 0,
+                "reason": f"duplicate reconstructed timestamps: {timestamp}",
+                "mismatches": [],
+            }
+        reconstructed_by_ts[timestamp] = row
+
     mismatches: list[dict[str, Any]] = []
     overlap = 0
     fields = ("open", "high", "low", "close", "volume")
@@ -867,6 +878,21 @@ def validate_trade_reconstruction(
                 different[field] = {"trades": left, "official": right}
         if different and len(mismatches) < 5:
             mismatches.append({"timestamp": timestamp, "fields": different})
+
+    # Reverse validation is essential: a truncated trade archive can otherwise pass
+    # by matching 100 surviving candles while silently omitting other official trades.
+    for timestamp, official in official_by_ts.items():
+        if timestamp in reconstructed_by_ts:
+            continue
+        if float(official["volume"]) > 0 and len(mismatches) < 5:
+            mismatches.append({
+                "timestamp": timestamp,
+                "fields": {
+                    "missing_trade_candle": {
+                        "official_volume": float(official["volume"])
+                    }
+                },
+            })
 
     if overlap < minimum_overlap:
         return {
@@ -1093,85 +1119,15 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     rows, timeframe, requested_first, requested_last,
                 )
                 repaired_rows: list[dict[str, float | int | None]] = []
-                missing_by_month: dict[str, list[int]] = {}
-                for timestamp in missing_before_repair:
-                    month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
-                    missing_by_month.setdefault(month, []).append(timestamp)
-                for month, missing_in_month in sorted(missing_by_month.items()):
-                    repair_start = missing_in_month[0]
-                    repair_end = missing_in_month[-1] + interval - 60
-                    try:
-                        minute_rows = fetch_archive_candles(
-                            session, contract, "1m", repair_start, repair_end,
-                        )
-                        candidates = aggregate_1m_to_timeframe(minute_rows, timeframe)
-                        wanted = set(missing_in_month)
-                        accepted = [
-                            row for row in candidates if int(row["timestamp"]) in wanted
-                        ]
-                        repaired_rows.extend(accepted)
-                        print(
-                            f"[repair] {contract} {timeframe} {month}: "
-                            f"{len(accepted)}/{len(missing_in_month)} missing bars recovered "
-                            "from complete observed 1m candle sets",
-                            flush=True,
-                        )
-                    except Exception as repair_error:
-                        print(
-                            f"[repair-warning] {contract} {timeframe} {month}: "
-                            f"1m archive repair unavailable: {repair_error}",
-                            flush=True,
-                        )
-
-                archive_repaired_count = len(repaired_rows)
-                already_observed = {
-                    int(row["timestamp"]) for row in rows + repaired_rows
-                }
-                remaining_missing = [
-                    timestamp for timestamp in missing_before_repair
-                    if timestamp not in already_observed
-                ]
-                repair_now = int(time.time())
-                rest_start = recent_rest_window_start(interval, now_ts=repair_now)
-                rest_end = last_closed_candle_start(repair_now, interval, now_ts=repair_now)
-                historical_missing = [
-                    timestamp for timestamp in remaining_missing
-                    if not rest_start <= timestamp <= rest_end
-                ]
-                if historical_missing:
-                    ten_second_rows = fetch_missing_10s_archive_candles(
-                        session, contract, timeframe, historical_missing,
-                    )
-                    if ten_second_rows:
-                        repaired_rows.extend(ten_second_rows)
-                        source_parts.append("Gate official 10s candle archive recovery")
-
-                already_observed = {
-                    int(row["timestamp"]) for row in rows + repaired_rows
-                }
-                remaining_missing = [
-                    timestamp for timestamp in missing_before_repair
-                    if timestamp not in already_observed
-                ]
-                if remaining_missing:
-                    native_rest_rows = fetch_missing_native_rest_candles(
-                        session, contract, timeframe, remaining_missing,
-                        now_ts=repair_now,
-                    )
-                    if native_rest_rows:
-                        repaired_rows.extend(native_rest_rows)
-                        source_parts.append("Gate native public REST recovery for recent missing intervals")
-
-                # Recompute after all earlier repair sources so trades never duplicate
-                # a timestamp already recovered from 1m/10s/REST data.
-                already_observed = {
-                    int(row["timestamp"]) for row in rows + repaired_rows
-                }
-                remaining_missing = [
-                    timestamp for timestamp in missing_before_repair
-                    if timestamp not in already_observed
-                ]
                 verified_trade_empty_timestamps: set[int] = set()
+                already_observed = {
+                    int(row["timestamp"]) for row in rows + repaired_rows
+                }
+                remaining_missing = [
+                    timestamp for timestamp in missing_before_repair
+                    if timestamp not in already_observed
+                    and timestamp not in verified_trade_empty_timestamps
+                ]
                 if timeframe == "15m" and remaining_missing:
                     missing_trade_months: dict[str, list[int]] = {}
                     for timestamp in remaining_missing:
@@ -1229,6 +1185,48 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                 flush=True,
                             )
 
+
+                # Continue only with gaps not reconstructed or verified empty by the trade archive.
+                already_observed = {
+                    int(row["timestamp"]) for row in rows + repaired_rows
+                }
+                remaining_missing = [
+                    timestamp for timestamp in missing_before_repair
+                    if timestamp not in already_observed
+                    and timestamp not in verified_trade_empty_timestamps
+                ]
+                trade_repaired_count = len(repaired_rows)
+                missing_by_month: dict[str, list[int]] = {}
+                for timestamp in remaining_missing:
+                    month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
+                    missing_by_month.setdefault(month, []).append(timestamp)
+                for month, missing_in_month in sorted(missing_by_month.items()):
+                    repair_start = missing_in_month[0]
+                    repair_end = missing_in_month[-1] + interval - 60
+                    try:
+                        minute_rows = fetch_archive_candles(
+                            session, contract, "1m", repair_start, repair_end,
+                        )
+                        candidates = aggregate_1m_to_timeframe(minute_rows, timeframe)
+                        wanted = set(missing_in_month)
+                        accepted = [
+                            row for row in candidates if int(row["timestamp"]) in wanted
+                        ]
+                        repaired_rows.extend(accepted)
+                        print(
+                            f"[repair] {contract} {timeframe} {month}: "
+                            f"{len(accepted)}/{len(missing_in_month)} missing bars recovered "
+                            "from complete observed 1m candle sets",
+                            flush=True,
+                        )
+                    except Exception as repair_error:
+                        print(
+                            f"[repair-warning] {contract} {timeframe} {month}: "
+                            f"1m archive repair unavailable: {repair_error}",
+                            flush=True,
+                        )
+
+                archive_repaired_count = len(repaired_rows) - trade_repaired_count
                 if repaired_rows:
                     rows = sorted(rows + repaired_rows, key=lambda row: int(row["timestamp"]))
                     if archive_repaired_count:
