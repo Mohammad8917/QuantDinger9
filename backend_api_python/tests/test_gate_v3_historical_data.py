@@ -654,6 +654,33 @@ def test_trade_archive_does_not_infer_final_month_bucket_empty_without_completen
     assert source_empty == set()
 
 
+def test_trade_archive_rejects_rows_outside_requested_month() -> None:
+    import gzip
+    import pytest
+
+    timestamp = MODULE.utc_timestamp("2024-12-31T23:59:59Z")
+    archive_bytes = gzip.compress(f"{timestamp},1,100,1\\n".encode("utf-8"))
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+        content = archive_bytes
+        raw = None
+
+        def close(self) -> None:
+            return None
+
+    class FakeSession:
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            return FakeResponse()
+
+    with pytest.raises(MODULE.DataError, match="outside requested archive month"):
+        MODULE._fetch_trade_archive_month_candles(
+            FakeSession(), "BTC_USDT", "15m", "202501", {timestamp},
+            timeout_seconds=1,
+        )
+
+
 def test_audit_reports_exact_unresolved_timestamps() -> None:
     start = 1800000000
     rows = [
