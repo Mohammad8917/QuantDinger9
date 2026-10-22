@@ -58,7 +58,7 @@ jobs:
             --user "$(id -u):$(id -g)" \
             --volume "$GITHUB_WORKSPACE:/repo:ro" \
             ghcr.io/gitleaks/gitleaks:v8.30.1 \
-            git --redact --verbose /repo
+            git --redact --verbose --config /repo/.github/gitleaks.toml /repo
 
   codeql:
     name: CodeQL
