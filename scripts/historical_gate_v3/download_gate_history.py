@@ -496,250 +496,6 @@ def aggregate_1m_to_timeframe(
     return aggregated
 
 
-def _fetch_trade_archive_month_candles(
-    session: requests.Session,
-    contract: str,
-    timeframe: str,
-    month: str,
-    wanted: set[int],
-    *,
-    timeout_seconds: float,
-) -> tuple[list[dict[str, float | int | None]], int, float | None, float | None]:
-    """Read one Gate monthly futures-trade archive and aggregate wanted buckets."""
-    interval = TIMEFRAMES[timeframe]
-    url = f"{ARCHIVE_BASE_URL}/trades/{month}/{contract}-{month}.csv.gz"
-    response = None
-    for attempt in range(5):
-        try:
-            response = session.get(
-                url, timeout=timeout_seconds, stream=True,
-                headers={"User-Agent": USER_AGENT},
-            )
-            status = int(response.status_code)
-            if status in (429, 500, 502, 503, 504):
-                close = getattr(response, "close", None)
-                if callable(close):
-                    close()
-                if attempt == 4:
-                    raise DataError(
-                        f"Gate trade archive HTTP {status} for {contract} {month}"
-                    )
-                time.sleep(min(2 ** attempt, 12))
-                continue
-            if status >= 400:
-                body = str(getattr(response, "text", "") or "").strip()[:500]
-                close = getattr(response, "close", None)
-                if callable(close):
-                    close()
-                raise DataError(
-                    f"Gate trade archive HTTP {status} for {contract} {month}: "
-                    f"{body or '<empty>'}"
-                )
-            break
-        except requests.RequestException as exc:
-            if attempt == 4:
-                raise DataError(
-                    f"Gate trade archive request failed for {contract} {month}: {exc}"
-                ) from exc
-            time.sleep(min(2 ** attempt, 12))
-
-    if response is None:
-        raise DataError(f"Gate trade archive returned no response for {contract} {month}")
-
-    month_start = datetime.strptime(month, "%Y%m").replace(tzinfo=timezone.utc)
-    if month_start.month == 12:
-        next_month = month_start.replace(year=month_start.year + 1, month=1)
-    else:
-        next_month = month_start.replace(month=month_start.month + 1)
-    month_start_ts = month_start.timestamp()
-    month_end_ts = next_month.timestamp()
-
-    states: dict[int, dict[str, Any]] = {}
-    rows_scanned = 0
-    matched_trade_rows = 0
-    first_trade_timestamp: float | None = None
-    last_trade_timestamp: float | None = None
-    try:
-        raw = getattr(response, "raw", None)
-        if raw is not None:
-            if hasattr(raw, "decode_content"):
-                raw.decode_content = False
-            compressed_stream = raw
-        else:
-            compressed_stream = io.BytesIO(response.content)
-
-        with gzip.GzipFile(fileobj=compressed_stream, mode="rb") as zipped:
-            text_stream = io.TextIOWrapper(zipped, encoding="utf-8", newline="")
-            reader = csv.reader(text_stream)
-            for line_number, values in enumerate(reader, start=1):
-                if not values:
-                    continue
-                rows_scanned += 1
-                if len(values) != 4:
-                    raise DataError(
-                        f"Malformed Gate trade row {line_number} for {contract} {month}: "
-                        "expected timestamp,dealid,price,size"
-                    )
-                try:
-                    timestamp_value = float(values[0])
-                    deal_id_value = float(values[1])
-                    price = float(values[2])
-                    signed_size = float(values[3])
-                except (TypeError, ValueError, OverflowError) as exc:
-                    raise DataError(
-                        f"Malformed Gate trade row {line_number} for {contract} {month}"
-                    ) from exc
-                if not all(math.isfinite(value) for value in (
-                    timestamp_value, deal_id_value, price, signed_size
-                )):
-                    raise DataError(
-                        f"Non-finite Gate trade row {line_number} for {contract} {month}"
-                    )
-                if not month_start_ts <= timestamp_value < month_end_ts:
-                    raise DataError(
-                        f"Gate trade timestamp outside requested archive month at row "
-                        f"{line_number} for {contract} {month}: {timestamp_value}"
-                    )
-                if (
-                    price <= 0 or signed_size == 0 or deal_id_value < 0
-                    or not deal_id_value.is_integer()
-                ):
-                    raise DataError(
-                        f"Invalid Gate trade row {line_number} for {contract} {month}"
-                    )
-
-                if first_trade_timestamp is None or timestamp_value < first_trade_timestamp:
-                    first_trade_timestamp = timestamp_value
-                if last_trade_timestamp is None or timestamp_value > last_trade_timestamp:
-                    last_trade_timestamp = timestamp_value
-
-                bucket = (int(timestamp_value) // interval) * interval
-                if bucket not in wanted:
-                    continue
-                matched_trade_rows += 1
-                key = (timestamp_value, deal_id_value)
-                state = states.get(bucket)
-                if state is None:
-                    states[bucket] = {
-                        "timestamp": bucket,
-                        "first_key": key,
-                        "last_key": key,
-                        "open": price,
-                        "high": price,
-                        "low": price,
-                        "close": price,
-                        "volume": abs(signed_size),
-                    }
-                    continue
-                state["high"] = max(float(state["high"]), price)
-                state["low"] = min(float(state["low"]), price)
-                state["volume"] = float(state["volume"]) + abs(signed_size)
-                if key < state["first_key"]:
-                    state["first_key"] = key
-                    state["open"] = price
-                if key > state["last_key"]:
-                    state["last_key"] = key
-                    state["close"] = price
-    except DataError:
-        raise
-    except (OSError, EOFError, gzip.BadGzipFile, UnicodeError, csv.Error) as exc:
-        raise DataError(
-            f"Could not decode Gate trade archive for {contract} {month}: {exc}"
-        ) from exc
-    finally:
-        close = getattr(response, "close", None)
-        if callable(close):
-            close()
-
-    print(
-        f"[trade-archive-audit] {contract} {timeframe} {month}: "
-        f"rows_scanned={rows_scanned}; matched_trade_rows={matched_trade_rows}; "
-        f"wanted_buckets={len(wanted)}; recovered_buckets={len(states)}; "
-        f"trade_timestamp_min={first_trade_timestamp}; "
-        f"trade_timestamp_max={last_trade_timestamp}",
-        flush=True,
-    )
-    month_rows = [
-        {
-            "timestamp": bucket,
-            "open": float(state["open"]),
-            "high": float(state["high"]),
-            "low": float(state["low"]),
-            "close": float(state["close"]),
-            "volume": float(state["volume"]),
-            "quote_volume": None,
-        }
-        for bucket, state in sorted(states.items())
-    ]
-    return month_rows, rows_scanned, first_trade_timestamp, last_trade_timestamp
-
-
-def fetch_missing_trade_archive_candles(
-    session: requests.Session,
-    contract: str,
-    timeframe: str,
-    missing_timestamps: list[int],
-    *,
-    sleep_seconds: float = 0.05,
-    timeout_seconds: float = 60.0,
-) -> tuple[list[dict[str, float | int | None]], set[int]]:
-    """Rebuild candles only from observed trades; never infer an empty bucket.
-
-    A successfully parsed trade archive proves that its observed rows can be read,
-    but the public archive has no independently checked per-file completeness
-    manifest here. Therefore absence of a row inside a bucket is not sufficient
-    evidence that no trades occurred. Reconstruct only buckets with observed
-    trades; leave all other missing buckets unresolved rather than synthesizing
-    candles or claiming source coverage.
-    """
-    if timeframe not in TIMEFRAMES:
-        raise ValueError(f"Unsupported trade archive timeframe: {timeframe}")
-    if not missing_timestamps:
-        return [], set()
-
-    missing_by_month: dict[str, list[int]] = {}
-    for timestamp in sorted(set(missing_timestamps)):
-        month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
-        missing_by_month.setdefault(month, []).append(timestamp)
-
-    recovered: list[dict[str, float | int | None]] = []
-    verified_source_empty: set[int] = set()
-    for month, month_timestamps in sorted(missing_by_month.items()):
-        wanted = set(month_timestamps)
-        try:
-            month_rows, _, _, _ = _fetch_trade_archive_month_candles(
-                session, contract, timeframe, month, wanted,
-                timeout_seconds=timeout_seconds,
-            )
-        except Exception as repair_error:
-            print(
-                f"[trade-repair-warning] {contract} {timeframe} {month}: "
-                f"trade archive recovery unavailable: {repair_error}",
-                flush=True,
-            )
-            continue
-
-        recovered.extend(month_rows)
-        recovered_opens = {int(row["timestamp"]) for row in month_rows}
-        # Do not infer source-empty intervals from the absence of rows in this
-        # archive. A valid gzip/CSV parse and trades on either side do not prove
-        # that the monthly archive is complete; no independent completeness
-        # manifest/checksum is validated here. Keep all unreconstructed buckets
-        # unresolved and fail closed in the final coverage audit.
-        source_empty: set[int] = set()
-        unresolved = len(wanted - recovered_opens)
-        print(
-            f"[trade-repair] {contract} {timeframe} {month}: "
-            f"reconstructed={len(month_rows)}/{len(wanted)}, "
-            f"source_empty={len(source_empty)}, unresolved={unresolved}",
-            flush=True,
-        )
-        if sleep_seconds > 0:
-            time.sleep(sleep_seconds)
-
-    return sorted(recovered, key=lambda row: int(row["timestamp"])), verified_source_empty
-
-
 def aggregate_10s_to_timeframe(
     rows: list[dict[str, float | int | None]], timeframe: str,
 ) -> list[dict[str, float | int | None]]:
@@ -1040,9 +796,9 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
     session = requests.Session()
     manifest: dict[str, Any] = {
         "schema_version": 4,
-        "data_source": "Gate official monthly futures 10s/1m/5m/1h candle and trades archives, public REST only inside the recent 10,000-point window, and public contracts REST API for create_time",
+        "data_source": "Gate official monthly futures 10s/1m/5m/1h candle archives, public REST only inside the recent 10,000-point window, and public contracts REST API for create_time",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
-        "archive_intervals_downloaded": ["10s", "1m", "5m", "1h", "trades"],
+        "archive_intervals_downloaded": ["10s", "1m", "5m", "1h"],
         "recent_rest_policy": "The primary recent tail uses public REST inside the configured recent window; gap recovery may query historical missing ranges after archive recovery, using from/to only and pages of at most 900 points.",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing buckets are resolved only from observed real source data. Absence from a trade archive is not proof of zero trades because archive completeness is not independently verified; no candle is synthesized.",
         "endpoint": "Gate official monthly archives plus https://api.gateio.ws/api/v4/futures/usdt/candlesticks for the bounded recent tail",
@@ -1054,8 +810,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
-        "fifteen_minute_policy": "Historical 15m candles are aggregated from observed real 5m archive candles; missing 15m/1h intervals are recovered from observed real 1m candles, then official 10s candles, historical real futures trades, or recent native REST within its allowed window. Empty intervals remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
-        "gap_repair_policy": "Repair missing 15m/1h opens from observed real 1m archive candles, then official 10s candle archives, then actual trades in Gate monthly trade archives; use public REST only within its latest 10,000-point window with at most 900 points per request. No missing interval is classified as source-empty solely because the trade archive has no row for it. Any gap not reconstructed from observed real source data remains unresolved and fails closed; complete_contiguous_history remains false for sparse data.",
+        "fifteen_minute_policy": "Historical 15m candles are aggregated only from complete sets of observed real 5m archive candles; missing 15m/1h intervals are recovered only from complete observed 1m or 10s candle sets, or recent native REST within its allowed window. Partial source groups and empty intervals remain missing, no synthetic candles are created, and unresolved gaps fail closed.",
+        "gap_repair_policy": "Repair missing 15m/1h opens only from complete observed real 1m or 10s candle archives; use public REST only within its latest 10,000-point window with at most 900 points per request. Trade archives are not converted into candles because their documented schema does not expose the is_internal flag used to exclude internal trades from K-lines. Any gap not reconstructed from complete observed candle data remains unresolved and fails closed; complete_contiguous_history remains false for sparse data.",
         "symbols": {},
     }
     failures: list[str] = []
@@ -1126,8 +882,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     rows, timeframe, requested_first, requested_last,
                 )
                 repaired_rows: list[dict[str, float | int | None]] = []
-                verified_source_empty_timestamps: set[int] = set()
-                missing_by_month: dict[str, list[int]] = {}
+                    missing_by_month: dict[str, list[int]] = {}
                 for timestamp in missing_before_repair:
                     month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
                     missing_by_month.setdefault(month, []).append(timestamp)
@@ -1192,28 +947,12 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     timestamp for timestamp in remaining_missing
                     if not rest_start <= timestamp <= rest_end
                 ]
-                if historical_missing:
-                    trade_rows, source_empty = fetch_missing_trade_archive_candles(
-                        session, contract, timeframe, historical_missing,
-                    )
-                    if trade_rows:
-                        repaired_rows.extend(trade_rows)
-                        source_parts.append(
-                            "Gate official futures trades archive reconstruction"
-                        )
-                    if source_empty:
-                        verified_source_empty_timestamps.update(source_empty)
-                        source_parts.append(
-                            "Gate official trade archive source-empty interval audit"
-                        )
-
                 already_observed = {
                     int(row["timestamp"]) for row in rows + repaired_rows
                 }
                 remaining_missing = [
                     timestamp for timestamp in missing_before_repair
                     if timestamp not in already_observed
-                    and timestamp not in verified_source_empty_timestamps
                 ]
                 if remaining_missing:
                     native_rest_rows = fetch_missing_native_rest_candles(
@@ -1233,24 +972,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 recent_unresolved = [
                     timestamp for timestamp in missing_before_repair
                     if timestamp not in already_observed
-                    and timestamp not in verified_source_empty_timestamps
                     and rest_start <= timestamp <= rest_end
                 ]
-                if recent_unresolved:
-                    trade_rows, source_empty = fetch_missing_trade_archive_candles(
-                        session, contract, timeframe, recent_unresolved,
-                    )
-                    if trade_rows:
-                        repaired_rows.extend(trade_rows)
-                        source_parts.append(
-                            "Gate official futures trades archive fallback for recent REST gaps"
-                        )
-                    if source_empty:
-                        verified_source_empty_timestamps.update(source_empty)
-                        source_parts.append(
-                            "Gate official trade archive source-empty audit for recent REST gaps"
-                        )
-
                 if repaired_rows:
                     rows = sorted(rows + repaired_rows, key=lambda row: int(row["timestamp"]))
                     if archive_repaired_count:
@@ -1260,7 +983,6 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 source_label = " + ".join(source_parts) or "no source rows"
                 audit = audit_rows(
                     rows, timeframe, expected_start=requested_first, expected_end=requested_last,
-                    verified_source_empty_timestamps=verified_source_empty_timestamps,
                 )
                 if audit["invalid_rows"]:
                     raise DataError(f"Invalid candle rows: {audit['invalid_rows']}")
@@ -1276,12 +998,12 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 manifest["symbols"][contract][timeframe] = {
                     **audit, "file": filename, "sha256": sha256, "interval_seconds": interval,
                     "contract_create_time": create_time, "quote_volume_available": False,
-                    "volume_source": "Gate contract-size volume (archive size / REST v / sum of absolute signed trade sizes for trade-derived candles)",
+                    "volume_source": "Gate contract-size volume (archive size / public REST v)",
                     "source": source_label,
                     "coverage_status": (
                         "complete_contiguous"
                         if audit["complete_contiguous_history"]
-                        else "source_complete_with_empty_intervals"
+                        else "complete_source_coverage"
                         if audit["complete_source_coverage"]
                         else "partial_unverified_gaps"
                     ),
