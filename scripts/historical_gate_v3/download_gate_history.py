@@ -394,6 +394,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
     manifest: dict[str, Any] = {
         "schema_version": 3,
         "data_source": "Gate official public historical USDT-perpetual candle archives; public contracts REST API for create_time",
+        "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
+        "archive_intervals_downloaded": ["5m", "1h"],
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected.",
         "endpoint": "https://download.gatedata.org/futures_usdt/candlesticks_{5m,1h}/{YYYYMM}/{CONTRACT}-{YYYYMM}.csv.gz",
         "strategy_path": STRATEGY_PATH,
