@@ -30,7 +30,8 @@ py -3.13 scripts/historical_gate_v3/download_gate_history.py
 ```
 
 By default, the date range ends at the current UTC time and begins two 365-day years earlier.
-Only fully closed candles are kept.
+Only fully closed candles are kept. Date-only `--start` values mean midnight UTC at the start of
+that date; date-only `--end` values include the full named UTC date.
 
 Optional explicit dates:
 
