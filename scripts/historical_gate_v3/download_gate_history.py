@@ -794,73 +794,7 @@ def main(argv: list[str] | None = None) -> int:
                     f"compressed_bytes={len(response.content)} first_row={sample}",
                     flush=True,
                 )
-            # Stream Gate's raw public trades archive for two exact missing candle
-            # windows; only timestamps and a few sample rows are retained in memory.
-            for contract, month, target_ts in (
-                ("BTC_USDT", "202504", 1745400600),
-                ("POL_USDT", "202605", 1779882300),
-            ):
-                trade_url = (
-                    f"{ARCHIVE_BASE_URL}/trades/{month}/"
-                    f"{contract}-{month}.csv.gz"
-                )
-                try:
-                    with session.get(
-                        trade_url, timeout=90, stream=True,
-                        headers={"User-Agent": USER_AGENT},
-                    ) as trade_response:
-                        if trade_response.status_code != 200:
-                            print(
-                                f"TRADE_WINDOW_PROBE: contract={contract} month={month} "
-                                f"http={trade_response.status_code}",
-                                flush=True,
-                            )
-                            continue
-                        direction = None
-                        previous_ts = None
-                        in_window = 0
-                        sample_rows = []
-                        first_row = None
-                        last_scanned_ts = None
-                        with gzip.GzipFile(fileobj=trade_response.raw, mode="rb") as zipped:
-                            reader = csv.reader(
-                                io.TextIOWrapper(zipped, encoding="utf-8", newline="")
-                            )
-                            for values in reader:
-                                if not values:
-                                    continue
-                                if first_row is None:
-                                    first_row = values[:8]
-                                try:
-                                    raw_ts = float(values[0])
-                                except (ValueError, TypeError, OverflowError):
-                                    continue
-                                trade_ts = raw_ts / 1000 if raw_ts > 10_000_000_000 else raw_ts
-                                last_scanned_ts = trade_ts
-                                if previous_ts is not None and direction is None and trade_ts != previous_ts:
-                                    direction = "ascending" if trade_ts > previous_ts else "descending"
-                                previous_ts = trade_ts
-                                if target_ts <= trade_ts < target_ts + 900:
-                                    in_window += 1
-                                    if len(sample_rows) < 3:
-                                        sample_rows.append(values[:8])
-                                if direction == "descending" and trade_ts < target_ts:
-                                    break
-                                if direction == "ascending" and trade_ts >= target_ts + 900:
-                                    break
-                        print(
-                            f"TRADE_WINDOW_PROBE: contract={contract} month={month} "
-                            f"window={target_ts}..{target_ts + 899} direction={direction} "
-                            f"trades_in_window={in_window} first_row={first_row} "
-                            f"sample_rows={sample_rows} last_scanned_ts={last_scanned_ts}",
-                            flush=True,
-                        )
-                except Exception as trade_probe_error:
-                    print(
-                        f"TRADE_WINDOW_PROBE_ERROR: contract={contract} month={month} "
-                        f"error={trade_probe_error}", flush=True,
-                    )
-            print("ARCHIVE_PROBE_COMPLETE: raw-trade windows checked for exact missing candle intervals; no dataset or orders were created.")
+            print("ARCHIVE_PROBE_COMPLETE: only two public archive samples were checked; no dataset or orders were created.")
             return 0
         except (DataError, ValueError, OSError, requests.RequestException) as exc:
             print(f"PROBE_FAILED: {exc}", file=sys.stderr)
