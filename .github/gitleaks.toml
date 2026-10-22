@@ -1,0 +1,81 @@
+[extend]
+useDefault = true
+
+# Narrow exceptions for confirmed non-secret examples and configuration labels.
+# Each exception requires BOTH the exact file path and a matching line.
+[[allowlists]]
+description = "Synthetic password used only by a rate-limit test fixture"
+condition = "AND"
+paths = ['''^backend_api_python/tests/test_registration_rate_limit\.py$''']
+regexTarget = "line"
+regexes = ['''"password": "StrongPass123"''']
+
+[[allowlists]]
+description = "Natural-language German translation falsely matched as a generic API key"
+condition = "AND"
+paths = ['''^QuantDinger-Vue/src/locales/copilot-overrides\.js$''']
+regexTarget = "line"
+regexes = ['''aiAssetAnalysis\.copilot\.quickPrompts\.diagnose.*Kapitalfluss.*Invalidierungsbedingungen''']
+
+[[allowlists]]
+description = "Static token in frontend mock-auth fixture, not an application credential"
+condition = "AND"
+paths = ['''^QuantDinger-Vue/src/mock/services/auth\.js$''']
+regexTarget = "line"
+regexes = ['''token:\s*'4291d7da9005377ec9aec4a71ea837f' ''']
+
+[[allowlists]]
+description = "Browser session-storage namespace, not a secret"
+condition = "AND"
+paths = ['''^QuantDinger-Vue/src/store/modules/policy\.js$''']
+regexTarget = "line"
+regexes = ['''const STORAGE_KEY = 'quantdinger\.broker-market-policy\.v1' ''']
+
+[[allowlists]]
+description = "Public configuration schema key name, not a credential"
+condition = "AND"
+paths = ['''^backend_api_python/app/routes/settings\.py$''']
+regexTarget = "line"
+regexes = ['''\x27key\x27:\s*\x27USDC_PAY_ENABLED\x27''']
+
+[[allowlists]]
+description = "Public configuration schema key name, not a credential"
+condition = "AND"
+paths = ['''^backend_api_python/app/routes/settings\.py$''']
+regexTarget = "line"
+regexes = ['''\x27key\x27:\s*\x27USDC_PAY_ENABLED_CHAINS\x27''']
+
+[[allowlists]]
+description = "Configuration field label for a server-side environment secret, not a stored secret value"
+condition = "AND"
+paths = ['''^backend_api_python/app/routes/settings\.py$''']
+regexTarget = "line"
+regexes = ['''\x27key\x27:\s*\x27STRIPE_SECRET_KEY\x27''']
+
+[[allowlists]]
+description = "Documented example idempotency key, not a credential"
+condition = "AND"
+paths = ['''^docs/agent/AGENT_QUICKSTART\.md$''']
+regexTarget = "line"
+regexes = ['''Idempotency-Key:\s*spy-trend-2025''']
+
+[[allowlists]]
+description = "Documented example MCP idempotency key, not a credential"
+condition = "AND"
+paths = ['''^mcp_server/README\.md$''']
+regexTarget = "line"
+regexes = ['''compile_strategy_code\(.*idempotency_key="compile-btc-momentum-v1"''']
+
+[[allowlists]]
+description = "Documented example MCP idempotency key, not a credential"
+condition = "AND"
+paths = ['''^mcp_server/README\.md$''']
+regexTarget = "line"
+regexes = ['''save_strategy_source\(.*idempotency_key="save-btc-momentum-v1"''']
+
+[[allowlists]]
+description = "Documentation sentence about metrics, not a secret"
+condition = "AND"
+paths = ['''^README\.md$''']
+regexTarget = "line"
+regexes = ['''\| Monitoring \| API and workers -> .*metrics -> Prometheus.*\|''']
