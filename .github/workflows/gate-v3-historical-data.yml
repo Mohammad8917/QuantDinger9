@@ -1,6 +1,10 @@
 name: Gate V3 Historical Dataset
 
 on:
+  push:
+    branches: [work/gate-v3-historical-data]
+    paths:
+      - 'scripts/historical_gate_v3/download_gate_history.py'
   workflow_dispatch:
     inputs:
       start:
@@ -41,7 +45,7 @@ jobs:
           args=(--repo-root . --output "$RUNNER_TEMP/gate-v3-history")
           if [[ -n "$START_DATE" ]]; then args+=(--start "$START_DATE"); fi
           if [[ -n "$END_DATE" ]]; then args+=(--end "$END_DATE"); fi
-          python scripts/historical_gate_v3/download_gate_history.py "${args[@]}"
+          python scripts/historical_gate_v3/download_gate_history.py --probe-only "${args[@]}"
       - name: Upload dataset and manifest
         if: always()
         uses: actions/upload-artifact@v4
