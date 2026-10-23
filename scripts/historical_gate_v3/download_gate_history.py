@@ -1046,6 +1046,39 @@ def classify_trade_reconstruction_buckets(
     return verified_empty, raw_but_unreconstructed
 
 
+def build_trade_validation_windows(
+    wanted_timestamps: set[int],
+    month_start: int,
+    next_month: int,
+    *,
+    window_seconds: int = 6 * 60 * 60,
+    stride_seconds: int = 60 * 60,
+) -> dict[int, set[int]]:
+    """Map wanted 15m buckets to overlapping, fully in-month UTC validation windows.
+
+    Windows remain six hours and retain the existing 18-of-24 official-candle
+    overlap requirement. Hourly staggering avoids making repair eligibility depend
+    solely on one fixed six-hour partition boundary.
+    """
+    if month_start < 0 or next_month <= month_start:
+        raise ValueError("month bounds must be non-negative and increasing")
+    if window_seconds <= 0 or stride_seconds <= 0 or window_seconds % stride_seconds:
+        raise ValueError("window_seconds must be positive and divisible by stride_seconds")
+
+    windows: dict[int, set[int]] = {}
+    for timestamp in sorted(wanted_timestamps):
+        if not month_start <= timestamp < next_month:
+            raise ValueError("wanted timestamp must fall inside the requested month")
+        latest_start = (timestamp // stride_seconds) * stride_seconds
+        earliest_start = latest_start - window_seconds + stride_seconds
+        for window_start in range(earliest_start, latest_start + 1, stride_seconds):
+            if window_start < month_start or window_start + window_seconds > next_month:
+                continue
+            if window_start <= timestamp < window_start + window_seconds:
+                windows.setdefault(window_start, set()).add(timestamp)
+    return windows
+
+
 def summarize_trade_bucket(
     trades: list[tuple[float, int, float, float]],
     bucket_timestamp: int,
@@ -1584,33 +1617,50 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                             # reconstructions from the other UTC windows.
                             validation_window_seconds = 6 * 60 * 60
                             minimum_window_overlap = 18
-                            official_by_window: dict[int, list[dict[str, float | int | None]]] = {}
-                            trades_by_window: dict[int, list[dict[str, float | int | None]]] = {}
-                            wanted_by_window: dict[int, set[int]] = {}
+                            window_stride_seconds = 60 * 60
+                            wanted_by_window = build_trade_validation_windows(
+                                wanted, month_start, next_month,
+                                window_seconds=validation_window_seconds,
+                                stride_seconds=window_stride_seconds,
+                            )
+                            official_by_hour: dict[int, list[dict[str, float | int | None]]] = {}
+                            trades_by_hour: dict[int, list[dict[str, float | int | None]]] = {}
                             for row in month_official_rows:
                                 ts = int(row["timestamp"])
-                                official_by_window.setdefault(ts // validation_window_seconds, []).append(row)
+                                hour_start = (ts // 3600) * 3600
+                                official_by_hour.setdefault(hour_start, []).append(row)
                             for row in trade_candles:
                                 ts = int(row["timestamp"])
-                                trades_by_window.setdefault(ts // validation_window_seconds, []).append(row)
-                            for ts in wanted:
-                                wanted_by_window.setdefault(ts // validation_window_seconds, set()).add(ts)
+                                hour_start = (ts // 3600) * 3600
+                                trades_by_hour.setdefault(hour_start, []).append(row)
 
-                            accepted_total = 0
-                            verified_empty_total = 0
-                            raw_unreconstructed_total = 0
+                            accepted_trade_candles: dict[int, dict[str, float | int | None]] = {}
+                            verified_empty_timestamps: set[int] = set()
+                            raw_unreconstructed_timestamps: set[int] = set()
                             valid_windows = 0
                             rejected_windows = 0
                             for window_key, window_wanted in sorted(wanted_by_window.items()):
-                                window_official = official_by_window.get(window_key, [])
-                                window_trades = trades_by_window.get(window_key, [])
+                                window_official = [
+                                    row
+                                    for hour_start in range(
+                                        window_key, window_key + validation_window_seconds, 3600,
+                                    )
+                                    for row in official_by_hour.get(hour_start, [])
+                                ]
+                                window_trades = [
+                                    row
+                                    for hour_start in range(
+                                        window_key, window_key + validation_window_seconds, 3600,
+                                    )
+                                    for row in trades_by_hour.get(hour_start, [])
+                                ]
                                 validation = validate_trade_reconstruction(
                                     window_trades,
                                     window_official,
                                     minimum_overlap=minimum_window_overlap,
                                 )
                                 window_label = datetime.fromtimestamp(
-                                    window_key * validation_window_seconds, timezone.utc
+                                    window_key, timezone.utc
                                 ).strftime("%Y-%m-%dT%H:00Z")
                                 if not validation["valid"]:
                                     rejected_windows += 1
@@ -1632,19 +1682,24 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                     continue
 
                                 valid_windows += 1
-                                accepted = [
-                                    row for row in window_trades
-                                    if int(row["timestamp"]) in window_wanted
-                                ]
-                                repaired_rows.extend(accepted)
-                                accepted_total += len(accepted)
+                                for row in window_trades:
+                                    timestamp = int(row["timestamp"])
+                                    if timestamp in window_wanted:
+                                        accepted_trade_candles.setdefault(timestamp, row)
                                 verified_empty, raw_unreconstructed = classify_trade_reconstruction_buckets(
                                     window_wanted, window_trades, monthly_trades,
                                 )
                                 verified_trade_empty_timestamps.update(verified_empty)
-                                verified_empty_total += len(verified_empty)
-                                raw_unreconstructed_total += len(raw_unreconstructed)
+                                verified_empty_timestamps.update(verified_empty)
+                                raw_unreconstructed_timestamps.update(raw_unreconstructed)
 
+                            repaired_rows.extend(
+                                accepted_trade_candles[timestamp]
+                                for timestamp in sorted(accepted_trade_candles)
+                            )
+                            accepted_total = len(accepted_trade_candles)
+                            verified_empty_total = len(verified_empty_timestamps)
+                            raw_unreconstructed_total = len(raw_unreconstructed_timestamps)
                             trade_archive_audit[month].update({
                                 "valid_windows": valid_windows,
                                 "rejected_windows": rejected_windows,
