@@ -1009,7 +1009,7 @@ def test_trade_reconstruction_accepts_high_low_differences_within_tolerance() ->
     reconstructed = MODULE.aggregate_futures_trades_to_15m(trades)
     official = [dict(row) for row in reconstructed]
     official[10]["high"] = float(official[10]["high"]) * 1.004
-    official[11]["low"] = float(official[11]["low"]) * 1.004
+    official[11]["low"] = float(official[11]["low"]) * 0.996
 
     validation = MODULE.validate_trade_reconstruction(reconstructed, official)
 
