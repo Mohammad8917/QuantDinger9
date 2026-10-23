@@ -52,7 +52,7 @@ def test_unresolved_missing_timestamps_are_grouped_by_month_and_exact_ranges() -
         [start, start + 900, start + 2700, start + 86400],
         900,
     )
-    assert summary["2024-12"]["missing_bars"] == 3
+    assert summary["2024-12"]["missing_bars"] == 2
     assert summary["2024-12"]["ranges"] == [
         {
             "start_timestamp": start,
@@ -61,16 +61,12 @@ def test_unresolved_missing_timestamps_are_grouped_by_month_and_exact_ranges() -
             "end_utc": "2024-12-31T23:45:00+00:00",
             "bars": 2,
         },
-        {
-            "start_timestamp": start + 2700,
-            "end_timestamp": start + 2700,
-            "start_utc": "2025-01-01T00:15:00+00:00",
-            "end_utc": "2025-01-01T00:15:00+00:00",
-            "bars": 1,
-        },
     ]
-    assert summary["2025-01"]["missing_bars"] == 1
+    assert summary["2025-01"]["missing_bars"] == 2
+    assert summary["2025-01"]["ranges"][0]["start_utc"] == "2025-01-01T00:15:00+00:00"
     assert summary["2025-01"]["ranges"][0]["bars"] == 1
+    assert summary["2025-01"]["ranges"][1]["start_utc"] == "2025-01-01T23:30:00+00:00"
+    assert summary["2025-01"]["ranges"][1]["bars"] == 1
 
 
 def test_gap_audit_does_not_fill_missing_candles() -> None:
