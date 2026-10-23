@@ -944,10 +944,58 @@ def fetch_monthly_futures_trades(
     return trades
 
 
+TRADE_OUTLIER_LOOKBACK = 5
+TRADE_OUTLIER_MAX_DEVIATION = 0.05
+
+
+def filter_futures_trade_outliers(
+    trades: list[tuple[float, int, float, float]],
+    *,
+    lookback: int = TRADE_OUTLIER_LOOKBACK,
+    max_deviation: float = TRADE_OUTLIER_MAX_DEVIATION,
+) -> tuple[list[tuple[float, int, float, float]], list[tuple[float, int, float, float]]]:
+    """Filter prices >5% from the mean of the preceding five raw trade prices.
+
+    Every raw price enters the rolling history, including rejected candidates, so
+    the baseline can adapt to a genuine price-regime change. This is a heuristic:
+    it cannot identify liquidation/internal trades, and it may reject legitimate
+    fast-market trades. Callers must still validate the reconstructed candles.
+    """
+    if lookback < 1:
+        raise ValueError("lookback must be >= 1")
+    if not math.isfinite(max_deviation) or not 0 < max_deviation < 1:
+        raise ValueError("max_deviation must be finite and between 0 and 1")
+
+    ordered = sorted(trades, key=lambda item: (item[0], item[1]))
+    history: list[float] = []
+    accepted: list[tuple[float, int, float, float]] = []
+    rejected: list[tuple[float, int, float, float]] = []
+    for trade in ordered:
+        timestamp, _deal_id, price, size = trade
+        if not all(math.isfinite(value) for value in (timestamp, price, size)):
+            raise DataError("Non-finite trade cannot be filtered")
+        if timestamp < 0 or price <= 0 or size == 0:
+            raise DataError("Invalid trade cannot be filtered")
+        if len(history) >= lookback:
+            mean_price = sum(history[-lookback:]) / lookback
+            if abs(price - mean_price) / mean_price > max_deviation:
+                rejected.append(trade)
+            else:
+                accepted.append(trade)
+        else:
+            accepted.append(trade)
+        history.append(price)
+    return accepted, rejected
+
+
 def aggregate_futures_trades_to_15m(
     trades: list[tuple[float, int, float, float]],
+    *,
+    apply_outlier_filter: bool = True,
 ) -> list[dict[str, float | int | None]]:
-    """Build 15m OHLCV from observed trades only; signed contract size becomes absolute volume."""
+    """Build 15m OHLCV from observed trades; filter price outliers before aggregation."""
+    if apply_outlier_filter:
+        trades, _rejected = filter_futures_trade_outliers(trades)
     groups: dict[int, list[tuple[float, int, float, float]]] = {}
     for trade in trades:
         timestamp, _deal_id, price, size = trade
@@ -1432,7 +1480,18 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                     flush=True,
                                 )
                                 continue
-                            trade_candles = aggregate_futures_trades_to_15m(monthly_trades)
+                            filtered_trades, rejected_trades = filter_futures_trade_outliers(monthly_trades)
+                            if rejected_trades:
+                                print(
+                                    f"[trade-outlier-filter] {contract} {month}: "
+                                    f"rejected={len(rejected_trades)}/{len(monthly_trades)} "
+                                    f"threshold={TRADE_OUTLIER_MAX_DEVIATION:.2%} "
+                                    f"lookback={TRADE_OUTLIER_LOOKBACK}",
+                                    flush=True,
+                                )
+                            trade_candles = aggregate_futures_trades_to_15m(
+                                filtered_trades, apply_outlier_filter=False,
+                            )
                             month_start = int(datetime.strptime(month, "%Y%m").replace(tzinfo=timezone.utc).timestamp())
                             next_month_dt = (datetime.fromtimestamp(month_start, timezone.utc).replace(day=28) + timedelta(days=4)).replace(day=1)
                             next_month = int(next_month_dt.timestamp())
