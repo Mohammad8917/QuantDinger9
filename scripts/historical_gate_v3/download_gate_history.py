@@ -912,7 +912,6 @@ def fetch_monthly_futures_trades(
     next_month_dt = (month_start_dt.replace(day=28) + timedelta(days=4)).replace(day=1)
     month_start_ts = month_start_dt.timestamp()
     next_month_ts = next_month_dt.timestamp()
-    seen_deal_ids: set[int] = set()
     trades: list[tuple[float, int, float, float]] = []
     try:
         with gzip.GzipFile(fileobj=io.BytesIO(response.content), mode="rb") as zipped:
@@ -926,9 +925,6 @@ def fetch_monthly_futures_trades(
                         raise DataError(
                             f"trade timestamp {trade[0]} falls outside requested month {month}"
                         )
-                    if trade[1] in seen_deal_ids:
-                        raise DataError(f"duplicate dealid {trade[1]}")
-                    seen_deal_ids.add(trade[1])
                     trades.append(trade)
                 except DataError as exc:
                     raise DataError(
