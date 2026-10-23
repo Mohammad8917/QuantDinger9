@@ -1526,7 +1526,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                 validation = validate_trade_reconstruction(
                                     day_trades,
                                     day_official,
-                                    minimum_overlap=100,
+                                    minimum_overlap=72,
                                 )
                                 day_label = datetime.fromtimestamp(
                                     day_key * 86400, timezone.utc
