@@ -1504,7 +1504,6 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                             # overlap and fully passing OHLC validation can repair gaps; a bad
                             # day remains unresolved and is eligible for other official sources.
                             wanted = set(missing_in_month)
-                            trade_by_ts = {int(row["timestamp"]): row for row in trade_candles}
                             official_by_day: dict[int, list[dict[str, float | int | None]]] = {}
                             trades_by_day: dict[int, list[dict[str, float | int | None]]] = {}
                             wanted_by_day: dict[int, set[int]] = {}
