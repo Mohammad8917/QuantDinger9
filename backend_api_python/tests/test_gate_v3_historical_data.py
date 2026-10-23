@@ -46,6 +46,33 @@ def test_candle_row_validation() -> None:
     assert MODULE._validate_row({**valid, "volume": -1.0, "quote_volume": 12000.0}, 900) == "negative_volume"
 
 
+def test_unresolved_missing_timestamps_are_grouped_by_month_and_exact_ranges() -> None:
+    start = MODULE.utc_timestamp("2024-12-31T23:30:00Z")
+    summary = MODULE.summarize_missing_timestamps(
+        [start, start + 900, start + 2700, start + 86400],
+        900,
+    )
+    assert summary["2024-12"]["missing_bars"] == 3
+    assert summary["2024-12"]["ranges"] == [
+        {
+            "start_timestamp": start,
+            "end_timestamp": start + 900,
+            "start_utc": "2024-12-31T23:30:00+00:00",
+            "end_utc": "2024-12-31T23:45:00+00:00",
+            "bars": 2,
+        },
+        {
+            "start_timestamp": start + 2700,
+            "end_timestamp": start + 2700,
+            "start_utc": "2025-01-01T00:15:00+00:00",
+            "end_utc": "2025-01-01T00:15:00+00:00",
+            "bars": 1,
+        },
+    ]
+    assert summary["2025-01"]["missing_bars"] == 1
+    assert summary["2025-01"]["ranges"][0]["bars"] == 1
+
+
 def test_gap_audit_does_not_fill_missing_candles() -> None:
     rows = [
         {"timestamp": 1800000000, "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "volume": 1.0, "quote_volume": 1000.0},
