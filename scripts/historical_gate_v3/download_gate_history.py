@@ -1713,6 +1713,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                             )
                             fallback_valid_windows = 0
                             fallback_rejected_windows = 0
+                            fallback_insufficient_overlap_timestamps: set[int] = set()
+                            fallback_non_overlap_failure_timestamps: set[int] = set()
                             fallback_window_seconds = 24 * 60 * 60
                             fallback_minimum_overlap = 72
                             fallback_by_window = build_trade_validation_windows(
@@ -1745,6 +1747,10 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                 ).strftime("%Y-%m-%dT%H:00Z")
                                 if not validation["valid"]:
                                     fallback_rejected_windows += 1
+                                    if validation["reason"].startswith("insufficient overlap"):
+                                        fallback_insufficient_overlap_timestamps.update(window_wanted)
+                                    else:
+                                        fallback_non_overlap_failure_timestamps.update(window_wanted)
                                     print(
                                         f"[trade-repair-fallback-reject] {contract} {month} "
                                         f"window={window_label}: overlap={validation['overlap_bars']} "
@@ -1766,6 +1772,90 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                 verified_empty_timestamps.update(fallback_empty)
                                 raw_unreconstructed_timestamps.update(fallback_raw_unreconstructed)
 
+                            # A 48-hour fallback is allowed only when the 24-hour
+                            # window failed for insufficient overlap, never for an
+                            # OHLC mismatch. Keep the same 75% overlap requirement.
+                            fallback_48h_wanted = (
+                                fallback_insufficient_overlap_timestamps
+                                - fallback_non_overlap_failure_timestamps
+                                - set(accepted_trade_candles)
+                                - verified_empty_timestamps
+                            )
+                            fallback_48h_valid_windows = 0
+                            fallback_48h_rejected_windows = 0
+                            fallback_48h_non_overlap_failure_timestamps: set[int] = set()
+                            fallback_48h_window_seconds = 48 * 60 * 60
+                            fallback_48h_minimum_overlap = 144
+                            fallback_48h_by_window = build_trade_validation_windows(
+                                fallback_48h_wanted, month_start, next_month,
+                                window_seconds=fallback_48h_window_seconds,
+                                stride_seconds=12 * 60 * 60,
+                            )
+                            for window_key, window_wanted in sorted(fallback_48h_by_window.items()):
+                                window_official = [
+                                    row
+                                    for hour_start in range(
+                                        window_key, window_key + fallback_48h_window_seconds, 3600,
+                                    )
+                                    for row in official_by_hour.get(hour_start, [])
+                                ]
+                                window_trades = [
+                                    row
+                                    for hour_start in range(
+                                        window_key, window_key + fallback_48h_window_seconds, 3600,
+                                    )
+                                    for row in trades_by_hour.get(hour_start, [])
+                                ]
+                                validation = validate_trade_reconstruction(
+                                    window_trades,
+                                    window_official,
+                                    minimum_overlap=fallback_48h_minimum_overlap,
+                                )
+                                window_label = datetime.fromtimestamp(
+                                    window_key, timezone.utc
+                                ).strftime("%Y-%m-%dT%H:00Z")
+                                if not validation["valid"]:
+                                    fallback_48h_rejected_windows += 1
+                                    if not validation["reason"].startswith("insufficient overlap"):
+                                        fallback_48h_non_overlap_failure_timestamps.update(window_wanted)
+                                    print(
+                                        f"[trade-repair-48h-reject] {contract} {month} "
+                                        f"window={window_label}: overlap={validation['overlap_bars']} "
+                                        f"reason={validation['reason']} "
+                                        f"out_of_tolerance={validation.get('out_of_tolerance_examples', [])}",
+                                        flush=True,
+                                    )
+                                    continue
+
+                                fallback_48h_valid_windows += 1
+                                for row in window_trades:
+                                    timestamp = int(row["timestamp"])
+                                    if timestamp in window_wanted:
+                                        accepted_trade_candles.setdefault(timestamp, row)
+                                fallback_48h_empty, fallback_48h_raw_unreconstructed = classify_trade_reconstruction_buckets(
+                                    window_wanted, window_trades, monthly_trades,
+                                )
+                                verified_trade_empty_timestamps.update(fallback_48h_empty)
+                                verified_empty_timestamps.update(fallback_48h_empty)
+                                raw_unreconstructed_timestamps.update(fallback_48h_raw_unreconstructed)
+
+                            # Conflicting evidence in any overlapping 48-hour window
+                            # disqualifies that target bucket from this fallback.
+                            for timestamp in fallback_48h_non_overlap_failure_timestamps:
+                                accepted_trade_candles.pop(timestamp, None)
+                                verified_empty_timestamps.discard(timestamp)
+                                verified_trade_empty_timestamps.discard(timestamp)
+
+                            if fallback_48h_valid_windows or fallback_48h_rejected_windows:
+                                print(
+                                    f"[trade-repair-48h-summary] {contract} {month}: "
+                                    f"targets={len(fallback_48h_wanted)} "
+                                    f"valid_windows={fallback_48h_valid_windows} "
+                                    f"rejected_windows={fallback_48h_rejected_windows} "
+                                    f"reconstructed_total={len(accepted_trade_candles)}",
+                                    flush=True,
+                                )
+
                             repaired_rows.extend(
                                 accepted_trade_candles[timestamp]
                                 for timestamp in sorted(accepted_trade_candles)
@@ -1780,6 +1870,11 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                 "fallback_minimum_overlap_bars": fallback_minimum_overlap,
                                 "fallback_valid_windows": fallback_valid_windows,
                                 "fallback_rejected_windows": fallback_rejected_windows,
+                                "fallback_48h_validation_window_hours": 48,
+                                "fallback_48h_minimum_overlap_bars": fallback_48h_minimum_overlap,
+                                "fallback_48h_valid_windows": fallback_48h_valid_windows,
+                                "fallback_48h_rejected_windows": fallback_48h_rejected_windows,
+                                "fallback_48h_target_bars": len(fallback_48h_wanted),
                                 "reconstructed_bars": accepted_total,
                                 "verified_zero_trade_bars": verified_empty_total,
                                 "raw_trade_but_unreconstructed_bars": raw_unreconstructed_total,
