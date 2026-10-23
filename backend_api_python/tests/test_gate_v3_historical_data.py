@@ -640,24 +640,42 @@ def test_current_month_archive_404_rest_fallback_stays_inside_recent_window(monk
     assert all(int(params["from"]) >= expected_rest_start for _, params in rest_calls if params is not None)
 
 
-def test_missing_native_rest_repair_skips_gaps_outside_recent_window() -> None:
+def test_missing_native_rest_repair_queries_historical_gaps_outside_recent_window() -> None:
     start = 1735689600
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> object:
+            return [{
+                "t": start, "o": "100", "h": "105", "l": "95",
+                "c": "102", "v": 12.5,
+            }]
 
     class FakeSession:
         def __init__(self) -> None:
             self.calls: list[dict[str, object]] = []
 
-        def get(self, url: str, **kwargs: object) -> object:
-            self.calls.append(kwargs)
-            raise AssertionError("Historical gaps outside Gate's recent window must not call REST")
+        def get(self, url: str, **kwargs: object) -> FakeResponse:
+            assert url == "https://api.gateio.ws/api/v4/futures/usdt/candlesticks"
+            params = kwargs.get("params")
+            assert isinstance(params, dict)
+            self.calls.append(params)
+            return FakeResponse()
 
     session = FakeSession()
     rows = MODULE.fetch_missing_native_rest_candles(
         session, "BTC_USDT", "15m", [start],
         sleep_seconds=0, now_ts=start + 20000 * 900,
     )
-    assert rows == []
-    assert session.calls == []
+    assert [row["timestamp"] for row in rows] == [start]
+    assert session.calls == [{
+        "contract": "BTC_USDT", "interval": "15m",
+        "from": start, "to": start,
+    }]
 
 
 def test_audit_reports_exact_unresolved_timestamps() -> None:

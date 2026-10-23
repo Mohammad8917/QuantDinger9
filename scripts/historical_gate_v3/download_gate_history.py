@@ -790,7 +790,12 @@ def fetch_missing_native_rest_candles(
     sleep_seconds: float = 0.05,
     now_ts: int | None = None,
 ) -> list[dict[str, float | int | None]]:
-    """Recover missing candle opens only inside the latest 10,000-point REST window."""
+    """Recover missing closed candles via Gate's historical from/to REST API.
+
+    Gate documents historical timestamp ranges and up to 2,000 candles per
+    request. Keep each request below that limit; do not impose an unsupported
+    latest-10,000-points restriction on historical gap recovery.
+    """
     if not missing_timestamps:
         return []
     if timeframe not in TIMEFRAMES:
@@ -799,16 +804,15 @@ def fetch_missing_native_rest_candles(
     interval = TIMEFRAMES[timeframe]
     effective_now = int(time.time()) if now_ts is None else now_ts
     last_closed = last_closed_candle_start(effective_now, interval, now_ts=effective_now)
-    recent_first = recent_rest_window_start(interval, now_ts=effective_now)
     eligible_timestamps = sorted({
         timestamp for timestamp in missing_timestamps
-        if recent_first <= timestamp <= last_closed and timestamp % interval == 0
+        if timestamp % interval == 0 and timestamp <= last_closed
     })
     skipped_count = len(set(missing_timestamps)) - len(eligible_timestamps)
     if skipped_count:
         print(
             f"[rest-repair-skip] {contract} {timeframe}: skipped {skipped_count} "
-            f"timestamps that are not aligned closed candles (latest closed={last_closed})",
+            f"timestamps that are unaligned or not yet closed (latest closed={last_closed})",
             flush=True,
         )
     if not eligible_timestamps:
@@ -834,18 +838,16 @@ def fetch_missing_native_rest_candles(
             print(
                 f"[rest-repair] {contract} {timeframe} {month}: "
                 f"{len(accepted)}/{len(wanted)} missing bars recovered "
-                "from native public REST candles",
+                "from official historical/native REST candles",
                 flush=True,
             )
         except Exception as repair_error:
-            # REST is an additional real source, not a reason to hide unresolved gaps.
             print(
                 f"[rest-repair-warning] {contract} {timeframe} {month}: "
                 f"native REST repair unavailable: {repair_error}",
                 flush=True,
             )
-    return recovered
-
+    return sorted(recovered, key=lambda row: int(row["timestamp"]))
 
 
 MIN_TRADE_VALIDATION_OVERLAP = 100
@@ -1231,9 +1233,9 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "data_source": "Gate official monthly futures candle and trade archives, plus public REST candles only inside the recent 10,000-point window and public contracts metadata",
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
         "archive_intervals_downloaded": ["15m", "10s", "1m", "5m", "1h", "trades (only months with unresolved 15m gaps)"],
-        "recent_rest_policy": "Public REST is used only inside the latest 10,000-point window, paged at no more than 900 points per request; older unresolved 15m gaps use official monthly trades after overlap validation.",
+        "recent_rest_policy": "Public REST historical from/to queries are paged at no more than 900 points per request; recent REST is also used for the current archive tail. Historical gaps are retried through the official REST endpoint before remaining unresolved.",
         "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing 15m buckets may be reconstructed from official monthly futures trades only after at least 100 exact OHLCV matches, exact OHLC price agreement across all overlapping official candles, and no missing official positive-volume candle. A successfully downloaded and validated trade archive may certify a missing bucket as zero-trade, but no candle is synthesized for it. Other unresolved gaps remain failures.",
-        "endpoint": "Gate official monthly futures candle/trade archives plus the public futures candlestick REST endpoint limited to its latest 10,000 points",
+        "endpoint": "Gate official monthly futures candle/trade archives plus the public futures candlestick REST endpoint with historical from/to paging",
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
         "start_timestamp_requested": start_ts,
@@ -1243,7 +1245,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
         "fifteen_minute_policy": "Historical 15m candles prefer the native official archive and otherwise aggregate complete sets of observed real 5m archive candles. Remaining 15m gaps may use official monthly futures trades only after at least 100 exact OHLCV matches, exact OHLC price agreement across all overlapping official candles, and no missing official positive-volume candle. Buckets with no trades remain absent; a validated complete monthly trades archive can certify such buckets as zero-trade intervals. No synthetic candles are created.",
-        "gap_repair_policy": "Repair missing candle opens only from observed official sources: complete 5m archive groups, complete recent 5m REST groups inside the latest 10,000-point source window, complete 1m/10s archive groups, and recent native REST candles. For unresolved 15m gaps, monthly futures trades are accepted only with at least 100 exact OHLCV matches, exact OHLC price agreement across all overlapping official candles, and zero missing official positive-volume candles. Gate trade size is signed by direction, so reconstructed total volume sums absolute sizes. Unavailable, malformed, incomplete, price-mismatched, or truncated sources do not repair gaps; unverified gaps fail closed.",
+        "gap_repair_policy": "Repair missing candle opens only from observed official sources: complete 5m archive groups, complete recent 5m REST groups inside the latest 10,000-point source window, complete 1m/10s archive groups, and official native REST candles over documented historical from/to ranges. For unresolved 15m gaps, monthly futures trades are accepted only with at least 100 exact OHLCV matches, exact OHLC price agreement across all overlapping official candles, and zero missing official positive-volume candles. Gate trade size is signed by direction, so reconstructed total volume sums absolute sizes. Unavailable, malformed, incomplete, price-mismatched, or truncated sources do not repair gaps; unverified gaps fail closed.",
         "symbols": {},
     }
     failures: list[str] = []
