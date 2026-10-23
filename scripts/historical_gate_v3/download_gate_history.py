@@ -973,13 +973,16 @@ def aggregate_futures_trades_to_15m(
     return candles
 
 
+TRADE_VALIDATION_MIN_EXACT_MATCH_RATIO = 0.995
+
+
 def validate_trade_reconstruction(
     reconstructed: list[dict[str, float | int | None]],
     official_rows: list[dict[str, float | int | None]],
     *,
     minimum_overlap: int = MIN_TRADE_VALIDATION_OVERLAP,
 ) -> dict[str, Any]:
-    """Require adequate overlap and matching OHLCV before accepting a month's trade reconstruction."""
+    """Validate a monthly trade archive against official OHLCV with strict coverage guards."""
     official_by_ts: dict[int, dict[str, float | int | None]] = {}
     duplicate_official_timestamps = 0
     for row in official_rows:
@@ -989,7 +992,9 @@ def validate_trade_reconstruction(
         official_by_ts[timestamp] = row
     if duplicate_official_timestamps:
         return {
-            "valid": False, "overlap_bars": 0,
+            "valid": False, "overlap_bars": 0, "exact_match_bars": 0,
+            "exact_match_ratio": 0.0, "mismatch_bars": 0,
+            "missing_official_positive_volume_bars": 0,
             "reason": f"duplicate official timestamps: {duplicate_official_timestamps}",
             "mismatches": [],
         }
@@ -999,7 +1004,9 @@ def validate_trade_reconstruction(
         timestamp = int(row["timestamp"])
         if timestamp in reconstructed_by_ts:
             return {
-                "valid": False, "overlap_bars": 0,
+                "valid": False, "overlap_bars": 0, "exact_match_bars": 0,
+                "exact_match_ratio": 0.0, "mismatch_bars": 0,
+                "missing_official_positive_volume_bars": 0,
                 "reason": f"duplicate reconstructed timestamps: {timestamp}",
                 "mismatches": [],
             }
@@ -1007,6 +1014,9 @@ def validate_trade_reconstruction(
 
     mismatches: list[dict[str, Any]] = []
     overlap = 0
+    exact_matches = 0
+    mismatch_bars = 0
+    missing_official_positive_volume = 0
     fields = ("open", "high", "low", "close", "volume")
     for candidate in reconstructed:
         timestamp = int(candidate["timestamp"])
@@ -1014,20 +1024,25 @@ def validate_trade_reconstruction(
         if official is None:
             continue
         overlap += 1
-        different = {}
+        different: dict[str, Any] = {}
         for field in fields:
             left, right = float(candidate[field]), float(official[field])
             if not math.isclose(left, right, rel_tol=1e-6, abs_tol=1e-6):
                 different[field] = {"trades": left, "official": right}
-        if different and len(mismatches) < 5:
-            mismatches.append({"timestamp": timestamp, "fields": different})
+        if different:
+            mismatch_bars += 1
+            if len(mismatches) < 5:
+                mismatches.append({"timestamp": timestamp, "fields": different})
+        else:
+            exact_matches += 1
 
-    # Reverse validation is essential: a truncated trade archive can otherwise pass
-    # by matching 100 surviving candles while silently omitting other official trades.
+    # A reconstructed month must not omit any observed official positive-volume candle.
+    # This guard is unconditional; the match-rate tolerance never excuses truncation.
     for timestamp, official in official_by_ts.items():
-        if timestamp in reconstructed_by_ts:
+        if timestamp in reconstructed_by_ts or float(official["volume"]) <= 0:
             continue
-        if float(official["volume"]) > 0 and len(mismatches) < 5:
+        missing_official_positive_volume += 1
+        if len(mismatches) < 5:
             mismatches.append({
                 "timestamp": timestamp,
                 "fields": {
@@ -1037,15 +1052,41 @@ def validate_trade_reconstruction(
                 },
             })
 
+    exact_match_ratio = exact_matches / overlap if overlap else 0.0
     if overlap < minimum_overlap:
-        return {
-            "valid": False, "overlap_bars": overlap,
-            "reason": f"insufficient overlap (need {minimum_overlap})",
-            "mismatches": mismatches,
-        }
+        reason = f"insufficient overlap (need {minimum_overlap})"
+    elif exact_matches < minimum_overlap:
+        reason = (
+            f"insufficient exact OHLCV matches "
+            f"({exact_matches}; need {minimum_overlap})"
+        )
+    elif exact_match_ratio < TRADE_VALIDATION_MIN_EXACT_MATCH_RATIO:
+        reason = (
+            f"exact OHLCV match ratio {exact_match_ratio:.4%} is below "
+            f"{TRADE_VALIDATION_MIN_EXACT_MATCH_RATIO:.2%}"
+        )
+    elif missing_official_positive_volume:
+        reason = (
+            f"trade archive omits {missing_official_positive_volume} official "
+            "positive-volume candles"
+        )
+    else:
+        reason = f"OHLCV validated ({exact_matches}/{overlap} exact; {exact_match_ratio:.4%})"
+
+    valid = (
+        overlap >= minimum_overlap
+        and exact_matches >= minimum_overlap
+        and exact_match_ratio >= TRADE_VALIDATION_MIN_EXACT_MATCH_RATIO
+        and missing_official_positive_volume == 0
+    )
     return {
-        "valid": not mismatches, "overlap_bars": overlap,
-        "reason": "OHLCV matches" if not mismatches else "OHLCV mismatch",
+        "valid": valid,
+        "overlap_bars": overlap,
+        "exact_match_bars": exact_matches,
+        "exact_match_ratio": exact_match_ratio,
+        "mismatch_bars": mismatch_bars,
+        "missing_official_positive_volume_bars": missing_official_positive_volume,
+        "reason": reason if valid else reason,
         "mismatches": mismatches,
     }
 
@@ -1182,7 +1223,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
         "archive_intervals_downloaded": ["15m", "10s", "1m", "5m", "1h", "trades (only months with unresolved 15m gaps)"],
         "recent_rest_policy": "Public REST is used only inside the latest 10,000-point window, paged at no more than 900 points per request; older unresolved 15m gaps use official monthly trades after overlap validation.",
-        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing 15m buckets may be reconstructed from official monthly futures trades only after at least 100 overlapping OHLCV bars match the official candle source. A successfully downloaded and validated trade archive may certify a missing bucket as zero-trade, but no candle is synthesized for it. Other unresolved gaps remain failures.",
+        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing 15m buckets may be reconstructed from official monthly futures trades only after at least 100 exact OHLCV matches, at least 99.5% exact agreement across overlapping official candles, and no missing official positive-volume candle. A successfully downloaded and validated trade archive may certify a missing bucket as zero-trade, but no candle is synthesized for it. Other unresolved gaps remain failures.",
         "endpoint": "Gate official monthly futures candle/trade archives plus the public futures candlestick REST endpoint limited to its latest 10,000 points",
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
@@ -1192,8 +1233,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
-        "fifteen_minute_policy": "Historical 15m candles prefer the native official archive and otherwise aggregate complete sets of observed real 5m archive candles. Remaining 15m gaps may use official monthly futures trades only after at least 100 overlapping OHLCV bars match the official candle source. Buckets with no trades remain absent; a validated complete monthly trades archive can certify such buckets as zero-trade intervals. No synthetic candles are created.",
-        "gap_repair_policy": "Repair missing candle opens only from observed official sources: complete 5m archive groups, complete recent 5m REST groups inside the latest 10,000-point source window, complete 1m/10s archive groups, and recent native REST candles. For unresolved 15m gaps, monthly futures trades are accepted only when at least 100 overlapping OHLCV candles match exactly within numeric tolerance and reverse validation finds no missing official positive-volume candle. Gate trade size is signed by direction, so reconstructed total volume sums absolute sizes. Unavailable, malformed, incomplete, or mismatching sources do not repair gaps; unverified gaps fail closed.",
+        "fifteen_minute_policy": "Historical 15m candles prefer the native official archive and otherwise aggregate complete sets of observed real 5m archive candles. Remaining 15m gaps may use official monthly futures trades only after at least 100 exact OHLCV matches, at least 99.5% exact agreement across overlapping official candles, and no missing official positive-volume candle. Buckets with no trades remain absent; a validated complete monthly trades archive can certify such buckets as zero-trade intervals. No synthetic candles are created.",
+        "gap_repair_policy": "Repair missing candle opens only from observed official sources: complete 5m archive groups, complete recent 5m REST groups inside the latest 10,000-point source window, complete 1m/10s archive groups, and recent native REST candles. For unresolved 15m gaps, monthly futures trades are accepted only with at least 100 exact OHLCV matches, an exact-match ratio of at least 99.5% across overlapping official candles, and zero missing official positive-volume candles. Gate trade size is signed by direction, so reconstructed total volume sums absolute sizes. Unavailable, malformed, incomplete, low-match-rate, or truncated sources do not repair gaps; unverified gaps fail closed.",
         "symbols": {},
     }
     failures: list[str] = []
