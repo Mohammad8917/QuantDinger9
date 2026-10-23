@@ -1031,6 +1031,7 @@ def validate_trade_reconstruction(
     overlap = exact_matches = mismatch_bars = 0
     price_mismatch_bars = price_tolerated_mismatch_bars = price_valid_bars = 0
     missing_official_positive_volume = 0
+    volume_only_mismatch_bars = 0
     price_fields = ("open", "high", "low", "close")
     fields = (*price_fields, "volume")
     for candidate in reconstructed:
@@ -1062,6 +1063,8 @@ def validate_trade_reconstruction(
                         }
         if different:
             mismatch_bars += 1
+            if "volume" in different and not price_different:
+                volume_only_mismatch_bars += 1
             if price_different and out_of_tolerance:
                 price_mismatch_bars += 1
             elif price_different:
@@ -1099,11 +1102,6 @@ def validate_trade_reconstruction(
 
     exact_match_ratio = exact_matches / overlap if overlap else 0.0
     price_match_ratio = price_valid_bars / overlap if overlap else 0.0
-    volume_only_mismatch_bars = sum(
-        1 for item in mismatches
-        if "volume" in item.get("fields", {})
-        and not any(field in item.get("fields", {}) for field in price_fields)
-    )
     if overlap < minimum_overlap:
         reason = f"insufficient overlap (need {minimum_overlap})"
     elif price_valid_bars < minimum_overlap:
