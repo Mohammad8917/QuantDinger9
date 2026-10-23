@@ -1023,6 +1023,29 @@ def aggregate_futures_trades_to_15m(
     return candles
 
 
+def classify_trade_reconstruction_buckets(
+    wanted_timestamps: set[int],
+    reconstructed_candles: list[dict[str, float | int | None]],
+    raw_trades: list[tuple[float, int, float, float]],
+) -> tuple[set[int], set[int]]:
+    """Classify missing buckets without treating filtered raw trades as zero-trade proof.
+
+    Returns (verified_zero_trade_timestamps, raw_trade_but_unreconstructed_timestamps).
+    A bucket is verified empty only when no raw archive trade and no reconstructed
+    candle exists for it. Raw trades filtered out by the outlier heuristic are evidence
+    that the bucket is not empty; it must remain unresolved unless another source repairs it.
+    """
+    reconstructed_timestamps = {int(row["timestamp"]) for row in reconstructed_candles}
+    raw_trade_timestamps = {
+        math.floor(trade[0] / 900) * 900 for trade in raw_trades
+    }
+    verified_empty = wanted_timestamps - reconstructed_timestamps - raw_trade_timestamps
+    raw_but_unreconstructed = (
+        wanted_timestamps & raw_trade_timestamps
+    ) - reconstructed_timestamps
+    return verified_empty, raw_but_unreconstructed
+
+
 def summarize_trade_bucket(
     trades: list[tuple[float, int, float, float]],
     bucket_timestamp: int,
@@ -1575,6 +1598,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
 
                             accepted_total = 0
                             verified_empty_total = 0
+                            raw_unreconstructed_total = 0
                             valid_windows = 0
                             rejected_windows = 0
                             for window_key, window_wanted in sorted(wanted_by_window.items()):
@@ -1614,16 +1638,19 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                 ]
                                 repaired_rows.extend(accepted)
                                 accepted_total += len(accepted)
-                                window_trade_timestamps = {int(row["timestamp"]) for row in window_trades}
-                                verified_empty = window_wanted - window_trade_timestamps
+                                verified_empty, raw_unreconstructed = classify_trade_reconstruction_buckets(
+                                    window_wanted, window_trades, monthly_trades,
+                                )
                                 verified_trade_empty_timestamps.update(verified_empty)
                                 verified_empty_total += len(verified_empty)
+                                raw_unreconstructed_total += len(raw_unreconstructed)
 
                             trade_archive_audit[month].update({
                                 "valid_windows": valid_windows,
                                 "rejected_windows": rejected_windows,
                                 "reconstructed_bars": accepted_total,
                                 "verified_zero_trade_bars": verified_empty_total,
+                                "raw_trade_but_unreconstructed_bars": raw_unreconstructed_total,
                             })
                             if accepted_total or verified_empty_total:
                                 print(
