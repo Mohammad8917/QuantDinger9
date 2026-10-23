@@ -1000,7 +1000,7 @@ def test_trade_reconstruction_accepts_volume_only_mismatches_with_100_exact_bars
     assert validation["price_match_ratio"] == 1.0
 
 
-def test_trade_reconstruction_rejects_any_ohlc_price_mismatch() -> None:
+def test_trade_reconstruction_accepts_high_low_differences_within_tolerance() -> None:
     start = 1800000000
     trades = [
         (start + index * 900 + 1.0, index, 100.0 + index, 2.0)
@@ -1008,10 +1008,48 @@ def test_trade_reconstruction_rejects_any_ohlc_price_mismatch() -> None:
     ]
     reconstructed = MODULE.aggregate_futures_trades_to_15m(trades)
     official = [dict(row) for row in reconstructed]
-    official[10]["high"] = float(official[10]["high"]) + 0.01
+    official[10]["high"] = float(official[10]["high"]) * 1.004
+    official[11]["low"] = float(official[11]["low"]) * 1.004
+
+    validation = MODULE.validate_trade_reconstruction(reconstructed, official)
+
+    assert validation["valid"] is True
+    assert validation["price_mismatch_bars"] == 0
+    assert validation["price_tolerated_mismatch_bars"] == 2
+    assert validation["price_valid_bars"] == 1000
+    assert validation["liquidation_cause_confirmed"] is False
+    assert "Possible internal/liquidation-trade differences are not independently confirmed" in validation["reason"]
+
+
+def test_trade_reconstruction_rejects_open_close_outside_tight_tolerance() -> None:
+    start = 1800000000
+    trades = [
+        (start + index * 900 + 1.0, index, 100.0 + index, 2.0)
+        for index in range(1000)
+    ]
+    reconstructed = MODULE.aggregate_futures_trades_to_15m(trades)
+    official = [dict(row) for row in reconstructed]
+    official[10]["open"] = float(official[10]["open"]) * 1.0002
 
     validation = MODULE.validate_trade_reconstruction(reconstructed, official)
 
     assert validation["valid"] is False
     assert validation["price_mismatch_bars"] == 1
-    assert "all overlapping OHLC prices must match" in validation["reason"]
+    assert "exceed tolerance" in validation["reason"]
+
+
+def test_trade_reconstruction_rejects_high_low_outside_tolerance() -> None:
+    start = 1800000000
+    trades = [
+        (start + index * 900 + 1.0, index, 100.0 + index, 2.0)
+        for index in range(1000)
+    ]
+    reconstructed = MODULE.aggregate_futures_trades_to_15m(trades)
+    official = [dict(row) for row in reconstructed]
+    official[10]["high"] = float(official[10]["high"]) * 1.01
+
+    validation = MODULE.validate_trade_reconstruction(reconstructed, official)
+
+    assert validation["valid"] is False
+    assert validation["price_mismatch_bars"] == 1
+    assert "exceed tolerance" in validation["reason"]
