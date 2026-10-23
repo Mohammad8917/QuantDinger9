@@ -679,6 +679,13 @@ def fetch_missing_5m_rest_candles(
                 month_timestamps[-1] + 600,
                 sleep_seconds=sleep_seconds,
             )
+            for source_row in source_rows:
+                invalid_reason = _validate_row(source_row, source_interval)
+                if invalid_reason:
+                    raise DataError(
+                        f"Invalid official 5m REST candle at "
+                        f"{source_row.get('timestamp')}: {invalid_reason}"
+                    )
             candidates = aggregate_5m_to_15m(source_rows)
             accepted = [
                 row for row in candidates
