@@ -1028,6 +1028,7 @@ def validate_trade_reconstruction(
         reconstructed_by_ts[timestamp] = row
 
     mismatches: list[dict[str, Any]] = []
+    out_of_tolerance_examples: list[dict[str, Any]] = []
     overlap = exact_matches = mismatch_bars = 0
     price_mismatch_bars = price_tolerated_mismatch_bars = price_valid_bars = 0
     missing_official_positive_volume = 0
@@ -1069,17 +1070,20 @@ def validate_trade_reconstruction(
                 price_mismatch_bars += 1
             elif price_different:
                 price_tolerated_mismatch_bars += 1
+            mismatch_detail = {
+                "timestamp": timestamp,
+                "fields": different,
+                "price_fields_outside_tolerance": out_of_tolerance,
+                "interpretation": (
+                    "Possible source/trade-set difference (including internal or liquidation trades); "
+                    "cause is not confirmed by this comparison alone."
+                    if price_different and not out_of_tolerance else None
+                ),
+            }
+            if out_of_tolerance and len(out_of_tolerance_examples) < 10:
+                out_of_tolerance_examples.append(mismatch_detail)
             if len(mismatches) < 5:
-                mismatches.append({
-                    "timestamp": timestamp,
-                    "fields": different,
-                    "price_fields_outside_tolerance": out_of_tolerance,
-                    "interpretation": (
-                        "Possible source/trade-set difference (including internal or liquidation trades); "
-                        "cause is not confirmed by this comparison alone."
-                        if price_different and not out_of_tolerance else None
-                    ),
-                })
+                mismatches.append(mismatch_detail)
         else:
             exact_matches += 1
         if not out_of_tolerance:
@@ -1150,6 +1154,7 @@ def validate_trade_reconstruction(
         "liquidation_cause_confirmed": False,
         "reason": reason,
         "mismatches": mismatches,
+        "out_of_tolerance_examples": out_of_tolerance_examples,
     }
 
 
@@ -1285,7 +1290,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
         "archive_intervals_downloaded": ["15m", "10s", "1m", "5m", "1h", "trades (only months with unresolved 15m gaps)"],
         "recent_rest_policy": "Public REST historical from/to queries are paged at no more than 900 points per request; recent REST is also used for the current archive tail. Historical gaps are retried through the official REST endpoint before remaining unresolved.",
-        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing 15m buckets may be reconstructed from official monthly futures trades only after at least 100 exact OHLCV matches, exact OHLC price agreement across all overlapping official candles, and no missing official positive-volume candle. A successfully downloaded and validated trade archive may certify a missing bucket as zero-trade, but no candle is synthesized for it. Other unresolved gaps remain failures.",
+        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing 15m buckets may be reconstructed from official monthly futures trades only after at least 100 overlapping candles pass price tolerances (open/close relative difference <= 0.01%; high/low <= 0.5%), no overlapping OHLC price exceeds its tolerance, and no official positive-volume candle is absent from the trade-derived candles. Volume differences are measured and reported separately; a liquidation/internal-trade cause is not assumed without independent evidence. A successfully downloaded and validated trade archive may certify a missing bucket as zero-trade, but no candle is synthesized for it. Other unresolved gaps remain failures.",
         "endpoint": "Gate official monthly futures candle/trade archives plus the public futures candlestick REST endpoint with historical from/to paging",
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
@@ -1295,8 +1300,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
-        "fifteen_minute_policy": "Historical 15m candles prefer the native official archive and otherwise aggregate complete sets of observed real 5m archive candles. Remaining 15m gaps may use official monthly futures trades only after at least 100 exact OHLCV matches, exact OHLC price agreement across all overlapping official candles, and no missing official positive-volume candle. Buckets with no trades remain absent; a validated complete monthly trades archive can certify such buckets as zero-trade intervals. No synthetic candles are created.",
-        "gap_repair_policy": "Repair missing candle opens only from observed official sources: complete 5m archive groups, complete recent 5m REST groups inside the latest 10,000-point source window, complete 1m/10s archive groups, and official native REST candles over documented historical from/to ranges. For unresolved 15m gaps, monthly futures trades are accepted only with at least 100 exact OHLCV matches, exact OHLC price agreement across all overlapping official candles, and zero missing official positive-volume candles. Gate trade size is signed by direction, so reconstructed total volume sums absolute sizes. Unavailable, malformed, incomplete, price-mismatched, or truncated sources do not repair gaps; unverified gaps fail closed.",
+        "fifteen_minute_policy": "Historical 15m candles prefer the native official archive and otherwise aggregate complete sets of observed real 5m archive candles. Remaining 15m gaps may use official monthly futures trades only after at least 100 overlapping candles pass price tolerances (open/close <= 0.01%; high/low <= 0.5%), no overlapping OHLC price exceeds its tolerance, and no official positive-volume candle is absent from the trade-derived candles. Volume differences are reported separately and do not alone invalidate price validation; liquidation/internal-trade explanations remain unconfirmed unless independently evidenced. Buckets with no trades remain absent; a validated complete monthly trades archive can certify such buckets as zero-trade intervals. No synthetic candles are created.",
+        "gap_repair_policy": "Repair missing candle opens only from observed official sources: complete 5m archive groups, complete recent 5m REST groups inside the latest 10,000-point source window, complete 1m/10s archive groups, and official native REST candles. For unresolved 15m gaps, monthly futures trades are accepted only with at least 100 overlapping candles within the stated OHLC price tolerances (open/close <= 0.01%; high/low <= 0.5%), no out-of-tolerance OHLC prices in the validation overlap, and zero missing official positive-volume candles. Gate trade size is signed by direction, so reconstructed total volume sums absolute sizes. Volume discrepancies are reported separately. Unavailable, malformed, incomplete, price-mismatched, or truncated sources do not repair gaps; unverified gaps fail closed.",
         "symbols": {},
     }
     failures: list[str] = []
@@ -1409,6 +1414,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                 print(
                                     f"[trade-repair-reject] {contract} {month}: "
                                     f"overlap={validation['overlap_bars']} reason={validation['reason']} "
+                                    f"out_of_tolerance={validation.get('out_of_tolerance_examples', [])} "
                                     f"details={validation['mismatches']}",
                                     flush=True,
                                 )
