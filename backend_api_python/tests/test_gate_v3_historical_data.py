@@ -1114,3 +1114,33 @@ def test_futures_trade_outlier_filter_keeps_initial_lookback_and_valid_prices() 
     accepted, rejected = MODULE.filter_futures_trade_outliers(trades)
     assert accepted == trades
     assert rejected == []
+
+def test_raw_trade_bucket_filtered_entirely_is_not_verified_as_zero_trade() -> None:
+    start = 1735689600.0
+    # Five normal trades establish a price baseline in the preceding 15m bucket.
+    baseline = [
+        (start + index + 1, index + 1, 100.0, 1.0)
+        for index in range(5)
+    ]
+    # All five trades in the wanted bucket are >5% from the rolling baseline and
+    # are rejected. Their raw presence must prevent a false zero-trade conclusion.
+    target = [
+        (start + 900 + index + 1, index + 10, 200.0, 1.0)
+        for index in range(5)
+    ]
+    raw_trades = baseline + target
+    accepted, rejected = MODULE.filter_futures_trade_outliers(raw_trades)
+    assert rejected == target
+
+    reconstructed = MODULE.aggregate_futures_trades_to_15m(
+        accepted, apply_outlier_filter=False,
+    )
+    wanted = {int(start + 900)}
+    verified_empty, raw_unreconstructed = MODULE.classify_trade_reconstruction_buckets(
+        wanted, reconstructed, raw_trades,
+    )
+
+    assert int(start + 900) not in {int(row["timestamp"]) for row in reconstructed}
+    assert verified_empty == set()
+    assert raw_unreconstructed == wanted
+
