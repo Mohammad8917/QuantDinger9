@@ -1116,6 +1116,44 @@ def test_futures_trade_outlier_filter_keeps_initial_lookback_and_valid_prices() 
     assert rejected == []
 
 
+def test_trade_validation_windows_use_hourly_staggering_without_lowering_overlap_threshold() -> None:
+    month_start = 1735689600  # 2025-01-01 00:00 UTC
+    next_month = month_start + 31 * 24 * 60 * 60
+    wanted_timestamp = month_start + 3 * 60 * 60 + 15 * 60
+
+    windows = MODULE.build_trade_validation_windows(
+        {wanted_timestamp}, month_start, next_month,
+    )
+
+    assert set(windows) == {
+        month_start,
+        month_start + 60 * 60,
+        month_start + 2 * 60 * 60,
+        month_start + 3 * 60 * 60,
+    }
+    assert all(wanted_timestamp in timestamps for timestamps in windows.values())
+    assert all(
+        window_start <= wanted_timestamp < window_start + 6 * 60 * 60
+        for window_start in windows
+    )
+
+
+def test_trade_validation_windows_do_not_cross_month_boundary() -> None:
+    month_start = 1735689600  # 2025-01-01 00:00 UTC
+    next_month = month_start + 31 * 24 * 60 * 60
+    wanted_timestamp = next_month - 15 * 60
+
+    windows = MODULE.build_trade_validation_windows(
+        {wanted_timestamp}, month_start, next_month,
+    )
+
+    assert set(windows) == {next_month - 6 * 60 * 60}
+    assert all(
+        window_start + 6 * 60 * 60 <= next_month
+        for window_start in windows
+    )
+
+
 def test_raw_trade_bucket_filtered_entirely_is_not_verified_as_zero_trade() -> None:
     start = 1735689600.0
     # Five normal trades establish a price baseline in the preceding 15m bucket.
