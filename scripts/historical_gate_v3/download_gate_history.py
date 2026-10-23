@@ -1640,6 +1640,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                             valid_windows = 0
                             rejected_windows = 0
                             insufficient_overlap_timestamps: set[int] = set()
+                            non_overlap_failure_timestamps: set[int] = set()
                             for window_key, window_wanted in sorted(wanted_by_window.items()):
                                 window_official = [
                                     row
@@ -1667,6 +1668,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                     rejected_windows += 1
                                     if validation["reason"].startswith("insufficient overlap"):
                                         insufficient_overlap_timestamps.update(window_wanted)
+                                    else:
+                                        non_overlap_failure_timestamps.update(window_wanted)
                                     print(
                                         f"[trade-repair-reject] {contract} {month} window={window_label}: "
                                         f"overlap={validation['overlap_bars']} reason={validation['reason']} "
@@ -1704,6 +1707,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                             # candles. A price-mismatch window is NOT eligible for fallback.
                             fallback_wanted = (
                                 insufficient_overlap_timestamps
+                                - non_overlap_failure_timestamps
                                 - set(accepted_trade_candles)
                                 - verified_empty_timestamps
                             )
