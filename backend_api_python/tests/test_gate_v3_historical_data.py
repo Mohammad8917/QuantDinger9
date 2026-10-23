@@ -1059,3 +1059,35 @@ def test_trade_reconstruction_rejects_high_low_outside_tolerance() -> None:
     assert "exceed tolerance" in validation["reason"]
     assert len(validation["out_of_tolerance_examples"]) == 1
     assert "high" in validation["out_of_tolerance_examples"][0]["price_fields_outside_tolerance"]
+
+
+
+def test_futures_trade_outlier_filter_excludes_extreme_price_before_aggregation() -> None:
+    start = 1735689600.0
+    trades = [
+        (start + 1, 1, 19.410, -8.0),
+        (start + 2, 2, 19.402, -2.0),
+        (start + 3, 3, 19.398, -1.0),
+        (start + 4, 4, 19.393, -41.0),
+        (start + 5, 5, 19.392, -15.0),
+        (start + 6, 6, 9.026, -1.0),
+    ]
+    accepted, rejected = MODULE.filter_futures_trade_outliers(trades)
+    assert len(accepted) == 5
+    assert rejected == [trades[-1]]
+    candles = MODULE.aggregate_futures_trades_to_15m(trades)
+    assert len(candles) == 1
+    assert candles[0]["low"] == 19.392
+    assert candles[0]["high"] == 19.410
+    assert candles[0]["volume"] == 67.0
+
+
+def test_futures_trade_outlier_filter_keeps_initial_lookback_and_valid_prices() -> None:
+    start = 1735689600.0
+    trades = [
+        (start + index, index + 1, 100.0 + (index % 2) * 0.1, 1.0)
+        for index in range(8)
+    ]
+    accepted, rejected = MODULE.filter_futures_trade_outliers(trades)
+    assert accepted == trades
+    assert rejected == []
