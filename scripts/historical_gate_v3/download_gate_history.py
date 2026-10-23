@@ -1639,6 +1639,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                             raw_unreconstructed_timestamps: set[int] = set()
                             valid_windows = 0
                             rejected_windows = 0
+                            insufficient_overlap_timestamps: set[int] = set()
                             for window_key, window_wanted in sorted(wanted_by_window.items()):
                                 window_official = [
                                     row
@@ -1664,6 +1665,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                 ).strftime("%Y-%m-%dT%H:00Z")
                                 if not validation["valid"]:
                                     rejected_windows += 1
+                                    if validation["reason"].startswith("insufficient overlap"):
+                                        insufficient_overlap_timestamps.update(window_wanted)
                                     print(
                                         f"[trade-repair-reject] {contract} {month} window={window_label}: "
                                         f"overlap={validation['overlap_bars']} reason={validation['reason']} "
@@ -1693,6 +1696,72 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                 verified_empty_timestamps.update(verified_empty)
                                 raw_unreconstructed_timestamps.update(raw_unreconstructed)
 
+                            # If six-hour windows fail only because too many official
+                            # candles are themselves missing, retry those target buckets
+                            # against a 24-hour window. Keep the same 75% overlap ratio
+                            # (72 of 96 candles), the same per-field OHLC tolerances, and
+                            # the same prohibition on missing official positive-volume
+                            # candles. A price-mismatch window is NOT eligible for fallback.
+                            fallback_wanted = (
+                                insufficient_overlap_timestamps
+                                - set(accepted_trade_candles)
+                                - verified_empty_timestamps
+                            )
+                            fallback_valid_windows = 0
+                            fallback_rejected_windows = 0
+                            fallback_window_seconds = 24 * 60 * 60
+                            fallback_minimum_overlap = 72
+                            fallback_by_window = build_trade_validation_windows(
+                                fallback_wanted, month_start, next_month,
+                                window_seconds=fallback_window_seconds,
+                                stride_seconds=6 * 60 * 60,
+                            )
+                            for window_key, window_wanted in sorted(fallback_by_window.items()):
+                                window_official = [
+                                    row
+                                    for hour_start in range(
+                                        window_key, window_key + fallback_window_seconds, 3600,
+                                    )
+                                    for row in official_by_hour.get(hour_start, [])
+                                ]
+                                window_trades = [
+                                    row
+                                    for hour_start in range(
+                                        window_key, window_key + fallback_window_seconds, 3600,
+                                    )
+                                    for row in trades_by_hour.get(hour_start, [])
+                                ]
+                                validation = validate_trade_reconstruction(
+                                    window_trades,
+                                    window_official,
+                                    minimum_overlap=fallback_minimum_overlap,
+                                )
+                                window_label = datetime.fromtimestamp(
+                                    window_key, timezone.utc
+                                ).strftime("%Y-%m-%dT%H:00Z")
+                                if not validation["valid"]:
+                                    fallback_rejected_windows += 1
+                                    print(
+                                        f"[trade-repair-fallback-reject] {contract} {month} "
+                                        f"window={window_label}: overlap={validation['overlap_bars']} "
+                                        f"reason={validation['reason']} "
+                                        f"out_of_tolerance={validation.get('out_of_tolerance_examples', [])}",
+                                        flush=True,
+                                    )
+                                    continue
+
+                                fallback_valid_windows += 1
+                                for row in window_trades:
+                                    timestamp = int(row["timestamp"])
+                                    if timestamp in window_wanted:
+                                        accepted_trade_candles.setdefault(timestamp, row)
+                                fallback_empty, fallback_raw_unreconstructed = classify_trade_reconstruction_buckets(
+                                    window_wanted, window_trades, monthly_trades,
+                                )
+                                verified_trade_empty_timestamps.update(fallback_empty)
+                                verified_empty_timestamps.update(fallback_empty)
+                                raw_unreconstructed_timestamps.update(fallback_raw_unreconstructed)
+
                             repaired_rows.extend(
                                 accepted_trade_candles[timestamp]
                                 for timestamp in sorted(accepted_trade_candles)
@@ -1703,6 +1772,10 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                             trade_archive_audit[month].update({
                                 "valid_windows": valid_windows,
                                 "rejected_windows": rejected_windows,
+                                "fallback_validation_window_hours": 24,
+                                "fallback_minimum_overlap_bars": fallback_minimum_overlap,
+                                "fallback_valid_windows": fallback_valid_windows,
+                                "fallback_rejected_windows": fallback_rejected_windows,
                                 "reconstructed_bars": accepted_total,
                                 "verified_zero_trade_bars": verified_empty_total,
                                 "raw_trade_but_unreconstructed_bars": raw_unreconstructed_total,
