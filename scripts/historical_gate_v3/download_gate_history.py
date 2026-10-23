@@ -1483,6 +1483,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 )
                 repaired_rows: list[dict[str, float | int | None]] = []
                 verified_trade_empty_timestamps: set[int] = set()
+                trade_archive_audit: dict[str, dict[str, Any]] = {}
                 already_observed = {
                     int(row["timestamp"]) for row in rows + repaired_rows
                 }
@@ -1499,6 +1500,10 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     current_month = datetime.now(timezone.utc).strftime("%Y%m")
                     for month, missing_in_month in sorted(missing_trade_months.items()):
                         if month == current_month:
+                            trade_archive_audit[month] = {
+                                "status": "skipped_current_month_not_finalized",
+                                "requested_missing_bars": len(missing_in_month),
+                            }
                             print(
                                 f"[trade-repair-skip] {contract} {month}: current month is not finalized; "
                                 "monthly trades cannot prove complete coverage",
@@ -1508,12 +1513,22 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                         try:
                             monthly_trades = fetch_monthly_futures_trades(session, contract, month)
                             if monthly_trades is None:
+                                trade_archive_audit[month] = {
+                                    "status": "unavailable_http_404",
+                                    "requested_missing_bars": len(missing_in_month),
+                                }
                                 print(
                                     f"[trade-repair-skip] {contract} {month}: official trade archive unavailable (HTTP 404)",
                                     flush=True,
                                 )
                                 continue
                             filtered_trades, rejected_trades = filter_futures_trade_outliers(monthly_trades)
+                            trade_archive_audit[month] = {
+                                "status": "available",
+                                "requested_missing_bars": len(missing_in_month),
+                                "raw_trade_rows": len(monthly_trades),
+                                "outlier_rejected_rows": len(rejected_trades),
+                            }
                             if rejected_trades:
                                 print(
                                     f"[trade-outlier-filter] {contract} {month}: "
@@ -1525,6 +1540,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                             trade_candles = aggregate_futures_trades_to_15m(
                                 filtered_trades, apply_outlier_filter=False,
                             )
+                            trade_archive_audit[month]["trade_derived_candles"] = len(trade_candles)
                             month_start = int(datetime.strptime(month, "%Y%m").replace(tzinfo=timezone.utc).timestamp())
                             next_month_dt = (datetime.fromtimestamp(month_start, timezone.utc).replace(day=28) + timedelta(days=4)).replace(day=1)
                             next_month = int(next_month_dt.timestamp())
@@ -1603,6 +1619,12 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                 verified_trade_empty_timestamps.update(verified_empty)
                                 verified_empty_total += len(verified_empty)
 
+                            trade_archive_audit[month].update({
+                                "valid_windows": valid_windows,
+                                "rejected_windows": rejected_windows,
+                                "reconstructed_bars": accepted_total,
+                                "verified_zero_trade_bars": verified_empty_total,
+                            })
                             if accepted_total or verified_empty_total:
                                 print(
                                     f"[trade-repair-partial-ok] {contract} {month}: "
@@ -1621,6 +1643,12 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                     flush=True,
                                 )
                         except Exception as trade_error:
+                            trade_archive_audit.setdefault(month, {
+                                "requested_missing_bars": len(missing_in_month),
+                            }).update({
+                                "status": "error",
+                                "error": str(trade_error),
+                            })
                             print(
                                 f"[trade-repair-warning] {contract} {month}: "
                                 f"monthly trades recovery unavailable: {trade_error}",
@@ -1778,6 +1806,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 sha256 = write_gzip_csv(output_dir / filename, rows)
                 manifest["symbols"][contract][timeframe] = {
                     **audit, "file": filename, "sha256": sha256, "interval_seconds": interval,
+                    **({"trade_archive_audit": trade_archive_audit} if timeframe == "15m" else {}),
                     "contract_create_time": create_time, "quote_volume_available": False,
                     "volume_source": "Gate contract-size volume (archive size / public REST v)",
                     "source": source_label,
