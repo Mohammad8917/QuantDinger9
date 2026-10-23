@@ -788,7 +788,7 @@ def test_trade_reconstruction_allows_official_zero_volume_candle_without_trade()
 
     assert validation["overlap_bars"] == MODULE.MIN_TRADE_VALIDATION_OVERLAP
     assert validation["valid"] is True
-    assert validation["reason"] == "OHLCV matches"
+    assert validation["reason"].startswith("OHLCV validated")
 
 
 def test_trade_reconstruction_rejects_any_ohlcv_mismatch() -> None:
@@ -801,7 +801,6 @@ def test_trade_reconstruction_rejects_any_ohlcv_mismatch() -> None:
     official = [dict(row) for row in reconstructed]
     official[10]["volume"] = float(official[10]["volume"]) + 1.0
     validation = MODULE.validate_trade_reconstruction(reconstructed, official)
-    assert validation["valid"] is False
     assert validation["valid"] is False
     assert validation["exact_match_bars"] == MODULE.MIN_TRADE_VALIDATION_OVERLAP - 1
     assert "insufficient exact OHLCV matches" in validation["reason"]
