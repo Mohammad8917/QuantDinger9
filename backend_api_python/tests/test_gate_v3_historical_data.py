@@ -881,3 +881,29 @@ def test_monthly_trade_archive_404_is_unavailable_not_zero_trade() -> None:
         f"{MODULE.ARCHIVE_BASE_URL}/trades/202501/BTC_USDT-202501.csv.gz"
     ]
 
+
+def test_missing_15m_recovery_uses_only_complete_official_5m_groups() -> None:
+    start = 1800000000
+    rows = [
+        {"timestamp": start, "open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0, "volume": 2.0, "quote_volume": None},
+        {"timestamp": start + 300, "open": 101.0, "high": 104.0, "low": 100.0, "close": 103.0, "volume": 3.0, "quote_volume": None},
+        {"timestamp": start + 600, "open": 103.0, "high": 105.0, "low": 102.0, "close": 104.0, "volume": 4.0, "quote_volume": None},
+    ]
+    original_fetch = MODULE.fetch_archive_candles
+    try:
+        MODULE.fetch_archive_candles = lambda *args, **kwargs: rows
+        recovered = MODULE.fetch_missing_5m_archive_candles(
+            object(), "BTC_USDT", "15m", [start],
+        )
+        assert recovered == [{
+            "timestamp": start, "open": 100.0, "high": 105.0,
+            "low": 99.0, "close": 104.0, "volume": 9.0,
+            "quote_volume": None,
+        }]
+
+        MODULE.fetch_archive_candles = lambda *args, **kwargs: rows[:2]
+        assert MODULE.fetch_missing_5m_archive_candles(
+            object(), "BTC_USDT", "15m", [start],
+        ) == []
+    finally:
+        MODULE.fetch_archive_candles = original_fetch
