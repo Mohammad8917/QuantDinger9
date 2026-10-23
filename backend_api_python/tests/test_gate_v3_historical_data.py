@@ -1115,6 +1115,7 @@ def test_futures_trade_outlier_filter_keeps_initial_lookback_and_valid_prices() 
     assert accepted == trades
     assert rejected == []
 
+
 def test_raw_trade_bucket_filtered_entirely_is_not_verified_as_zero_trade() -> None:
     start = 1735689600.0
     # Five normal trades establish a price baseline in the preceding 15m bucket.
