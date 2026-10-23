@@ -1195,6 +1195,47 @@ def test_trade_validation_24h_fallback_keeps_75_percent_overlap_threshold() -> N
     assert "insufficient overlap" in rejected["reason"]
 
 
+def test_trade_validation_48h_fallback_keeps_75_percent_overlap_threshold() -> None:
+    month_start = 1735689600  # 2025-01-01 00:00 UTC
+    next_month = month_start + 31 * 24 * 60 * 60
+    wanted_timestamp = month_start + 10 * 24 * 60 * 60 + 15 * 60
+    windows = MODULE.build_trade_validation_windows(
+        {wanted_timestamp}, month_start, next_month,
+        window_seconds=48 * 60 * 60, stride_seconds=12 * 60 * 60,
+    )
+    assert windows
+    assert all(
+        window_start <= timestamp < window_start + 48 * 60 * 60
+        for window_start, timestamps in windows.items()
+        for timestamp in timestamps
+    )
+    assert all(
+        window_start >= month_start
+        and window_start + 48 * 60 * 60 <= next_month
+        for window_start in windows
+    )
+
+    start = month_start + 5 * 24 * 60 * 60
+    trades = [
+        (start + index * 900 + 1.0, index, 100.0 + index, 2.0)
+        for index in range(192)
+    ]
+    reconstructed = MODULE.aggregate_futures_trades_to_15m(trades)
+    official = [dict(row) for row in reconstructed]
+    accepted = MODULE.validate_trade_reconstruction(
+        reconstructed, official, minimum_overlap=144,
+    )
+    assert accepted["valid"] is True
+    assert accepted["overlap_bars"] == 192
+
+    rejected = MODULE.validate_trade_reconstruction(
+        reconstructed[:143], official[:143], minimum_overlap=144,
+    )
+    assert rejected["valid"] is False
+    assert rejected["overlap_bars"] == 143
+    assert "insufficient overlap" in rejected["reason"]
+
+
 def test_raw_trade_bucket_filtered_entirely_is_not_verified_as_zero_trade() -> None:
     start = 1735689600.0
     # Five normal trades establish a price baseline in the preceding 15m bucket.
