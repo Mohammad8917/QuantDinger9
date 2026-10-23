@@ -1369,7 +1369,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "archive_first_documented_month": ARCHIVE_FIRST_MONTH,
         "archive_intervals_downloaded": ["15m", "10s", "1m", "5m", "1h", "trades (only months with unresolved 15m gaps)"],
         "recent_rest_policy": "Public REST historical from/to queries are paged at no more than 900 points per request; recent REST is also used for the current archive tail. Historical gaps are retried through the official REST endpoint before remaining unresolved.",
-        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing 15m buckets may be reconstructed from official monthly futures trades only after at least 100 overlapping candles pass price tolerances (open/close relative difference <= 0.01%; high/low <= 0.5%), no overlapping OHLC price exceeds its tolerance, and no official positive-volume candle is absent from the trade-derived candles. Volume differences are measured and reported separately; a liquidation/internal-trade cause is not assumed without independent evidence. A successfully downloaded and validated trade archive may certify a missing bucket as zero-trade, but no candle is synthesized for it. Other unresolved gaps remain failures.",
+        "coverage_policy": "Expected range begins at max(requested start, public contract create_time), rounded up to a candle boundary; only fully closed candles are expected. Missing 15m buckets may be reconstructed from official monthly futures trades only within UTC six-hour windows that have at least 18 of 24 expected 15m candles overlapping (75%), all overlapping OHLC prices within tolerance (open/close relative difference <= 0.01%; high/low <= 0.5%), and no official positive-volume candle absent from the trade-derived candles. Volume differences are measured and reported separately; a liquidation/internal-trade cause is not assumed without independent evidence. A successfully downloaded and validated trade archive may certify a missing bucket as zero-trade, but no candle is synthesized for it. Other unresolved gaps remain failures.",
         "endpoint": "Gate official monthly futures candle/trade archives plus the public futures candlestick REST endpoint with historical from/to paging",
         "strategy_path": STRATEGY_PATH,
         "locked_strategy_git_blob_sha1": LOCKED_STRATEGY_BLOB_SHA,
@@ -1379,8 +1379,8 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "order_execution": "NOT_PERFORMED_DATA_DOWNLOAD_ONLY",
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
-        "fifteen_minute_policy": "Historical 15m candles prefer the native official archive and otherwise aggregate complete sets of observed real 5m archive candles. Remaining 15m gaps may use official monthly futures trades only after at least 100 overlapping candles pass price tolerances (open/close <= 0.01%; high/low <= 0.5%), no overlapping OHLC price exceeds its tolerance, and no official positive-volume candle is absent from the trade-derived candles. Volume differences are reported separately and do not alone invalidate price validation; liquidation/internal-trade explanations remain unconfirmed unless independently evidenced. Buckets with no trades remain absent; a validated complete monthly trades archive can certify such buckets as zero-trade intervals. No synthetic candles are created.",
-        "gap_repair_policy": "Repair missing candle opens only from observed official sources: complete 5m archive groups, complete recent 5m REST groups inside the latest 10,000-point source window, complete 1m/10s archive groups, and official native REST candles. For unresolved 15m gaps, monthly futures trades are accepted only with at least 100 overlapping candles within the stated OHLC price tolerances (open/close <= 0.01%; high/low <= 0.5%), no out-of-tolerance OHLC prices in the validation overlap, and zero missing official positive-volume candles. Gate trade size is signed by direction, so reconstructed total volume sums absolute sizes. Volume discrepancies are reported separately. Unavailable, malformed, incomplete, price-mismatched, or truncated sources do not repair gaps; unverified gaps fail closed.",
+        "fifteen_minute_policy": "Historical 15m candles prefer the native official archive and otherwise aggregate complete sets of observed real 5m archive candles. Remaining 15m gaps may use official monthly futures trades only within UTC six-hour windows with at least 18 of 24 expected 15m candles overlapping (75%) and all overlapping OHLC prices within tolerance (open/close <= 0.01%; high/low <= 0.5%), no overlapping OHLC price exceeds its tolerance, and no official positive-volume candle is absent from the trade-derived candles. Volume differences are reported separately and do not alone invalidate price validation; liquidation/internal-trade explanations remain unconfirmed unless independently evidenced. Buckets with no trades remain absent; a validated complete monthly trades archive can certify such buckets as zero-trade intervals. No synthetic candles are created.",
+        "gap_repair_policy": "Repair missing candle opens only from observed official sources: complete 5m archive groups, complete recent 5m REST groups inside the latest 10,000-point source window, complete 1m/10s archive groups, and official native REST candles. For unresolved 15m gaps, monthly futures trades are accepted only with within UTC six-hour windows with at least 18 of 24 expected 15m candles overlapping (75%) and all overlapping OHLC prices within the stated tolerances (open/close <= 0.01%; high/low <= 0.5%), no out-of-tolerance OHLC prices in the validation overlap, and zero missing official positive-volume candles. Gate trade size is signed by direction, so reconstructed total volume sums absolute sizes. Volume discrepancies are reported separately. Unavailable, malformed, incomplete, price-mismatched, or truncated sources do not repair gaps; unverified gaps fail closed.",
         "symbols": {},
     }
     failures: list[str] = []
@@ -1504,37 +1504,45 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                             # overlap and fully passing OHLC validation can repair gaps; a bad
                             # day remains unresolved and is eligible for other official sources.
                             wanted = set(missing_in_month)
-                            official_by_day: dict[int, list[dict[str, float | int | None]]] = {}
-                            trades_by_day: dict[int, list[dict[str, float | int | None]]] = {}
-                            wanted_by_day: dict[int, set[int]] = {}
+                            # Validate in UTC six-hour windows instead of whole days.
+                            # Each window expects 24 15m candles; require at least 18
+                            # observed overlaps (75%) and reject only the failing window.
+                            # This keeps the evidence threshold proportional while preventing
+                            # one bad interval or sparse part of a day from discarding valid
+                            # reconstructions from the other UTC windows.
+                            validation_window_seconds = 6 * 60 * 60
+                            minimum_window_overlap = 18
+                            official_by_window: dict[int, list[dict[str, float | int | None]]] = {}
+                            trades_by_window: dict[int, list[dict[str, float | int | None]]] = {}
+                            wanted_by_window: dict[int, set[int]] = {}
                             for row in month_official_rows:
                                 ts = int(row["timestamp"])
-                                official_by_day.setdefault(ts // 86400, []).append(row)
+                                official_by_window.setdefault(ts // validation_window_seconds, []).append(row)
                             for row in trade_candles:
                                 ts = int(row["timestamp"])
-                                trades_by_day.setdefault(ts // 86400, []).append(row)
+                                trades_by_window.setdefault(ts // validation_window_seconds, []).append(row)
                             for ts in wanted:
-                                wanted_by_day.setdefault(ts // 86400, set()).add(ts)
+                                wanted_by_window.setdefault(ts // validation_window_seconds, set()).add(ts)
 
                             accepted_total = 0
                             verified_empty_total = 0
-                            valid_days = 0
-                            rejected_days = 0
-                            for day_key, day_wanted in sorted(wanted_by_day.items()):
-                                day_official = official_by_day.get(day_key, [])
-                                day_trades = trades_by_day.get(day_key, [])
+                            valid_windows = 0
+                            rejected_windows = 0
+                            for window_key, window_wanted in sorted(wanted_by_window.items()):
+                                window_official = official_by_window.get(window_key, [])
+                                window_trades = trades_by_window.get(window_key, [])
                                 validation = validate_trade_reconstruction(
-                                    day_trades,
-                                    day_official,
-                                    minimum_overlap=72,
+                                    window_trades,
+                                    window_official,
+                                    minimum_overlap=minimum_window_overlap,
                                 )
-                                day_label = datetime.fromtimestamp(
-                                    day_key * 86400, timezone.utc
-                                ).strftime("%Y-%m-%d")
+                                window_label = datetime.fromtimestamp(
+                                    window_key * validation_window_seconds, timezone.utc
+                                ).strftime("%Y-%m-%dT%H:00Z")
                                 if not validation["valid"]:
-                                    rejected_days += 1
+                                    rejected_windows += 1
                                     print(
-                                        f"[trade-repair-reject] {contract} {month} day={day_label}: "
+                                        f"[trade-repair-reject] {contract} {month} window={window_label}: "
                                         f"overlap={validation['overlap_bars']} reason={validation['reason']} "
                                         f"out_of_tolerance={validation.get('out_of_tolerance_examples', [])} "
                                         f"details={validation['mismatches']}",
@@ -1550,15 +1558,15 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                             )
                                     continue
 
-                                valid_days += 1
+                                valid_windows += 1
                                 accepted = [
-                                    row for row in day_trades
-                                    if int(row["timestamp"]) in day_wanted
+                                    row for row in window_trades
+                                    if int(row["timestamp"]) in window_wanted
                                 ]
                                 repaired_rows.extend(accepted)
                                 accepted_total += len(accepted)
-                                day_trade_timestamps = {int(row["timestamp"]) for row in day_trades}
-                                verified_empty = day_wanted - day_trade_timestamps
+                                window_trade_timestamps = {int(row["timestamp"]) for row in window_trades}
+                                verified_empty = window_wanted - window_trade_timestamps
                                 verified_trade_empty_timestamps.update(verified_empty)
                                 verified_empty_total += len(verified_empty)
 
@@ -1567,16 +1575,16 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                     f"[trade-repair-partial-ok] {contract} {month}: "
                                     f"reconstructed={accepted_total}/{len(wanted)} missing candles; "
                                     f"verified_zero_trade={verified_empty_total}; "
-                                    f"valid_days={valid_days}; rejected_days={rejected_days}",
+                                    f"valid_windows={valid_windows}; rejected_windows={rejected_windows}",
                                     flush=True,
                                 )
                                 source_parts.append(
-                                    "Gate official monthly futures trades (daily OHLCV-overlap validated)"
+                                    "Gate official monthly futures trades (UTC six-hour OHLCV-overlap validated)"
                                 )
                             else:
                                 print(
-                                    f"[trade-repair-reject] {contract} {month}: no day passed validation "
-                                    f"(valid_days={valid_days}, rejected_days={rejected_days})",
+                                    f"[trade-repair-reject] {contract} {month}: no window passed validation "
+                                    f"(valid_windows={valid_windows}, rejected_windows={rejected_windows})",
                                     flush=True,
                                 )
                         except Exception as trade_error:
