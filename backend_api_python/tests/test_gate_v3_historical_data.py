@@ -754,7 +754,7 @@ def test_trade_reconstruction_requires_minimum_overlap_and_exact_ohlcv() -> None
     validation = MODULE.validate_trade_reconstruction(reconstructed, official)
     assert validation["valid"] is True
     assert validation["overlap_bars"] == MODULE.MIN_TRADE_VALIDATION_OVERLAP
-    assert validation["reason"].startswith("OHLC prices validated")
+    assert validation["reason"].startswith("OHLC prices within tolerance")
 
     insufficient = MODULE.validate_trade_reconstruction(reconstructed[:3], official[:3])
     assert insufficient["valid"] is False
@@ -803,10 +803,10 @@ def test_trade_reconstruction_allows_official_zero_volume_candle_without_trade()
 
     assert validation["overlap_bars"] == MODULE.MIN_TRADE_VALIDATION_OVERLAP
     assert validation["valid"] is True
-    assert validation["reason"].startswith("OHLC prices validated")
+    assert validation["reason"].startswith("OHLC prices within tolerance")
 
 
-def test_trade_reconstruction_requires_100_exact_ohlcv_matches() -> None:
+def test_trade_reconstruction_requires_100_price_valid_bars_and_reports_volume_mismatch() -> None:
     start = 1800000000
     trades = [
         (start + index * 900 + 1.0, index, 100.0 + index, 2.0)
@@ -818,9 +818,11 @@ def test_trade_reconstruction_requires_100_exact_ohlcv_matches() -> None:
 
     validation = MODULE.validate_trade_reconstruction(reconstructed, official)
 
-    assert validation["valid"] is False
+    assert validation["valid"] is True
     assert validation["exact_match_bars"] == MODULE.MIN_TRADE_VALIDATION_OVERLAP - 1
-    assert "insufficient exact OHLCV matches" in validation["reason"]
+    assert validation["volume_only_mismatch_bars"] == 1
+    assert validation["price_valid_bars"] == MODULE.MIN_TRADE_VALIDATION_OVERLAP
+    assert "volume discrepancies are reported separately" in validation["reason"]
     assert validation["mismatches"]
 
 
