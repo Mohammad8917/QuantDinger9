@@ -807,9 +807,11 @@ def test_trade_reconstruction_rejects_any_ohlcv_mismatch() -> None:
     assert validation["mismatches"]
 
 
-def test_monthly_trade_archive_rejects_duplicate_deal_ids() -> None:
+def test_monthly_trade_archive_allows_repeated_deal_ids_when_rows_are_valid() -> None:
     import gzip
 
+    # Gate documents dealid as a field but does not specify archive-wide uniqueness.
+    # Repeated IDs alone must not invalidate an otherwise parseable official archive.
     content = gzip.compress(
         (
             "1735689600.1,42,100.0,1\n"
@@ -828,12 +830,11 @@ def test_monthly_trade_archive_rejects_duplicate_deal_ids() -> None:
         def get(self, url: str, **kwargs: object) -> FakeResponse:
             return FakeResponse()
 
-    try:
-        MODULE.fetch_monthly_futures_trades(FakeSession(), "BTC_USDT", "202501")
-    except MODULE.DataError as exc:
-        assert "duplicate dealid 42" in str(exc)
-    else:
-        raise AssertionError("Duplicate trade IDs must reject the archive")
+    trades = MODULE.fetch_monthly_futures_trades(FakeSession(), "BTC_USDT", "202501")
+    assert trades is not None
+    assert len(trades) == 2
+    assert trades[0] == (1735689600.1, 42, 100.0, 1.0)
+    assert trades[1] == (1735689600.2, 42, 100.5, -1.0)
 
 
 def test_monthly_trade_archive_rejects_rows_outside_requested_month() -> None:
