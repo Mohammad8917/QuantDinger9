@@ -815,11 +815,12 @@ def test_monthly_trade_archive_rejects_duplicate_deal_ids() -> None:
         ).encode("utf-8")
     )
 
-    payload = content
     class FakeResponse:
         status_code = 200
-        content = payload
         text = ""
+
+        def __init__(self) -> None:
+            self.content = content
 
     class FakeSession:
         def get(self, url: str, **kwargs: object) -> FakeResponse:
