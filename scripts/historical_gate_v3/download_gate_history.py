@@ -1499,48 +1499,87 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                 row for row in rows
                                 if month_start <= int(row["timestamp"]) < next_month
                             ]
-                            validation = validate_trade_reconstruction(trade_candles, month_official_rows)
-                            if not validation["valid"]:
+                            # Validate in UTC-day partitions rather than rejecting an entire
+                            # month because of one inconsistent candle. Only days with enough
+                            # overlap and fully passing OHLC validation can repair gaps; a bad
+                            # day remains unresolved and is eligible for other official sources.
+                            wanted = set(missing_in_month)
+                            trade_by_ts = {int(row["timestamp"]): row for row in trade_candles}
+                            official_by_day: dict[int, list[dict[str, float | int | None]]] = {}
+                            trades_by_day: dict[int, list[dict[str, float | int | None]]] = {}
+                            wanted_by_day: dict[int, set[int]] = {}
+                            for row in month_official_rows:
+                                ts = int(row["timestamp"])
+                                official_by_day.setdefault(ts // 86400, []).append(row)
+                            for row in trade_candles:
+                                ts = int(row["timestamp"])
+                                trades_by_day.setdefault(ts // 86400, []).append(row)
+                            for ts in wanted:
+                                wanted_by_day.setdefault(ts // 86400, set()).add(ts)
+
+                            accepted_total = 0
+                            verified_empty_total = 0
+                            valid_days = 0
+                            rejected_days = 0
+                            for day_key, day_wanted in sorted(wanted_by_day.items()):
+                                day_official = official_by_day.get(day_key, [])
+                                day_trades = trades_by_day.get(day_key, [])
+                                validation = validate_trade_reconstruction(
+                                    day_trades,
+                                    day_official,
+                                    minimum_overlap=100,
+                                )
+                                day_label = datetime.fromtimestamp(
+                                    day_key * 86400, timezone.utc
+                                ).strftime("%Y-%m-%d")
+                                if not validation["valid"]:
+                                    rejected_days += 1
+                                    print(
+                                        f"[trade-repair-reject] {contract} {month} day={day_label}: "
+                                        f"overlap={validation['overlap_bars']} reason={validation['reason']} "
+                                        f"out_of_tolerance={validation.get('out_of_tolerance_examples', [])} "
+                                        f"details={validation['mismatches']}",
+                                        flush=True,
+                                    )
+                                    if contract == "ETC_USDT" and month == "202510":
+                                        for example in validation.get("out_of_tolerance_examples", []):
+                                            bucket_timestamp = int(example["timestamp"])
+                                            print(
+                                                f"[trade-raw-diagnostic] {contract} {month}: "
+                                                f"{json.dumps(summarize_trade_bucket(monthly_trades, bucket_timestamp), sort_keys=True)}",
+                                                flush=True,
+                                            )
+                                    continue
+
+                                valid_days += 1
+                                accepted = [
+                                    row for row in day_trades
+                                    if int(row["timestamp"]) in day_wanted
+                                ]
+                                repaired_rows.extend(accepted)
+                                accepted_total += len(accepted)
+                                day_trade_timestamps = {int(row["timestamp"]) for row in day_trades}
+                                verified_empty = day_wanted - day_trade_timestamps
+                                verified_trade_empty_timestamps.update(verified_empty)
+                                verified_empty_total += len(verified_empty)
+
+                            if accepted_total or verified_empty_total:
                                 print(
-                                    f"[trade-repair-reject] {contract} {month}: "
-                                    f"overlap={validation['overlap_bars']} reason={validation['reason']} "
-                                    f"out_of_tolerance={validation.get('out_of_tolerance_examples', [])} "
-                                    f"details={validation['mismatches']}",
+                                    f"[trade-repair-partial-ok] {contract} {month}: "
+                                    f"reconstructed={accepted_total}/{len(wanted)} missing candles; "
+                                    f"verified_zero_trade={verified_empty_total}; "
+                                    f"valid_days={valid_days}; rejected_days={rejected_days}",
                                     flush=True,
                                 )
-                                # Narrow diagnostic for the reported ETC 2025-10 anomaly.
-                                # Gate's archive schema is timestamp, dealid, price, signed size;
-                                # retain raw row evidence so an internal/outlier trade can be
-                                # distinguished from a column-mapping or archive-corruption bug.
-                                if contract == "ETC_USDT" and month == "202510":
-                                    suspicious = validation.get("out_of_tolerance_examples", [])
-                                    for example in suspicious:
-                                        bucket_timestamp = int(example["timestamp"])
-                                        print(
-                                            f"[trade-raw-diagnostic] {contract} {month}: "
-                                            f"{json.dumps(summarize_trade_bucket(monthly_trades, bucket_timestamp), sort_keys=True)}",
-                                            flush=True,
-                                        )
-                                continue
-                            wanted = set(missing_in_month)
-                            trade_timestamps = {int(row["timestamp"]) for row in trade_candles}
-                            accepted = [
-                                row for row in trade_candles
-                                if int(row["timestamp"]) in wanted
-                            ]
-                            repaired_rows.extend(accepted)
-                            verified_empty = wanted - trade_timestamps
-                            verified_trade_empty_timestamps.update(verified_empty)
-                            print(
-                                f"[trade-repair-ok] {contract} {month}: "
-                                f"{len(accepted)}/{len(wanted)} missing candles reconstructed; "
-                                f"{len(verified_empty)} verified zero-trade buckets; "
-                                f"validated_overlap={validation['overlap_bars']}",
-                                flush=True,
-                            )
-                            source_parts.append(
-                                "Gate official monthly futures trades (15m OHLCV overlap-validated)"
-                            )
+                                source_parts.append(
+                                    "Gate official monthly futures trades (daily OHLCV-overlap validated)"
+                                )
+                            else:
+                                print(
+                                    f"[trade-repair-reject] {contract} {month}: no day passed validation "
+                                    f"(valid_days={valid_days}, rejected_days={rejected_days})",
+                                    flush=True,
+                                )
                         except Exception as trade_error:
                             print(
                                 f"[trade-repair-warning] {contract} {month}: "
