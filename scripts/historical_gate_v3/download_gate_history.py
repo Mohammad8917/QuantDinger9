@@ -1237,6 +1237,38 @@ def validate_trade_reconstruction(
     }
 
 
+def summarize_missing_timestamps(
+    timestamps: list[int], interval: int,
+) -> dict[str, dict[str, Any]]:
+    """Group unresolved candle opens by UTC month and exact contiguous ranges."""
+    if interval <= 0:
+        raise ValueError("interval must be positive")
+    by_month: dict[str, list[int]] = {}
+    for timestamp in sorted(set(timestamps)):
+        month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y-%m")
+        by_month.setdefault(month, []).append(timestamp)
+
+    summary: dict[str, dict[str, Any]] = {}
+    for month, month_timestamps in sorted(by_month.items()):
+        ranges: list[dict[str, Any]] = []
+        for timestamp in month_timestamps:
+            if not ranges or timestamp != ranges[-1]["end_timestamp"] + interval:
+                ranges.append({
+                    "start_timestamp": timestamp,
+                    "end_timestamp": timestamp,
+                    "start_utc": datetime.fromtimestamp(timestamp, timezone.utc).isoformat(),
+                    "end_utc": datetime.fromtimestamp(timestamp, timezone.utc).isoformat(),
+                    "bars": 1,
+                })
+            else:
+                current = ranges[-1]
+                current["end_timestamp"] = timestamp
+                current["end_utc"] = datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+                current["bars"] += 1
+        summary[month] = {"missing_bars": len(month_timestamps), "ranges": ranges}
+    return summary
+
+
 def audit_rows(
     rows: list[dict[str, float | int | None]], timeframe: str, *,
     expected_start: int | None = None, expected_end: int | None = None,
@@ -1325,6 +1357,7 @@ def audit_rows(
         "verified_source_empty_bars": len(verified_empty),
         "verified_source_empty_timestamps": verified_empty,
         "unresolved_missing_timestamps": unresolved_timestamps,
+        "unresolved_missing_by_month": summarize_missing_timestamps(unresolved_timestamps, interval),
         "unresolved_missing_bars": unresolved_missing,
         "effective_expected_bars": effective_expected_bars,
         "coverage_ratio": coverage_ratio,
