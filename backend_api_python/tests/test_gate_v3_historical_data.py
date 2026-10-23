@@ -907,3 +907,53 @@ def test_missing_15m_recovery_uses_only_complete_official_5m_groups() -> None:
         ) == []
     finally:
         MODULE.fetch_archive_candles = original_fetch
+
+
+def test_missing_15m_recovery_uses_recent_official_5m_rest_only_for_complete_groups() -> None:
+    start = 1800000000
+    rows = [
+        {"timestamp": start, "open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0, "volume": 2.0, "quote_volume": None},
+        {"timestamp": start + 300, "open": 101.0, "high": 104.0, "low": 100.0, "close": 103.0, "volume": 3.0, "quote_volume": None},
+        {"timestamp": start + 600, "open": 103.0, "high": 105.0, "low": 102.0, "close": 104.0, "volume": 4.0, "quote_volume": None},
+    ]
+    original_fetch = MODULE.fetch_recent_rest_candles
+    calls: list[tuple[str, int, int]] = []
+
+    def fake_fetch(session: object, contract: str, timeframe: str, start_ts: int, end_ts: int, **kwargs: object) -> list[dict[str, float | int | None]]:
+        calls.append((timeframe, start_ts, end_ts))
+        return rows
+
+    try:
+        MODULE.fetch_recent_rest_candles = fake_fetch
+        recovered = MODULE.fetch_missing_5m_rest_candles(
+            object(), "BTC_USDT", "15m", [start], now_ts=start + 20000,
+        )
+        assert recovered == [{
+            "timestamp": start, "open": 100.0, "high": 105.0,
+            "low": 99.0, "close": 104.0, "volume": 9.0,
+            "quote_volume": None,
+        }]
+        assert calls == [("5m", start, start + 600)]
+
+        calls.clear()
+        MODULE.fetch_recent_rest_candles = lambda *args, **kwargs: rows[:2]
+        assert MODULE.fetch_missing_5m_rest_candles(
+            object(), "BTC_USDT", "15m", [start], now_ts=start + 20000,
+        ) == []
+    finally:
+        MODULE.fetch_recent_rest_candles = original_fetch
+
+
+def test_missing_15m_5m_rest_recovery_skips_timestamps_outside_recent_window() -> None:
+    start = 1800000000
+    original_fetch = MODULE.fetch_recent_rest_candles
+    calls: list[object] = []
+    try:
+        MODULE.fetch_recent_rest_candles = lambda *args, **kwargs: calls.append(args) or []
+        recovered = MODULE.fetch_missing_5m_rest_candles(
+            object(), "BTC_USDT", "15m", [start], now_ts=start + 4_000_000,
+        )
+        assert recovered == []
+        assert calls == []
+    finally:
+        MODULE.fetch_recent_rest_candles = original_fetch
