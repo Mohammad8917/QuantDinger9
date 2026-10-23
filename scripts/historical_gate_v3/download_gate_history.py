@@ -578,6 +578,58 @@ def aggregate_10s_to_timeframe(
     return aggregated
 
 
+def fetch_missing_5m_archive_candles(
+    session: requests.Session,
+    contract: str,
+    timeframe: str,
+    missing_timestamps: list[int],
+    *,
+    sleep_seconds: float = 0.05,
+) -> list[dict[str, float | int | None]]:
+    """Recover 15m gaps only from three contiguous observed official Gate 5m candles."""
+    if timeframe != "15m":
+        return []
+    if not missing_timestamps:
+        return []
+
+    missing_by_month: dict[str, list[int]] = {}
+    for timestamp in sorted(set(missing_timestamps)):
+        month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
+        missing_by_month.setdefault(month, []).append(timestamp)
+
+    recovered: list[dict[str, float | int | None]] = []
+    current_month = datetime.now(timezone.utc).strftime("%Y%m")
+    for month, month_timestamps in sorted(missing_by_month.items()):
+        if month == current_month:
+            continue
+        wanted = set(month_timestamps)
+        try:
+            source_rows = fetch_archive_candles(
+                session, contract, "5m", month_timestamps[0],
+                month_timestamps[-1] + 600, sleep_seconds=sleep_seconds,
+            )
+            candidates = aggregate_5m_to_15m(source_rows)
+            accepted = [
+                row for row in candidates
+                if int(row["timestamp"]) in wanted
+            ]
+        except Exception as repair_error:
+            print(
+                f"[5m-repair-warning] {contract} {timeframe} {month}: "
+                f"5m archive recovery unavailable: {repair_error}",
+                flush=True,
+            )
+            continue
+        recovered.extend(accepted)
+        print(
+            f"[5m-repair] {contract} {timeframe} {month}: "
+            f"{len(accepted)}/{len(wanted)} missing bars recovered "
+            "from complete observed official 5m candle sets",
+            flush=True,
+        )
+    return sorted(recovered, key=lambda row: int(row["timestamp"]))
+
+
 def fetch_missing_10s_archive_candles(
     session: requests.Session,
     contract: str,
@@ -1217,6 +1269,24 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                     and timestamp not in verified_trade_empty_timestamps
                 ]
                 trade_repaired_count = len(repaired_rows)
+                # A rejected/incomplete trade archive must not block another official source.
+                # Rebuild a 15m bar only when all three real 5m candles are present.
+                five_minute_rows = fetch_missing_5m_archive_candles(
+                    session, contract, timeframe, remaining_missing,
+                )
+                if five_minute_rows:
+                    repaired_rows.extend(five_minute_rows)
+                    source_parts.append("Gate official 5m archive recovery (complete three-candle groups)")
+
+                already_observed = {
+                    int(row["timestamp"]) for row in rows + repaired_rows
+                }
+                remaining_missing = [
+                    timestamp for timestamp in missing_before_repair
+                    if timestamp not in already_observed
+                    and timestamp not in verified_trade_empty_timestamps
+                ]
+
                 missing_by_month: dict[str, list[int]] = {}
                 for timestamp in remaining_missing:
                     month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
