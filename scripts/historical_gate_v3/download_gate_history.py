@@ -630,6 +630,77 @@ def fetch_missing_5m_archive_candles(
     return sorted(recovered, key=lambda row: int(row["timestamp"]))
 
 
+def fetch_missing_5m_rest_candles(
+    session: requests.Session,
+    contract: str,
+    timeframe: str,
+    missing_timestamps: list[int],
+    *,
+    sleep_seconds: float = 0.05,
+    now_ts: int | None = None,
+) -> list[dict[str, float | int | None]]:
+    """Recover recent 15m gaps from three observed official 5m REST candles."""
+    if timeframe != "15m" or not missing_timestamps:
+        return []
+
+    effective_now = int(time.time()) if now_ts is None else now_ts
+    source_interval = 300
+    recent_first = recent_rest_window_start(source_interval, now_ts=effective_now)
+    recent_last = last_closed_candle_start(
+        effective_now, source_interval, now_ts=effective_now,
+    )
+    eligible = sorted({
+        timestamp for timestamp in missing_timestamps
+        if timestamp % 900 == 0
+        and recent_first <= timestamp
+        and timestamp + 600 <= recent_last
+    })
+    skipped = len(set(missing_timestamps)) - len(eligible)
+    if skipped:
+        print(
+            f"[5m-rest-repair-skip] {contract} {timeframe}: skipped {skipped} "
+            "timestamps outside the complete recent 5m REST window",
+            flush=True,
+        )
+    if not eligible:
+        return []
+
+    recovered: list[dict[str, float | int | None]] = []
+    by_month: dict[str, list[int]] = {}
+    for timestamp in eligible:
+        month = datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y%m")
+        by_month.setdefault(month, []).append(timestamp)
+
+    for month, month_timestamps in sorted(by_month.items()):
+        wanted = set(month_timestamps)
+        try:
+            source_rows = fetch_recent_rest_candles(
+                session, contract, "5m", month_timestamps[0],
+                month_timestamps[-1] + 600,
+                sleep_seconds=sleep_seconds,
+            )
+            candidates = aggregate_5m_to_15m(source_rows)
+            accepted = [
+                row for row in candidates
+                if int(row["timestamp"]) in wanted
+            ]
+        except Exception as repair_error:
+            print(
+                f"[5m-rest-repair-warning] {contract} {timeframe} {month}: "
+                f"official 5m REST recovery unavailable: {repair_error}",
+                flush=True,
+            )
+            continue
+        recovered.extend(accepted)
+        print(
+            f"[5m-rest-repair] {contract} {timeframe} {month}: "
+            f"{len(accepted)}/{len(wanted)} missing bars recovered "
+            "from complete observed official 5m REST groups",
+            flush=True,
+        )
+    return sorted(recovered, key=lambda row: int(row["timestamp"]))
+
+
 def fetch_missing_10s_archive_candles(
     session: requests.Session,
     contract: str,
@@ -1115,7 +1186,7 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
         "quote_volume_available": False,
         "quote_volume_policy": "Gate historical candle archives provide contract-size volume but not quote-currency turnover; quote_volume is blank, never estimated.",
         "fifteen_minute_policy": "Historical 15m candles prefer the native official archive and otherwise aggregate complete sets of observed real 5m archive candles. Remaining 15m gaps may use official monthly futures trades only after at least 100 overlapping OHLCV bars match the official candle source. Buckets with no trades remain absent; a validated complete monthly trades archive can certify such buckets as zero-trade intervals. No synthetic candles are created.",
-        "gap_repair_policy": "Repair missing candle opens from complete observed real 1m/10s candle archives and recent native public REST. For unresolved 15m gaps, download only the affected official monthly futures trade archives, aggregate trades by UTC 900-second bucket, validate OHLCV against at least 20 overlapping official candles, and accept only months that match. Gate trade size is signed by direction, so reconstructed total volume sums absolute sizes. Unavailable or mismatching archives do not repair gaps; unverified gaps fail closed.",
+        "gap_repair_policy": "Repair missing candle opens only from observed official sources: complete 5m archive groups, complete recent 5m REST groups inside the latest 10,000-point source window, complete 1m/10s archive groups, and recent native REST candles. For unresolved 15m gaps, monthly futures trades are accepted only when at least 100 overlapping OHLCV candles match exactly within numeric tolerance and reverse validation finds no missing official positive-volume candle. Gate trade size is signed by direction, so reconstructed total volume sums absolute sizes. Unavailable, malformed, incomplete, or mismatching sources do not repair gaps; unverified gaps fail closed.",
         "symbols": {},
     }
     failures: list[str] = []
@@ -1277,6 +1348,24 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                 if five_minute_rows:
                     repaired_rows.extend(five_minute_rows)
                     source_parts.append("Gate official 5m archive recovery (complete three-candle groups)")
+
+                already_observed = {
+                    int(row["timestamp"]) for row in rows + repaired_rows
+                }
+                remaining_missing = [
+                    timestamp for timestamp in missing_before_repair
+                    if timestamp not in already_observed
+                    and timestamp not in verified_trade_empty_timestamps
+                ]
+
+                five_minute_rest_rows = fetch_missing_5m_rest_candles(
+                    session, contract, timeframe, remaining_missing,
+                )
+                if five_minute_rest_rows:
+                    repaired_rows.extend(five_minute_rest_rows)
+                    source_parts.append(
+                        "Gate official recent 5m REST recovery (complete three-candle groups)"
+                    )
 
                 already_observed = {
                     int(row["timestamp"]) for row in rows + repaired_rows
