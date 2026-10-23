@@ -980,8 +980,22 @@ def validate_trade_reconstruction(
     official_rows: list[dict[str, float | int | None]],
     *,
     minimum_overlap: int = MIN_TRADE_VALIDATION_OVERLAP,
+    open_close_tolerance: float = 0.0001,
+    high_low_tolerance: float = 0.005,
 ) -> dict[str, Any]:
-    """Validate a monthly trade archive against official OHLCV with strict coverage guards."""
+    """Validate trade-derived candles against official candles with explicit price tolerances.
+
+    Open/close must be within 0.01%; high/low may differ by at most 0.5%.
+    Volume is assessed separately because signed trade-size aggregation can differ
+    from the exchange candle volume convention. Tolerated differences do not prove
+    a liquidation/internal-trade cause; that remains a hypothesis unless independently
+    confirmed by source metadata.
+    """
+    if not (math.isfinite(open_close_tolerance) and 0 <= open_close_tolerance < 1):
+        raise ValueError("open_close_tolerance must be finite and in [0, 1)")
+    if not (math.isfinite(high_low_tolerance) and 0 <= high_low_tolerance < 1):
+        raise ValueError("high_low_tolerance must be finite and in [0, 1)")
+
     official_by_ts: dict[int, dict[str, float | int | None]] = {}
     duplicate_official_timestamps = 0
     for row in official_rows:
@@ -993,7 +1007,8 @@ def validate_trade_reconstruction(
         return {
             "valid": False, "overlap_bars": 0, "exact_match_bars": 0,
             "exact_match_ratio": 0.0, "mismatch_bars": 0,
-            "missing_official_positive_volume_bars": 0,
+            "price_mismatch_bars": 0, "price_tolerated_mismatch_bars": 0,
+            "price_valid_bars": 0, "missing_official_positive_volume_bars": 0,
             "reason": f"duplicate official timestamps: {duplicate_official_timestamps}",
             "mismatches": [],
         }
@@ -1005,17 +1020,16 @@ def validate_trade_reconstruction(
             return {
                 "valid": False, "overlap_bars": 0, "exact_match_bars": 0,
                 "exact_match_ratio": 0.0, "mismatch_bars": 0,
-                "missing_official_positive_volume_bars": 0,
+                "price_mismatch_bars": 0, "price_tolerated_mismatch_bars": 0,
+                "price_valid_bars": 0, "missing_official_positive_volume_bars": 0,
                 "reason": f"duplicate reconstructed timestamps: {timestamp}",
                 "mismatches": [],
             }
         reconstructed_by_ts[timestamp] = row
 
     mismatches: list[dict[str, Any]] = []
-    overlap = 0
-    exact_matches = 0
-    mismatch_bars = 0
-    price_mismatch_bars = 0
+    overlap = exact_matches = mismatch_bars = 0
+    price_mismatch_bars = price_tolerated_mismatch_bars = price_valid_bars = 0
     missing_official_positive_volume = 0
     price_fields = ("open", "high", "low", "close")
     fields = (*price_fields, "volume")
@@ -1026,6 +1040,7 @@ def validate_trade_reconstruction(
             continue
         overlap += 1
         different: dict[str, Any] = {}
+        out_of_tolerance: dict[str, Any] = {}
         price_different = False
         for field in fields:
             left, right = float(candidate[field]), float(official[field])
@@ -1033,17 +1048,41 @@ def validate_trade_reconstruction(
                 different[field] = {"trades": left, "official": right}
                 if field in price_fields:
                     price_different = True
+                    tolerance = (
+                        open_close_tolerance if field in ("open", "close")
+                        else high_low_tolerance
+                    )
+                    relative_difference = abs(left - right) / max(abs(right), 1e-12)
+                    if relative_difference > tolerance:
+                        out_of_tolerance[field] = {
+                            "trades": left,
+                            "official": right,
+                            "relative_difference": relative_difference,
+                            "allowed_relative_difference": tolerance,
+                        }
         if different:
             mismatch_bars += 1
-            if price_different:
+            if price_different and out_of_tolerance:
                 price_mismatch_bars += 1
+            elif price_different:
+                price_tolerated_mismatch_bars += 1
             if len(mismatches) < 5:
-                mismatches.append({"timestamp": timestamp, "fields": different})
+                mismatches.append({
+                    "timestamp": timestamp,
+                    "fields": different,
+                    "price_fields_outside_tolerance": out_of_tolerance,
+                    "interpretation": (
+                        "Possible source/trade-set difference (including internal or liquidation trades); "
+                        "cause is not confirmed by this comparison alone."
+                        if price_different and not out_of_tolerance else None
+                    ),
+                })
         else:
             exact_matches += 1
+        if not out_of_tolerance:
+            price_valid_bars += 1
 
-    # A reconstructed month must not omit any observed official positive-volume candle.
-    # This guard is unconditional; the match-rate tolerance never excuses truncation.
+    # Never accept a trade archive that omits an observed official positive-volume candle.
     for timestamp, official in official_by_ts.items():
         if timestamp in reconstructed_by_ts or float(official["volume"]) <= 0:
             continue
@@ -1059,20 +1098,23 @@ def validate_trade_reconstruction(
             })
 
     exact_match_ratio = exact_matches / overlap if overlap else 0.0
-    price_match_ratio = (
-        (overlap - price_mismatch_bars) / overlap if overlap else 0.0
+    price_match_ratio = price_valid_bars / overlap if overlap else 0.0
+    volume_only_mismatch_bars = sum(
+        1 for item in mismatches
+        if "volume" in item.get("fields", {})
+        and not any(field in item.get("fields", {}) for field in price_fields)
     )
     if overlap < minimum_overlap:
         reason = f"insufficient overlap (need {minimum_overlap})"
-    elif exact_matches < minimum_overlap:
+    elif price_valid_bars < minimum_overlap:
         reason = (
-            f"insufficient exact OHLCV matches "
-            f"({exact_matches}; need {minimum_overlap})"
+            f"insufficient candles within OHLC tolerances "
+            f"({price_valid_bars}; need {minimum_overlap})"
         )
     elif price_mismatch_bars:
         reason = (
-            f"trade archive has {price_mismatch_bars} OHLC price mismatch bars; "
-            "all overlapping OHLC prices must match"
+            f"{price_mismatch_bars} OHLC price mismatch bars exceed tolerance "
+            f"(open/close <= {open_close_tolerance:.2%}; high/low <= {high_low_tolerance:.2%})"
         )
     elif missing_official_positive_volume:
         reason = (
@@ -1081,14 +1123,15 @@ def validate_trade_reconstruction(
         )
     else:
         reason = (
-            f"OHLC prices validated across {overlap} overlapping bars; "
-            f"{exact_matches} exact OHLCV matches; "
-            f"{mismatch_bars} volume-only mismatch bars"
+            f"OHLC prices within tolerance across {overlap} overlapping bars; "
+            f"{price_tolerated_mismatch_bars} bars have tolerated price differences; "
+            f"{exact_matches} exact OHLCV matches. Possible internal/liquidation-trade "
+            "differences are not independently confirmed; volume discrepancies are reported separately."
         )
 
     valid = (
         overlap >= minimum_overlap
-        and exact_matches >= minimum_overlap
+        and price_valid_bars >= minimum_overlap
         and price_mismatch_bars == 0
         and missing_official_positive_volume == 0
     )
@@ -1098,9 +1141,15 @@ def validate_trade_reconstruction(
         "exact_match_bars": exact_matches,
         "exact_match_ratio": exact_match_ratio,
         "price_match_ratio": price_match_ratio,
+        "price_valid_bars": price_valid_bars,
         "mismatch_bars": mismatch_bars,
         "price_mismatch_bars": price_mismatch_bars,
+        "price_tolerated_mismatch_bars": price_tolerated_mismatch_bars,
+        "volume_only_mismatch_bars": volume_only_mismatch_bars,
         "missing_official_positive_volume_bars": missing_official_positive_volume,
+        "open_close_tolerance": open_close_tolerance,
+        "high_low_tolerance": high_low_tolerance,
+        "liquidation_cause_confirmed": False,
         "reason": reason,
         "mismatches": mismatches,
     }
