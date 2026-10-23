@@ -1038,6 +1038,8 @@ def test_trade_reconstruction_rejects_open_close_outside_tight_tolerance() -> No
     assert validation["valid"] is False
     assert validation["price_mismatch_bars"] == 1
     assert "exceed tolerance" in validation["reason"]
+    assert len(validation["out_of_tolerance_examples"]) == 1
+    assert "open" in validation["out_of_tolerance_examples"][0]["price_fields_outside_tolerance"]
 
 
 def test_trade_reconstruction_rejects_high_low_outside_tolerance() -> None:
@@ -1055,3 +1057,5 @@ def test_trade_reconstruction_rejects_high_low_outside_tolerance() -> None:
     assert validation["valid"] is False
     assert validation["price_mismatch_bars"] == 1
     assert "exceed tolerance" in validation["reason"]
+    assert len(validation["out_of_tolerance_examples"]) == 1
+    assert "high" in validation["out_of_tolerance_examples"][0]["price_fields_outside_tolerance"]
