@@ -790,11 +790,12 @@ def fetch_missing_native_rest_candles(
     sleep_seconds: float = 0.05,
     now_ts: int | None = None,
 ) -> list[dict[str, float | int | None]]:
-    """Recover missing closed candles via Gate's historical from/to REST API.
+    """Recover missing closed candles only inside Gate's actual recent REST window.
 
-    Gate documents historical timestamp ranges and up to 2,000 candles per
-    request. Keep each request below that limit; do not impose an unsupported
-    latest-10,000-points restriction on historical gap recovery.
+    Gate's futures candlesticks endpoint rejects timestamps older than its latest
+    10,000-point window, even when from/to are supplied. Historical gaps outside
+    that window must remain unresolved unless a reliable archive source reconstructs
+    them; do not repeatedly issue known-invalid calls.
     """
     if not missing_timestamps:
         return []
@@ -804,15 +805,18 @@ def fetch_missing_native_rest_candles(
     interval = TIMEFRAMES[timeframe]
     effective_now = int(time.time()) if now_ts is None else now_ts
     last_closed = last_closed_candle_start(effective_now, interval, now_ts=effective_now)
+    rest_window_start = recent_rest_window_start(interval, now_ts=effective_now)
     eligible_timestamps = sorted({
         timestamp for timestamp in missing_timestamps
-        if timestamp % interval == 0 and timestamp <= last_closed
+        if timestamp % interval == 0
+        and rest_window_start <= timestamp <= last_closed
     })
     skipped_count = len(set(missing_timestamps)) - len(eligible_timestamps)
     if skipped_count:
         print(
             f"[rest-repair-skip] {contract} {timeframe}: skipped {skipped_count} "
-            f"timestamps that are unaligned or not yet closed (latest closed={last_closed})",
+            f"timestamps outside Gate's recent 10,000-point REST window or not closed "
+            f"(window_start={rest_window_start}, latest_closed={last_closed})",
             flush=True,
         )
     if not eligible_timestamps:
