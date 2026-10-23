@@ -739,7 +739,7 @@ def test_trade_reconstruction_requires_minimum_overlap_and_exact_ohlcv() -> None
     validation = MODULE.validate_trade_reconstruction(reconstructed, official)
     assert validation["valid"] is True
     assert validation["overlap_bars"] == MODULE.MIN_TRADE_VALIDATION_OVERLAP
-    assert validation["reason"] == "OHLCV matches"
+    assert validation["reason"].startswith("OHLCV validated")
 
     insufficient = MODULE.validate_trade_reconstruction(reconstructed[:3], official[:3])
     assert insufficient["valid"] is False
@@ -765,7 +765,8 @@ def test_trade_reconstruction_rejects_missing_official_positive_volume_candle() 
 
     assert validation["overlap_bars"] == MODULE.MIN_TRADE_VALIDATION_OVERLAP
     assert validation["valid"] is False
-    assert validation["reason"] == "OHLCV mismatch"
+    assert "official positive-volume candles" in validation["reason"]
+    assert validation["missing_official_positive_volume_bars"] == 1
     assert any("missing_trade_candle" in item["fields"] for item in validation["mismatches"])
 
 
@@ -801,7 +802,9 @@ def test_trade_reconstruction_rejects_any_ohlcv_mismatch() -> None:
     official[10]["volume"] = float(official[10]["volume"]) + 1.0
     validation = MODULE.validate_trade_reconstruction(reconstructed, official)
     assert validation["valid"] is False
-    assert validation["reason"] == "OHLCV mismatch"
+    assert validation["valid"] is False
+    assert validation["exact_match_bars"] == MODULE.MIN_TRADE_VALIDATION_OVERLAP - 1
+    assert "insufficient exact OHLCV matches" in validation["reason"]
     assert validation["mismatches"]
 
 
@@ -957,3 +960,41 @@ def test_missing_15m_5m_rest_recovery_skips_timestamps_outside_recent_window() -
         assert calls == []
     finally:
         MODULE.fetch_recent_rest_candles = original_fetch
+
+
+def test_trade_reconstruction_accepts_minor_mismatch_only_with_100_exact_matches_and_995_percent_ratio() -> None:
+    start = 1800000000
+    trades = [
+        (start + index * 900 + 1.0, index, 100.0 + index, 2.0)
+        for index in range(1000)
+    ]
+    reconstructed = MODULE.aggregate_futures_trades_to_15m(trades)
+    official = [dict(row) for row in reconstructed]
+    official[10]["volume"] = float(official[10]["volume"]) + 1.0
+
+    validation = MODULE.validate_trade_reconstruction(reconstructed, official)
+
+    assert validation["valid"] is True
+    assert validation["overlap_bars"] == 1000
+    assert validation["exact_match_bars"] == 999
+    assert validation["mismatch_bars"] == 1
+    assert validation["exact_match_ratio"] == 0.999
+
+
+def test_trade_reconstruction_rejects_match_ratio_below_995_percent() -> None:
+    start = 1800000000
+    trades = [
+        (start + index * 900 + 1.0, index, 100.0 + index, 2.0)
+        for index in range(1000)
+    ]
+    reconstructed = MODULE.aggregate_futures_trades_to_15m(trades)
+    official = [dict(row) for row in reconstructed]
+    for index in range(6):
+        official[index]["volume"] = float(official[index]["volume"]) + 1.0
+
+    validation = MODULE.validate_trade_reconstruction(reconstructed, official)
+
+    assert validation["valid"] is False
+    assert validation["exact_match_bars"] == 994
+    assert validation["exact_match_ratio"] == 0.994
+    assert "below 99.50%" in validation["reason"]
