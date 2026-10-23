@@ -640,7 +640,7 @@ def test_current_month_archive_404_rest_fallback_stays_inside_recent_window(monk
     assert all(int(params["from"]) >= expected_rest_start for _, params in rest_calls if params is not None)
 
 
-def test_missing_native_rest_repair_queries_historical_gaps_outside_recent_window() -> None:
+def test_missing_native_rest_repair_skips_historical_gaps_outside_recent_window() -> None:
     start = 1735689600
 
     class FakeResponse:
@@ -671,11 +671,8 @@ def test_missing_native_rest_repair_queries_historical_gaps_outside_recent_windo
         session, "BTC_USDT", "15m", [start],
         sleep_seconds=0, now_ts=start + 20000 * 900,
     )
-    assert [row["timestamp"] for row in rows] == [start]
-    assert session.calls == [{
-        "contract": "BTC_USDT", "interval": "15m",
-        "from": start, "to": start,
-    }]
+    assert rows == []
+    assert session.calls == []
 
 
 def test_audit_reports_exact_unresolved_timestamps() -> None:
