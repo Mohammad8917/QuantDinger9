@@ -975,6 +975,37 @@ def aggregate_futures_trades_to_15m(
     return candles
 
 
+def summarize_trade_bucket(
+    trades: list[tuple[float, int, float, float]],
+    bucket_timestamp: int,
+    *,
+    limit: int = 5,
+) -> dict[str, Any]:
+    """Return bounded raw-row diagnostics for one 15m bucket; never alter source trades."""
+    bucket_trades = [
+        trade for trade in trades
+        if math.floor(trade[0] / 900) * 900 == bucket_timestamp
+    ]
+    if not bucket_trades:
+        return {"timestamp": bucket_timestamp, "trade_count": 0, "rows": []}
+    ordered = sorted(bucket_trades, key=lambda item: (item[0], item[1]))
+    by_price = sorted(ordered, key=lambda item: (item[2], item[0], item[1]))
+    selected: dict[tuple[float, int, float, float], None] = {}
+    for trade in (ordered[:limit] + ordered[-limit:] + by_price[:limit] + by_price[-limit:]):
+        selected[trade] = None
+    return {
+        "timestamp": bucket_timestamp,
+        "trade_count": len(ordered),
+        "min_price": min(item[2] for item in ordered),
+        "max_price": max(item[2] for item in ordered),
+        "total_absolute_size": sum(abs(item[3]) for item in ordered),
+        "rows": [
+            {"timestamp": item[0], "dealid": item[1], "price": item[2], "signed_size": item[3]}
+            for item in sorted(selected, key=lambda item: (item[0], item[1]))
+        ],
+    }
+
+
 def validate_trade_reconstruction(
     reconstructed: list[dict[str, float | int | None]],
     official_rows: list[dict[str, float | int | None]],
@@ -1418,6 +1449,19 @@ def run_download(repo_root: Path, output_dir: Path, start_ts: int, end_ts: int) 
                                     f"details={validation['mismatches']}",
                                     flush=True,
                                 )
+                                # Narrow diagnostic for the reported ETC 2025-10 anomaly.
+                                # Gate's archive schema is timestamp, dealid, price, signed size;
+                                # retain raw row evidence so an internal/outlier trade can be
+                                # distinguished from a column-mapping or archive-corruption bug.
+                                if contract == "ETC_USDT" and month == "202510":
+                                    suspicious = validation.get("out_of_tolerance_examples", [])
+                                    for example in suspicious:
+                                        bucket_timestamp = int(example["timestamp"])
+                                        print(
+                                            f"[trade-raw-diagnostic] {contract} {month}: "
+                                            f"{json.dumps(summarize_trade_bucket(monthly_trades, bucket_timestamp), sort_keys=True)}",
+                                            flush=True,
+                                        )
                                 continue
                             wanted = set(missing_in_month)
                             trade_timestamps = {int(row["timestamp"]) for row in trade_candles}
